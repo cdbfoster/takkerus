@@ -1,0 +1,7 @@
+[package]
+name = "tak-rs"
+version = "0.1.0"
+authors = ["Chris Foster <cdbfoster@gmail.com>"]
+
+[dependencies]
+sdl2 = "0.18"
