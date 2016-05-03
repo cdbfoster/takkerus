@@ -25,7 +25,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(color: Color, flatstones: usize, capstones: usize) -> Player {
+    pub fn new(color: Color, flatstones: u8, capstones: u8) -> Player {
         let mut player = Player {
             color: color,
             pieces: Vec::new(),
