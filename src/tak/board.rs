@@ -59,7 +59,7 @@ impl Board {
                 }
             },
             None => if !board[next.x][next.y].is_empty() {
-                fn slide_stack(stack: &mut Vec<Piece>, x: usize, y: usize, direction: Direction, drop: usize, board: &mut Vec<Vec<Vec<Piece>>>) -> Result<(usize, usize), GameError> {
+                fn slide_stack(stack: &mut Vec<Piece>, (x, y): (usize, usize), direction: Direction, drop: usize, board: &mut Vec<Vec<Vec<Piece>>>) -> Result<(usize, usize), GameError> {
                     let (target_x, target_y) = match direction {
                         Direction::North => if y == board.len() -1 {
                             return Err(GameError::OutOfBounds);
@@ -136,7 +136,7 @@ impl Board {
                 if next.drop.is_empty() {
                     let stack_len = stack.len();
                     match next.direction {
-                        Some(direction) => match slide_stack(&mut stack, next.x, next.y, direction, stack_len, &mut board) {
+                        Some(direction) => match slide_stack(&mut stack, (next.x, next.y), direction, stack_len, &mut board) {
                             Ok(_) => (),
                             Err(error) => return Err(error),
                         },
@@ -153,7 +153,7 @@ impl Board {
                             return Err(GameError::InvalidMove);
                         }
 
-                        match slide_stack(&mut stack, x, y, direction, *drop, &mut board) {
+                        match slide_stack(&mut stack, (x, y), direction, *drop, &mut board) {
                             Ok((target_x, target_y)) => {
                                 x = target_x;
                                 y = target_y;
@@ -181,7 +181,7 @@ impl Board {
 
     pub fn check_win(&self) -> Option<Color> {
         fn check_neighbors(board: &Vec<Vec<Vec<Piece>>>, (x, y): (usize, usize), (old_x, old_y): (usize, usize), direction: Direction, color: Color) -> Option<Color> {
-            fn contributes(board: &Vec<Vec<Vec<Piece>>>, x: usize, y: usize, color: Color) -> bool {
+            fn contributes(board: &Vec<Vec<Vec<Piece>>>, (x, y): (usize, usize), color: Color) -> bool {
                 match board[x][y].last() {
                     Some(&Piece::StandingStone(_)) => false,
                     Some(&Piece::Flatstone(c)) |
@@ -197,7 +197,7 @@ impl Board {
             match direction {
                 Direction::North => {
                     if y + 1 < board.len() {
-                        if contributes(board, x, y + 1, color) {
+                        if contributes(board, (x, y + 1), color) {
                             if y + 1 == board.len() - 1 {
                                 return Some(color);
                             } else {
@@ -210,7 +210,7 @@ impl Board {
                     }
 
                     if x > 0 && x - 1 != old_x {
-                        if contributes(board, x - 1, y, color) {
+                        if contributes(board, (x - 1, y), color) {
                             let result = check_neighbors(board, (x - 1, y), (x, y), direction, color);
                             if result.is_some() {
                                 return result;
@@ -219,7 +219,7 @@ impl Board {
                     }
 
                     if x + 1 < board.len() && x + 1 != old_x {
-                        if contributes(board, x + 1, y, color) {
+                        if contributes(board, (x + 1, y), color) {
                             let result = check_neighbors(board, (x + 1, y), (x, y), direction, color);
                             if result.is_some() {
                                 return result;
@@ -229,7 +229,7 @@ impl Board {
                 },
                 Direction::East => {
                     if x + 1 < board.len() {
-                        if contributes(board, x + 1, y, color) {
+                        if contributes(board, (x + 1, y), color) {
                             if x + 1 == board.len() - 1 {
                                 return Some(color);
                             } else {
@@ -242,7 +242,7 @@ impl Board {
                     }
 
                     if y + 1 < board.len() && y + 1 != old_y {
-                        if contributes(board, x, y + 1, color) {
+                        if contributes(board, (x, y + 1), color) {
                             let result = check_neighbors(board, (x, y + 1), (x, y), direction, color);
                             if result.is_some() {
                                 return result;
@@ -251,7 +251,7 @@ impl Board {
                     }
 
                     if y > 0 && y - 1 != old_y {
-                        if contributes(board, x, y - 1, color) {
+                        if contributes(board, (x, y - 1), color) {
                             let result = check_neighbors(board, (x, y - 1), (x, y), direction, color);
                             if result.is_some() {
                                 return result;

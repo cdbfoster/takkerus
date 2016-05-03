@@ -30,7 +30,7 @@ pub struct Move {
 }
 
 impl Move {
-    pub fn new(new_piece: Option<Piece>, grab: Option<usize>, x: usize, y: usize, direction: Option<Direction>, drop: Vec<usize>) -> Move {
+    pub fn new(new_piece: Option<Piece>, grab: Option<usize>, (x, y): (usize, usize), direction: Option<Direction>, drop: Vec<usize>) -> Move {
         Move {
             new_piece: new_piece,
             grab: grab,
