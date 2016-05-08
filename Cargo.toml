@@ -5,3 +5,5 @@ authors = ["Chris Foster <cdbfoster@gmail.com>"]
 
 [dependencies]
 sdl2 = "0.18"
+sdl2_gfx = "0.18"
+time = "0.1.35"
