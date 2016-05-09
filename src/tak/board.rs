@@ -291,6 +291,34 @@ impl Board {
             }
         }
 
-        None
+        if !self.spaces.iter().any(|column| column.iter().any(|stack| stack.is_empty())) {
+            let white_count = self.spaces.iter().fold(0,
+                |sum, column| sum + column.iter().fold(0,
+                    |sum, stack| sum + match stack.last() {
+                        Some(&Piece::Flatstone(Color::White)) => 1,
+                        _ => 0,
+                    }
+                )
+            );
+
+            let black_count = self.spaces.iter().fold(0,
+                |sum, column| sum + column.iter().fold(0,
+                    |sum, stack| sum + match stack.last() {
+                        Some(&Piece::Flatstone(Color::Black)) => 1,
+                        _ => 0,
+                    }
+                )
+            );
+
+            if white_count > black_count {
+                Some(Color::White)
+            } else if black_count > white_count {
+                Some(Color::Black)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
