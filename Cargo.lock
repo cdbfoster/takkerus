@@ -1,5 +1,5 @@
 [root]
-name = "tak-rs"
+name = "takkerus"
 version = "0.1.0"
 dependencies = [
  "sdl2 0.18.0 (registry+https://github.com/rust-lang/crates.io-index)",
