@@ -17,11 +17,11 @@
 // Copyright 2016 Chris Foster
 //
 
-use tak::{Color, Direction, GameError, Move, Piece, TurnResult};
+use tak::{Color, Direction, GameError, Piece, Ply, TurnResult};
 
 pub struct Board {
     pub spaces: Vec<Vec<Vec<Piece>>>,
-    pub history: Vec<Move>,
+    pub history: Vec<Ply>,
 }
 
 impl Board {
@@ -42,7 +42,7 @@ impl Board {
         }
     }
 
-    pub fn execute(&mut self, next: Move) -> Result<TurnResult, GameError> {
+    pub fn execute(&mut self, next: Ply) -> Result<TurnResult, GameError> {
         let mut board = self.spaces.clone();
         let board_size = board.len();
 

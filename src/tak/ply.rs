@@ -20,7 +20,7 @@
 use tak::{Color, Direction, Piece};
 
 #[derive(Clone)]
-pub struct Move {
+pub struct Ply {
     pub new_piece: Option<Piece>,
     pub grab: Option<usize>,
     pub x: usize,
@@ -29,9 +29,9 @@ pub struct Move {
     pub drop: Vec<usize>,
 }
 
-impl Move {
-    pub fn new(new_piece: Option<Piece>, grab: Option<usize>, (x, y): (usize, usize), direction: Option<Direction>, drop: Vec<usize>) -> Move {
-        Move {
+impl Ply {
+    pub fn new(new_piece: Option<Piece>, grab: Option<usize>, (x, y): (usize, usize), direction: Option<Direction>, drop: Vec<usize>) -> Ply {
+        Ply {
             new_piece: new_piece,
             grab: grab,
             x: x,
@@ -41,7 +41,7 @@ impl Move {
         }
     }
 
-    pub fn from_ptn(ptn: &str, color: Color) -> Option<Move> {
+    pub fn from_ptn(ptn: &str, color: Color) -> Option<Ply> {
         let mut chars = ptn.chars();
 
         let mut next = chars.next();
@@ -110,7 +110,7 @@ impl Move {
             }
         }
 
-        Some(Move {
+        Some(Ply {
             new_piece: new_piece,
             grab: grab,
             x: x,

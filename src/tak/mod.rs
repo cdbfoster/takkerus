@@ -52,9 +52,9 @@ pub enum GameError {
 }
 
 pub use self::board::Board;
-pub use self::move_::Move;
 pub use self::player::Player;
+pub use self::ply::Ply;
 
 mod board;
-mod move_;
 mod player;
+mod ply;
