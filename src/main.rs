@@ -17,47 +17,33 @@
 // Copyright 2016 Chris Foster
 //
 
+#[macro_use]
+extern crate lazy_static;
 extern crate sdl2;
 extern crate sdl2_gfx;
 extern crate time;
 
 use sdl2::event::Event;
 
-mod render;
+//mod render;
 mod tak;
 mod timer;
 
-use render::Renderable;
+//use render::Renderable;
 use timer::Timer;
 
 fn main() {
-    let mut player1 = tak::Player::new(tak::Color::White, 21, 1);
-    let mut player2 = tak::Player::new(tak::Color::Black, 21, 1);
+    let mut state = tak::State::new(5);
 
-    {
-        let white_piece = player1.get_flatstone().unwrap();
-        let black_piece = player2.get_flatstone().unwrap();
-
-        player1.pieces.insert(0, black_piece);
-        player2.pieces.insert(0, white_piece);
-    }
-
-    let mut board = tak::Board::new(5);
-
-    board.spaces[1][1].push(tak::Piece::Flatstone(tak::Color::White));
-    board.spaces[2][1].push(tak::Piece::Flatstone(tak::Color::White));
-
-    board.spaces[2][3].push(tak::Piece::Flatstone(tak::Color::Black));
-    board.spaces[2][3].push(tak::Piece::Flatstone(tak::Color::White));
-    board.spaces[2][3].push(tak::Piece::Flatstone(tak::Color::White));
-    board.spaces[2][3].push(tak::Piece::Flatstone(tak::Color::Black));
-    board.spaces[2][3].push(tak::Piece::Capstone(tak::Color::White));
-    board.spaces[3][3].push(tak::Piece::Flatstone(tak::Color::Black));
-    board.spaces[3][3].push(tak::Piece::Capstone(tak::Color::Black));
+    state = state.execute_ply(&tak::Ply::from_ptn("Ca1", tak::Color::White).unwrap()).ok().unwrap();
+    state = state.execute_ply(&tak::Ply::from_ptn("Sb1", tak::Color::Black).unwrap()).ok().unwrap();
+    state = state.execute_ply(&tak::Ply::from_ptn("a1>", tak::Color::White).unwrap()).ok().unwrap();
+    state = state.execute_ply(&tak::Ply::from_ptn("2b1+11", tak::Color::White).unwrap()).ok().unwrap();
+    println!("{:?}", state);
 
     let sdl_context = sdl2::init().unwrap();
     let mut sdl_event_pump = sdl_context.event_pump().unwrap();
-    let mut render_context = render::initialize(&sdl_context, (1366, 768), false);
+    //let mut render_context = render::initialize(&sdl_context, (1366, 768), false);
 
     let mut input_timer = Timer::new(1.0 / 30.0);
     let mut render_timer = Timer::new(1.0 / 45.0);
@@ -82,11 +68,11 @@ fn main() {
         }
 
         if render_timer.sprung() {
-            render::clear(&mut render_context);
+            //render::clear(&mut render_context);
 
-            board.render(&mut render_context);
+            //board.render(&mut render_context);
 
-            render::present(&mut render_context);
+            //render::present(&mut render_context);
 
             render_timer.reset_with_overflow();
         }

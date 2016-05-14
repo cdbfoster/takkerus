@@ -19,28 +19,22 @@
 
 use tak::{Color, Direction, Piece};
 
-#[derive(Clone)]
-pub struct Ply {
-    pub new_piece: Option<Piece>,
-    pub grab: Option<usize>,
-    pub x: usize,
-    pub y: usize,
-    pub direction: Option<Direction>,
-    pub drop: Vec<usize>,
+#[derive(Clone, Debug)]
+pub enum Ply {
+    Place {
+        x: usize,
+        y: usize,
+        piece: Piece
+    },
+    Slide {
+        x: usize,
+        y: usize,
+        direction: Direction,
+        drops: Vec<usize>
+    },
 }
 
 impl Ply {
-    pub fn new(new_piece: Option<Piece>, grab: Option<usize>, (x, y): (usize, usize), direction: Option<Direction>, drop: Vec<usize>) -> Ply {
-        Ply {
-            new_piece: new_piece,
-            grab: grab,
-            x: x,
-            y: y,
-            direction: direction,
-            drop: drop,
-        }
-    }
-
     pub fn from_ptn(ptn: &str, color: Color) -> Option<Ply> {
         let mut chars = ptn.chars();
 
@@ -54,6 +48,10 @@ impl Ply {
             Some('C') => {
                 next = chars.next();
                 Some(Piece::Capstone(color))
+            },
+            Some('F') => {
+                next = chars.next();
+                Some(Piece::Flatstone(color))
             },
             None => return None,
             _ => None,
@@ -101,22 +99,49 @@ impl Ply {
             _ => return None,
         };
 
-        let mut drop = Vec::new();
+        let mut drops = Vec::new();
         for c in chars {
             if c.is_digit(10) {
-                drop.push((c as u8 - 48) as usize);
+                drops.push((c as u8 - 48) as usize);
             } else {
                 return None;
             }
         }
 
-        Some(Ply {
-            new_piece: new_piece,
-            grab: grab,
-            x: x,
-            y: y,
-            direction: direction,
-            drop: drop,
-        })
+        if new_piece.is_some() {
+            if grab.is_some() || direction.is_some() || !drops.is_empty() {
+                return None;
+            }
+
+            Some(Ply::Place {
+                x: x,
+                y: y,
+                piece: new_piece.unwrap(),
+            })
+        } else if direction.is_some() {
+            if drops.is_empty() {
+                if grab.is_some() {
+                    drops.push(grab.unwrap());
+                } else {
+                    drops.push(1);
+                }
+            } else {
+                if grab.is_none() {
+                    return None;
+                }
+                if grab.unwrap() != drops.iter().fold(0, |acc, x| acc + x) {
+                    return None;
+                }
+            }
+
+            Some(Ply::Slide {
+                x: x,
+                y: y,
+                direction: direction.unwrap(),
+                drops: drops
+            })
+        } else {
+            None
+        }
     }
 }

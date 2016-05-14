@@ -17,50 +17,21 @@
 // Copyright 2016 Chris Foster
 //
 
-use tak::{Color, Piece};
+use tak::Color;
 
+#[derive(Clone, Debug)]
 pub struct Player {
     pub color: Color,
-    pub pieces: Vec<Piece>,
+    pub flatstone_count: u8,
+    pub capstone_count: u8,
 }
 
 impl Player {
-    pub fn new(color: Color, flatstones: u8, capstones: u8) -> Player {
-        let mut player = Player {
+    pub fn new(color: Color, flatstone_count: u8, capstone_count: u8) -> Player {
+        Player {
             color: color,
-            pieces: Vec::new(),
-        };
-
-        for _ in 0..flatstones {
-            player.pieces.push(Piece::Flatstone(color));
-        }
-
-        for _ in 0..capstones {
-            player.pieces.push(Piece::Capstone(color));
-        }
-
-        player
-    }
-
-    pub fn has_flatstone(&self) -> bool {
-        self.pieces.iter().any(|piece| *piece == Piece::Flatstone(self.color))
-    }
-
-    pub fn get_flatstone(&mut self) -> Option<Piece> {
-        match self.pieces.iter().position(|piece| *piece == Piece::Flatstone(self.color)) {
-            Some(index) => Some(self.pieces.remove(index)),
-            None => None,
-        }
-    }
-
-    pub fn has_capstone(&self) -> bool {
-        self.pieces.iter().any(|piece| *piece == Piece::Capstone(self.color))
-    }
-
-    pub fn get_capstone(&mut self) -> Option<Piece> {
-        match self.pieces.iter().position(|piece| *piece == Piece::Capstone(self.color)) {
-            Some(index) => Some(self.pieces.remove(index)),
-            None => None,
+            flatstone_count: flatstone_count,
+            capstone_count: capstone_count,
         }
     }
 }

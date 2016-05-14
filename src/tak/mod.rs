@@ -30,12 +30,23 @@ pub enum Piece {
     Capstone(Color),
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Direction {
     North,
     East,
     South,
     West,
+}
+
+impl Direction {
+    pub fn to_offset(&self) -> (i8, i8) {
+        match *self {
+            Direction::North => (0, 1),
+            Direction::East => (1, 0),
+            Direction::South => (0, -1),
+            Direction::West => (-1, 0),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -46,15 +57,18 @@ pub enum TurnResult {
 
 #[derive(Debug)]
 pub enum GameError {
+    IllegalPlacement,
+    InsufficientPieces,
+    IllegalSlide,
     OutOfBounds,
-    InvalidMove,
-    IllegalMove,
 }
 
-pub use self::board::Board;
 pub use self::player::Player;
 pub use self::ply::Ply;
+pub use self::state::State;
+pub use self::state_analysis::StateAnalysis;
 
-mod board;
 mod player;
 mod ply;
+mod state;
+mod state_analysis;
