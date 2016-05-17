@@ -21,13 +21,13 @@ lazy_static! {
     pub static ref SLIDE_TABLE: Vec<Vec<Vec<u8>>> = generate_slide_table(8);
 }
 
-use tak::{Color, Direction, GameError, Piece, Player, Ply, StateAnalysis};
+use tak::{Color, Direction, GameError, Piece, Ply, Seat, StateAnalysis};
 use tak::state_analysis::BitmapInterface;
 
 #[derive(Clone, Debug)]
 pub struct State {
-    pub p1: Player,
-    pub p2: Player,
+    pub p1: Seat,
+    pub p2: Seat,
 
     pub board: Vec<Vec<Vec<Piece>>>,
 
@@ -48,8 +48,8 @@ impl State {
         };
 
         State {
-            p1: Player::new(Color::White, flatstone_count, capstone_count),
-            p2: Player::new(Color::Black, flatstone_count, capstone_count),
+            p1: Seat::new(Color::White, flatstone_count, capstone_count),
+            p2: Seat::new(Color::Black, flatstone_count, capstone_count),
             board: vec![vec![Vec::new(); board_size]; board_size],
             ply_count: 0,
             analysis: StateAnalysis::new(),

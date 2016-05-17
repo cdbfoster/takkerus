@@ -17,18 +17,22 @@
 // Copyright 2016 Chris Foster
 //
 
-use tak::Color;
+use tak::{Color, Ply};
+
+trait Player {
+    fn get_move(&mut self) -> Ply;
+}
 
 #[derive(Clone, Debug)]
-pub struct Player {
+pub struct Seat {
     pub color: Color,
     pub flatstone_count: u8,
     pub capstone_count: u8,
 }
 
-impl Player {
-    pub fn new(color: Color, flatstone_count: u8, capstone_count: u8) -> Player {
-        Player {
+impl Seat {
+    pub fn new(color: Color, flatstone_count: u8, capstone_count: u8) -> Seat {
+        Seat {
             color: color,
             flatstone_count: flatstone_count,
             capstone_count: capstone_count,

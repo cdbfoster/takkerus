@@ -63,7 +63,7 @@ pub enum GameError {
     OutOfBounds,
 }
 
-pub use self::player::Player;
+pub use self::player::{Player, Seat};
 pub use self::ply::Ply;
 pub use self::state::State;
 pub use self::state_analysis::StateAnalysis;
