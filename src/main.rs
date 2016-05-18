@@ -22,6 +22,8 @@ extern crate lazy_static;
 
 mod tak;
 
+use std::fmt::Write;
+
 use tak::Player;
 
 fn main() {
@@ -30,16 +32,29 @@ fn main() {
     let mut p1 = tak::cli_player::CliPlayer::new(tak::Color::White);
     let mut p2 = tak::cli_player::CliPlayer::new(tak::Color::Black);
 
+    let mut ptn = String::new();
     loop {
-        let p = if state.ply_count % 2 == 0 {
-            &mut p1
+        println!("\n--------------------------------------------------");
+        println!("{}", state);
+        if state.ply_count >= 2 {
+            println!("Previous turn:   {}\n", ptn);
         } else {
-            &mut p2
-        };
+            println!("First turn\n");
+        }
 
-        println!("{:?}", state);
-
-        let ply = p.get_move(&state);
+        let ply = p1.get_move(&state);
         state = state.execute_ply(&ply).unwrap();
+
+        ptn = String::new();
+        write!(ptn, "{:<5} ", ply.to_ptn()).ok();
+
+        println!("\n--------------------------------------------------");
+        println!("{}", state);
+        println!("Previous move:   {}\n", ptn);
+
+        let ply = p2.get_move(&state);
+        state = state.execute_ply(&ply).unwrap();
+
+        write!(ptn, "{}", ply.to_ptn()).ok();
     }
 }
