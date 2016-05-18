@@ -21,6 +21,8 @@ lazy_static! {
     pub static ref SLIDE_TABLE: Vec<Vec<Vec<u8>>> = generate_slide_table(8);
 }
 
+use std::fmt::{self, Write};
+
 use tak::{Color, GameError, Piece, Ply, Seat, StateAnalysis};
 use tak::state_analysis::BitmapInterface;
 
@@ -235,6 +237,91 @@ impl State {
         }
 
         Ok(next)
+    }
+}
+
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let board_size = self.board.len();
+
+        let column_widths = self.board.iter().map(|column| {
+            column.iter().fold(6, |max, stack| {
+                let stack_width = stack.iter().fold(0, |acc, piece| {
+                    match piece {
+                        &Piece::Flatstone(_) => acc + 1,
+                        _ => acc + 2,
+                    }
+                }) + 3 + if !stack.is_empty() {
+                    stack.len() - 1
+                } else {
+                    0
+                };
+
+                if max > stack_width { max } else { stack_width }
+            })
+        }).collect::<Vec<_>>();
+
+        write!(f, "\n Player 1: {:>2} flatstone{}", self.p1.flatstone_count,
+            if self.p1.flatstone_count != 1 { "s" } else { "" }
+        ).ok();
+
+        if self.p1.capstone_count > 0 {
+            write!(f, ", {} capstone{}", self.p1.capstone_count,
+                if self.p1.capstone_count != 1 { "s" } else { "" }
+            ).ok();
+        }
+
+        write!(f, "\n Player 2: {:>2} flatstone{}", self.p2.flatstone_count,
+            if self.p2.flatstone_count != 1 { "s" } else { "" }
+        ).ok();
+
+        if self.p2.capstone_count > 0 {
+            write!(f, ", {} capstone{}\n\n", self.p2.capstone_count,
+                if self.p2.capstone_count != 1 { "s" } else { "" }
+            ).ok();
+        } else {
+            write!(f, "\n\n").ok();
+        }
+
+        for row in (0..board_size).rev() {
+            write!(f, " {}   ", row + 1).ok();
+
+            for column in 0..board_size {
+                let mut c = String::new();
+                write!(c, "[").ok();
+
+                for (index, piece) in self.board[column][row].iter().rev().enumerate() {
+                    if index > 0 {
+                        write!(c, " ").ok();
+                    }
+
+                    write!(c, "{}", match piece.get_color() {
+                        Color::White => "W",
+                        Color::Black => "B",
+                    }).ok();
+
+                    match piece {
+                        &Piece::StandingStone(_) => { write!(c, "S").ok(); },
+                        &Piece::Capstone(_) => { write!(c, "C").ok(); },
+                        _ => (),
+                    }
+                }
+
+                write!(c, "]").ok();
+
+                write!(f, "{:<width$}", c, width = column_widths[column]).ok();
+            }
+
+            write!(f, "\n").ok();
+        }
+
+        write!(f, "\n     ").ok();
+
+        for (index, column_width) in column_widths.iter().enumerate() {
+            write!(f, "{:<width$}", (index as u8 + 97) as char, width = column_width).ok();
+        }
+
+        write!(f, "\n")
     }
 }
 
