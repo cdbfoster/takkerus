@@ -38,20 +38,20 @@ impl CliPlayer {
 impl Player for CliPlayer {
     fn get_move(&mut self, state: &State) -> Ply {
         let mut ply = None;
-        
+
         while ply.is_none() {
             print!("Enter move ({}): ", match self.color {
                 Color::White => "Player 1",
                 Color::Black => "Player 2",
             });
             io::stdout().flush().ok();
-                        
+
             let mut input = String::new();
             match self.stdin.read_line(&mut input) {
                 Ok(_) => ply = Ply::from_ptn(input.trim(), self.color),
                 Err(e) => panic!("Error: {}", e),
             }
-            
+
             if ply.is_none() {
                 println!("Invalid PTN.");
             } else if state.ply_count < 2 {
@@ -83,7 +83,7 @@ impl Player for CliPlayer {
                 }
             }
         }
-        
+
         ply.unwrap()
     }
 }
