@@ -23,6 +23,15 @@ pub enum Color {
     Black,
 }
 
+impl Color {
+    pub fn flip(&self) -> Color {
+        match *self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Piece {
     Flatstone(Color),
@@ -63,12 +72,12 @@ pub enum GameError {
     OutOfBounds,
 }
 
-pub use self::player::{Player, Seat};
+pub use self::player::*;
 pub use self::ply::Ply;
 pub use self::state::State;
 pub use self::state_analysis::StateAnalysis;
 
-mod player;
+pub mod player;
 mod ply;
 mod state;
 mod state_analysis;

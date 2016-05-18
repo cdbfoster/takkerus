@@ -17,10 +17,10 @@
 // Copyright 2016 Chris Foster
 //
 
-use tak::{Color, Ply};
+use tak::{Color, Ply, State};
 
-trait Player {
-    fn get_move(&mut self) -> Ply;
+pub trait Player {
+    fn get_move(&mut self, state: &State) -> Ply;
 }
 
 #[derive(Clone, Debug)]
@@ -39,3 +39,5 @@ impl Seat {
         }
     }
 }
+
+pub mod cli_player;
