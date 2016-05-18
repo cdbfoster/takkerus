@@ -144,4 +144,46 @@ impl Ply {
             None
         }
     }
+
+    pub fn to_ptn(&self) -> String {
+        let mut ptn = String::new();
+
+        match self {
+            &Ply::Place { x, y, ref piece } => {
+                match piece {
+                    &Piece::StandingStone(_) => ptn.push('S'),
+                    &Piece::Capstone(_) => ptn.push('C'),
+                    _ => (),
+                }
+
+                ptn.push((x as u8 + 97) as char);
+                ptn.push((y as u8 + 49) as char);
+            },
+            &Ply::Slide { x, y, direction, ref drops } => {
+                let grab = drops.iter().fold(0, |acc, x| acc + x);
+
+                if grab > 1 {
+                    ptn.push((grab as u8 + 48) as char);
+                }
+
+                ptn.push((x as u8 + 97) as char);
+                ptn.push((y as u8 + 49) as char);
+
+                match direction {
+                    Direction::North => ptn.push('+'),
+                    Direction::East => ptn.push('>'),
+                    Direction::South => ptn.push('-'),
+                    Direction::West => ptn.push('<'),
+                }
+
+                if drops.len() > 1 {
+                    for drop in drops.iter() {
+                        ptn.push((*drop as u8 + 48) as char);
+                    }
+                }
+            },
+        }
+
+        ptn
+    }
 }
