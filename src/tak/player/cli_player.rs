@@ -40,10 +40,10 @@ impl Player for CliPlayer {
         let mut ply = None;
 
         while ply.is_none() {
-            print!("Enter move ({}): ", match self.color {
+            print!("Enter {}'s move (Turn {}): ", match self.color {
                 Color::White => "Player 1",
                 Color::Black => "Player 2",
-            });
+            }, state.ply_count / 2 + 1);
             io::stdout().flush().ok();
 
             let mut input = String::new();
