@@ -122,7 +122,7 @@ impl State {
             &Ply::Slide { x, y, direction, ref drops } => {
                 let grab = drops.iter().fold(0, |acc, x| acc + x);
 
-                if grab > board_size {
+                if grab > board_size || next.board[x][y].is_empty() {
                     return Err(GameError::IllegalSlide);
                 }
 
