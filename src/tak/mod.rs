@@ -59,12 +59,6 @@ impl Direction {
 }
 
 #[derive(Debug)]
-pub enum TurnResult {
-    Normal,
-    Win(Color),
-}
-
-#[derive(Debug)]
 pub enum GameError {
     IllegalPlacement,
     InsufficientPieces,

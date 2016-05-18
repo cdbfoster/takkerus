@@ -21,7 +21,7 @@ lazy_static! {
     pub static ref SLIDE_TABLE: Vec<Vec<Vec<u8>>> = generate_slide_table(8);
 }
 
-use tak::{Color, Direction, GameError, Piece, Ply, Seat, StateAnalysis};
+use tak::{Color, GameError, Piece, Ply, Seat, StateAnalysis};
 use tak::state_analysis::BitmapInterface;
 
 #[derive(Clone, Debug)]
@@ -181,7 +181,7 @@ impl State {
                                 a.p2_total_road.clear(nx as usize, ny as usize, board_size);
                                 a.p2_pieces.clear(nx as usize, ny as usize, board_size);
                             },
-                            Piece::Capstone(color) => return Err(GameError::IllegalSlide),
+                            Piece::Capstone(_) => return Err(GameError::IllegalSlide),
                             Piece::StandingStone(color) => if stack.len() == 1 {
                                 match stack[0] {
                                     Piece::Capstone(_) => {
