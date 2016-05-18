@@ -176,7 +176,7 @@ impl Ply {
                     Direction::West => ptn.push('<'),
                 }
 
-                if drops.len() > 1 {
+                if drops.len() > 1 || (drops.len() == 1 && *drops.first().unwrap() > 1) {
                     for drop in drops.iter() {
                         ptn.push((*drop as u8 + 48) as char);
                     }
