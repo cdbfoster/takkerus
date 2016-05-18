@@ -39,6 +39,16 @@ pub enum Piece {
     Capstone(Color),
 }
 
+impl Piece {
+    pub fn get_color(&self) -> Color {
+        match self {
+            &Piece::Flatstone(color) |
+            &Piece::StandingStone(color) |
+            &Piece::Capstone(color) => color,
+        }
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Direction {
     North,
