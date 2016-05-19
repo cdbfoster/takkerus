@@ -77,7 +77,7 @@ impl Ply {
         };
 
         let y = match chars.next() {
-            Some(c) => if c.is_digit(10) {
+            Some(c) => if c.is_digit(10) && c != '0' {
                 (c as u8 - 49) as usize
             } else {
                 return None;
