@@ -18,8 +18,8 @@
 //
 
 lazy_static! {
-    static ref EDGE: [[Bitmap; 4]; 9] = generate_edge_masks();
-    static ref BOARD: [Bitmap; 9] = generate_board_masks();
+    pub static ref EDGE: [[Bitmap; 4]; 9] = generate_edge_masks();
+    pub static ref BOARD: [Bitmap; 9] = generate_board_masks();
 }
 
 pub type Bitmap = u64;
@@ -155,7 +155,7 @@ fn generate_board_masks() -> [Bitmap; 9] {
     let mut board = [0; 9];
 
     for size in 3..(8 + 1) {
-        board[size] = 1 << (size * size) - 1;
+        board[size] = 0xFFFFFFFFFFFFFFFF >> (64 - size * size);
     }
 
     board
