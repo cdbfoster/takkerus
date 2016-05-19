@@ -33,7 +33,7 @@ fn main() {
     let mut p2 = cli_player::CliPlayer::new(Color::Black);
 
     let mut ptn = String::new();
-    loop {
+    'main: loop {
         println!("\n--------------------------------------------------");
         println!("{}", state);
         if state.ply_count >= 2 {
@@ -51,6 +51,11 @@ fn main() {
 
                     ptn = String::new();
                     write!(ptn, "{:<5} ", ply.to_ptn()).ok();
+
+                    match state.check_win() {
+                        Win::None => (),
+                        _ => break 'main,
+                    }
 
                     break 'p1_move;
                 },
@@ -71,10 +76,32 @@ fn main() {
 
                     write!(ptn, "{}", ply.to_ptn()).ok();
 
+                    match state.check_win() {
+                        Win::None => (),
+                        _ => break 'main,
+                    }
+
                     break 'p2_move;
                 },
                 Err(error) => println!("  {}", error),
             }
         }
+    }
+
+    println!("\n--------------------------------------------------");
+    println!("{}", state);
+    println!("Winning state:   {}\n", ptn);
+
+    match state.check_win() {
+        Win::Road(color) => match color {
+            Color::White => println!("Player 1 wins! (R-0)"),
+            Color::Black => println!("Player 2 wins! (0-R)"),
+        },
+        Win::Flat(color) => match color {
+            Color::White => println!("Player 1 wins! (F-0)"),
+            Color::Black => println!("Player 2 wins! (0-F)"),
+        },
+        Win::Draw => println!("Draw! (1/2-1/2)"),
+        _ => (),
     }
 }
