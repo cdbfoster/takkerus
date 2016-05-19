@@ -24,13 +24,13 @@ mod tak;
 
 use std::fmt::Write;
 
-use tak::Player;
+use tak::*;
 
 fn main() {
-    let mut state = tak::State::new(5);
+    let mut state = State::new(5);
 
-    let mut p1 = tak::cli_player::CliPlayer::new(tak::Color::White);
-    let mut p2 = tak::cli_player::CliPlayer::new(tak::Color::Black);
+    let mut p1 = cli_player::CliPlayer::new(Color::White);
+    let mut p2 = cli_player::CliPlayer::new(Color::Black);
 
     let mut ptn = String::new();
     loop {
