@@ -17,6 +17,8 @@
 // Copyright 2016 Chris Foster
 //
 
+use std::fmt;
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Color {
     White,
@@ -74,6 +76,17 @@ pub enum GameError {
     InsufficientPieces,
     IllegalSlide,
     OutOfBounds,
+}
+
+impl fmt::Display for GameError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &GameError::IllegalPlacement => write!(f, "Illegal placement."),
+            &GameError::InsufficientPieces => write!(f, "Not enough pieces."),
+            &GameError::IllegalSlide => write!(f, "Illegal slide."),
+            &GameError::OutOfBounds => write!(f, "Out of bounds."),
+        }
+    }
 }
 
 pub use self::player::*;
