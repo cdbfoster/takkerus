@@ -39,6 +39,8 @@ impl Player for CliPlayer {
     fn get_move(&mut self, state: &State) -> Ply {
         let mut ply = None;
 
+        let board_size = state.board.len();
+
         while ply.is_none() {
             print!("Enter {}'s move (Turn {}): ", match self.color {
                 Color::White => "Player 1",
@@ -53,7 +55,7 @@ impl Player for CliPlayer {
             }
 
             if ply.is_none() {
-                println!("Invalid PTN.");
+                println!("  Invalid PTN.");
             } else if state.ply_count < 2 {
                 match ply {
                     Some(Ply::Place { piece: Piece::Flatstone(color), x, y }) => {
@@ -64,7 +66,7 @@ impl Player for CliPlayer {
                         });
                     },
                     _ => {
-                        println!("Illegal opening move.");
+                        println!("  Illegal opening move.");
                         ply = None;
                     },
                 }
@@ -74,13 +76,24 @@ impl Player for CliPlayer {
                         Some(&Piece::Flatstone(color)) |
                         Some(&Piece::StandingStone(color)) |
                         Some(&Piece::Capstone(color)) => if color != self.color {
-                            println!("Illegal move.");
+                            println!("  Illegal move.");
                             ply = None;
                         },
                         _ => (),
                     },
                     _ => (),
                 }
+            }
+
+            match ply {
+                Some(Ply::Place { x, y, .. }) |
+                Some(Ply::Slide { x, y, .. }) => {
+                    if x >= board_size || y >= board_size {
+                        println!("  Out of bounds.");
+                        ply = None;
+                    }
+                },
+                _ => (),
             }
         }
 
