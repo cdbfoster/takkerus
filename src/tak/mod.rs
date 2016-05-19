@@ -71,6 +71,14 @@ impl Direction {
 }
 
 #[derive(Debug)]
+pub enum Win {
+    None,
+    Road(Color),
+    Flat(Color),
+    Draw,
+}
+
+#[derive(Debug)]
 pub enum GameError {
     IllegalPlacement,
     InsufficientPieces,

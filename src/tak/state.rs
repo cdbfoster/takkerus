@@ -23,8 +23,8 @@ lazy_static! {
 
 use std::fmt::{self, Write};
 
-use tak::{Color, GameError, Piece, Ply, Seat, StateAnalysis};
-use tak::state_analysis::BitmapInterface;
+use tak::{Color, GameError, Piece, Ply, Seat, StateAnalysis, Win};
+use tak::state_analysis::{BOARD, EDGE, Bitmap, BitmapInterface};
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -237,6 +237,53 @@ impl State {
         }
 
         Ok(next)
+    }
+
+    pub fn check_win(&self) -> Win {
+        let board_size = self.board.len();
+        let a = &self.analysis;
+
+        let has_road = |groups: &Vec<Bitmap>| {
+            use tak::Direction::*;
+
+            for group in groups.iter() {
+                if (group & EDGE[board_size][North as usize] != 0 &&
+                    group & EDGE[board_size][South as usize] != 0) ||
+                   (group & EDGE[board_size][West as usize] != 0 &&
+                    group & EDGE[board_size][East as usize] != 0) {
+                    return true;
+                }
+            }
+
+            false
+        };
+
+        let p1_has_road = has_road(&a.p1_road_groups);
+        let p2_has_road = has_road(&a.p2_road_groups);
+
+        if p1_has_road && p2_has_road {
+            if self.ply_count % 2 == 1 {
+                Win::Road(Color::White)
+            } else {
+                Win::Road(Color::Black)
+            }
+        } else if p1_has_road {
+            Win::Road(Color::White)
+        } else if p2_has_road {
+            Win::Road(Color::Black)
+        } else if (self.p1.flatstone_count + self.p1.capstone_count) == 0 ||
+                  (self.p2.flatstone_count + self.p2.capstone_count) == 0 ||
+                  (a.p1_pieces | a.p2_pieces) == BOARD[board_size] {
+            if a.p1_flatstone_count > a.p2_flatstone_count {
+                Win::Flat(Color::White)
+            } else if a.p2_flatstone_count > a.p1_flatstone_count {
+                Win::Flat(Color::Black)
+            } else {
+                Win::Draw
+            }
+        } else {
+            Win::None
+        }
     }
 }
 
