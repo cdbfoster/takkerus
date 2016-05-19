@@ -42,19 +42,39 @@ fn main() {
             println!("First turn\n");
         }
 
-        let ply = p1.get_move(&state);
-        state = state.execute_ply(&ply).unwrap();
+        'p1_move: loop {
+            let ply = p1.get_move(&state);
 
-        ptn = String::new();
-        write!(ptn, "{:<5} ", ply.to_ptn()).ok();
+            match state.execute_ply(&ply) {
+                Ok(next) => {
+                    state = next;
+
+                    ptn = String::new();
+                    write!(ptn, "{:<5} ", ply.to_ptn()).ok();
+
+                    break 'p1_move;
+                },
+                Err(error) => println!("  {}", error),
+            }
+        }
 
         println!("\n--------------------------------------------------");
         println!("{}", state);
         println!("Previous move:   {}\n", ptn);
 
-        let ply = p2.get_move(&state);
-        state = state.execute_ply(&ply).unwrap();
+        'p2_move: loop {
+            let ply = p2.get_move(&state);
 
-        write!(ptn, "{}", ply.to_ptn()).ok();
+            match state.execute_ply(&ply) {
+                Ok(next) => {
+                    state = next;
+
+                    write!(ptn, "{}", ply.to_ptn()).ok();
+
+                    break 'p2_move;
+                },
+                Err(error) => println!("  {}", error),
+            }
+        }
     }
 }
