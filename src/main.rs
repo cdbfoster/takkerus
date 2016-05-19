@@ -90,7 +90,7 @@ fn main() {
 
     println!("\n--------------------------------------------------");
     println!("{}", state);
-    println!("Winning state:   {}\n", ptn);
+    println!("Final state:     {}\n", ptn);
 
     match state.check_win() {
         Win::Road(color) => match color {
