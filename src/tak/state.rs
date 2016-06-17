@@ -158,6 +158,31 @@ impl State {
                     },
                 }
 
+                match next.board[x][y].last() {
+                    Some(&Piece::Flatstone(color)) => if color == Color::White {
+                        a.p1_flatstone_count += 1;
+                        a.p1_total_road.set(x, y, board_size);
+                        a.p1_pieces.set(x, y, board_size);
+                    } else {
+                        a.p2_flatstone_count += 1;
+                        a.p2_total_road.set(x, y, board_size);
+                        a.p2_pieces.set(x, y, board_size);
+                    },
+                    Some(&Piece::Capstone(color)) => if color == Color::White {
+                        a.p1_total_road.set(x, y, board_size);
+                        a.p1_pieces.set(x, y, board_size);
+                    } else {
+                        a.p2_total_road.set(x, y, board_size);
+                        a.p2_pieces.set(x, y, board_size);
+                    },
+                    Some(&Piece::StandingStone(color)) => if color == Color::White {
+                        a.p1_pieces.set(x, y, board_size);
+                    } else {
+                        a.p2_pieces.set(x, y, board_size);
+                    },
+                    None => (),
+                }
+
                 let (dx, dy) = direction.to_offset();
 
                 let mut nx = x as i8;
