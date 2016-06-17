@@ -20,7 +20,7 @@
 use std::fmt::{self, Write};
 
 use tak::{Color, GameError, Piece, Ply, Seat, StateAnalysis, Win};
-use tak::state_analysis::{BOARD, EDGE, Bitmap, BitmapInterface};
+use tak::state_analysis::{BOARD, EDGE, Bitmap};
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -50,7 +50,7 @@ impl State {
             p2: Seat::new(Color::Black, flatstone_count, capstone_count),
             board: vec![vec![Vec::new(); board_size]; board_size],
             ply_count: 0,
-            analysis: StateAnalysis::new(),
+            analysis: StateAnalysis::new(board_size),
         }
     }
 
@@ -88,33 +88,17 @@ impl State {
 
                 next.board[x][y].push(piece.clone());
 
-                let a = &mut next.analysis;
                 match piece {
-                    &Piece::Flatstone(color) => if color == Color::White {
-                        a.p1_flatstone_count += 1;
-                        a.p1_total_road.set(x, y, board_size);
-                        a.p1_road_groups = a.p1_total_road.get_groups(board_size);
-                        a.p1_pieces.set(x, y, board_size);
-                    } else {
-                        a.p2_flatstone_count += 1;
-                        a.p2_total_road.set(x, y, board_size);
-                        a.p2_road_groups = a.p2_total_road.get_groups(board_size);
-                        a.p2_pieces.set(x, y, board_size);
-                    },
-                    &Piece::Capstone(color) => if color == Color::White {
-                        a.p1_total_road.set(x, y, board_size);
-                        a.p1_road_groups = a.p1_total_road.get_groups(board_size);
-                        a.p1_pieces.set(x, y, board_size);
-                    } else {
-                        a.p2_total_road.set(x, y, board_size);
-                        a.p2_road_groups = a.p2_total_road.get_groups(board_size);
-                        a.p2_pieces.set(x, y, board_size);
-                    },
-                    &Piece::StandingStone(color) => if color == Color::White {
-                        a.p1_pieces.set(x, y, board_size);
-                    } else {
-                        a.p2_pieces.set(x, y, board_size);
-                    },
+                    &Piece::Flatstone(color) => next.analysis.add_flatstone(
+                        color, x, y, next.board[x][y].len() - 1,
+                    ),
+                    block => next.analysis.add_blocking_stone(block, x, y),
+                }
+
+                match piece {
+                    &Piece::Flatstone(_) |
+                    &Piece::Capstone(_) => next.analysis.calculate_road_groups(),
+                    _ => (),
                 }
             },
             &Ply::Slide { x, y, direction, ref drops } => {
@@ -126,57 +110,23 @@ impl State {
 
                 let mut stack = Vec::new();
 	            for _ in 0..grab {
-	                stack.push(next.board[x][y].pop().unwrap());
-                }
+	                let piece = next.board[x][y].pop().unwrap();
 
-                let a = &mut next.analysis;
-                match stack[0] {
-                    Piece::Flatstone(color) => if color == Color::White {
-                        a.p1_flatstone_count -= 1;
-                        a.p1_total_road.clear(x, y, board_size);
-                        a.p1_pieces.clear(x, y, board_size);
-                    } else {
-                        a.p2_flatstone_count -= 1;
-                        a.p2_total_road.clear(x, y, board_size);
-                        a.p2_pieces.clear(x, y, board_size);
-                    },
-                    Piece::Capstone(color) => if color == Color::White {
-                        a.p1_total_road.clear(x, y, board_size);
-                        a.p1_pieces.clear(x, y, board_size);
-                    } else {
-                        a.p2_total_road.clear(x, y, board_size);
-                        a.p2_pieces.clear(x, y, board_size);
-                    },
-                    Piece::StandingStone(color) => if color == Color::White {
-                        a.p1_pieces.clear(x, y, board_size);
-                    } else {
-                        a.p2_pieces.clear(x, y, board_size);
-                    },
-                }
+	                match piece {
+	                    Piece::Flatstone(color) => next.analysis.remove_flatstone(
+	                        color, x, y, next.board[x][y].len(),
+                        ),
+                        ref block => next.analysis.remove_blocking_stone(block, x, y),
+                    }
 
-                match next.board[x][y].last() {
-                    Some(&Piece::Flatstone(color)) => if color == Color::White {
-                        a.p1_flatstone_count += 1;
-                        a.p1_total_road.set(x, y, board_size);
-                        a.p1_pieces.set(x, y, board_size);
-                    } else {
-                        a.p2_flatstone_count += 1;
-                        a.p2_total_road.set(x, y, board_size);
-                        a.p2_pieces.set(x, y, board_size);
-                    },
-                    Some(&Piece::Capstone(color)) => if color == Color::White {
-                        a.p1_total_road.set(x, y, board_size);
-                        a.p1_pieces.set(x, y, board_size);
-                    } else {
-                        a.p2_total_road.set(x, y, board_size);
-                        a.p2_pieces.set(x, y, board_size);
-                    },
-                    Some(&Piece::StandingStone(color)) => if color == Color::White {
-                        a.p1_pieces.set(x, y, board_size);
-                    } else {
-                        a.p2_pieces.set(x, y, board_size);
-                    },
-                    None => (),
+                    match next.board[x][y].last() {
+                        Some(revealed) => next.analysis.reveal_flatstone(
+                            revealed.get_color(), x, y,
+                        ),
+                        None => (),
+                    }
+
+	                stack.push(piece);
                 }
 
                 let (dx, dy) = direction.to_offset();
@@ -195,65 +145,51 @@ impl State {
                     if !next.board[nx as usize][ny as usize].is_empty() {
                         let target_top = next.board[nx as usize][ny as usize].last().unwrap().clone();
                         match target_top {
-                            Piece::Flatstone(color) => if color == Color::White {
-                                a.p1_flatstone_count -= 1;
-                                a.p1_total_road.clear(nx as usize, ny as usize, board_size);
-                                a.p1_pieces.clear(nx as usize, ny as usize, board_size);
-                            } else {
-                                a.p2_flatstone_count -= 1;
-                                a.p2_total_road.clear(nx as usize, ny as usize, board_size);
-                                a.p2_pieces.clear(nx as usize, ny as usize, board_size);
-                            },
                             Piece::Capstone(_) => return Err(GameError::IllegalSlide),
                             Piece::StandingStone(color) => if stack.len() == 1 {
                                 match stack[0] {
                                     Piece::Capstone(_) => {
                                         *next.board[nx as usize][ny as usize].last_mut().unwrap() = Piece::Flatstone(color);
-                                        if color == Color::White {
-                                            a.p1_pieces.clear(nx as usize, ny as usize, board_size);
-                                        } else {
-                                            a.p2_pieces.clear(nx as usize, ny as usize, board_size);
-                                        }
+                                        next.analysis.remove_blocking_stone(&Piece::StandingStone(color), nx as usize, ny as usize);
+                                        next.analysis.add_flatstone(
+                                            color, nx as usize, ny as usize,
+                                            next.board[nx as usize][ny as usize].len() - 1,
+                                        )
                                     },
                                     _ => return Err(GameError::IllegalSlide),
                                 }
                             } else {
                                 return Err(GameError::IllegalSlide);
                             },
+                            _ => (),
                         }
                     }
 
                     for _ in 0..*drop {
-                        next.board[nx as usize][ny as usize].push(stack.pop().unwrap());
-                    }
+                        match next.board[nx as usize][ny as usize].last() {
+                            Some(covered) => next.analysis.cover_flatstone(
+                                covered.get_color(), nx as usize, ny as usize,
+                            ),
+                            None => (),
+                        }
 
-                    match next.board[nx as usize][ny as usize].last().unwrap() {
-                        &Piece::Flatstone(color) => if color == Color::White {
-                            a.p1_flatstone_count += 1;
-                            a.p1_total_road.set(nx as usize, ny as usize, board_size);
-                            a.p1_pieces.set(nx as usize, ny as usize, board_size);
-                        } else {
-                            a.p2_flatstone_count += 1;
-                            a.p2_total_road.set(nx as usize, ny as usize, board_size);
-                            a.p2_pieces.set(nx as usize, ny as usize, board_size);
-                        },
-                        &Piece::Capstone(color) => if color == Color::White {
-                            a.p1_total_road.set(nx as usize, ny as usize, board_size);
-                            a.p1_pieces.set(nx as usize, ny as usize, board_size);
-                        } else {
-                            a.p2_total_road.set(nx as usize, ny as usize, board_size);
-                            a.p2_pieces.set(nx as usize, ny as usize, board_size);
-                        },
-                        &Piece::StandingStone(color) => if color == Color::White {
-                            a.p1_pieces.set(nx as usize, ny as usize, board_size);
-                        } else {
-                            a.p2_pieces.set(nx as usize, ny as usize, board_size);
-                        },
+                        let piece = stack.pop().unwrap();
+
+                        match piece {
+                            Piece::Flatstone(color) => next.analysis.add_flatstone(
+                                color, nx as usize, ny as usize,
+                                next.board[nx as usize][ny as usize].len(),
+                            ),
+                            ref block => next.analysis.add_blocking_stone(
+                                block, nx as usize, ny as usize,
+                            ),
+                        }
+
+                        next.board[nx as usize][ny as usize].push(piece);
                     }
                 }
 
-                a.p1_road_groups = a.p1_total_road.get_groups(board_size);
-                a.p2_road_groups = a.p2_total_road.get_groups(board_size);
+                next.analysis.calculate_road_groups();
             },
         }
 

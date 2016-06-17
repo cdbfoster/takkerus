@@ -17,6 +17,8 @@
 // Copyright 2016 Chris Foster
 //
 
+use tak::{Color, Piece};
+
 lazy_static! {
     pub static ref EDGE: [[Bitmap; 4]; 9] = generate_edge_masks();
     pub static ref BOARD: [Bitmap; 9] = generate_board_masks();
@@ -26,35 +28,165 @@ pub type Bitmap = u64;
 
 #[derive(Clone, Debug)]
 pub struct StateAnalysis {
+    pub board_size: usize,
+
     // The number of flatstones on the board for each player
     pub p1_flatstone_count: u8,
     pub p2_flatstone_count: u8,
 
-    // The map of road-contributing pieces for each player
-    pub p1_total_road: Bitmap,
-    pub p2_total_road: Bitmap,
+    // The maps of the flatstones at each layer of the board for each player
+    pub p1_flatstones: Vec<Bitmap>,
+    pub p2_flatstones: Vec<Bitmap>,
+
+    // The map of standing stones for each player
+    pub p1_standing_stones: Bitmap,
+    pub p2_standing_stones: Bitmap,
+
+    // The map of capstones for each player
+    pub p1_capstones: Bitmap,
+    pub p2_capstones: Bitmap,
+
+    // The map of all top pieces for each player
+    pub p1_pieces: Bitmap,
+    pub p2_pieces: Bitmap,
 
     // The maps of each discrete island of road-contributing pieces for each player
     pub p1_road_groups: Vec<Bitmap>,
     pub p2_road_groups: Vec<Bitmap>,
-
-    // The map of all pieces for each player
-    pub p1_pieces: Bitmap,
-    pub p2_pieces: Bitmap,
 }
 
 impl StateAnalysis {
-    pub fn new() -> StateAnalysis {
+    pub fn new(board_size: usize) -> StateAnalysis {
         StateAnalysis {
+            board_size: board_size,
             p1_flatstone_count: 0,
             p2_flatstone_count: 0,
-            p1_total_road: 0x0000000000000000,
-            p2_total_road: 0x0000000000000000,
-            p1_road_groups: Vec::new(),
-            p2_road_groups: Vec::new(),
+            p1_flatstones: Vec::new(),
+            p2_flatstones: Vec::new(),
+            p1_standing_stones: 0x0000000000000000,
+            p2_standing_stones: 0x0000000000000000,
+            p1_capstones: 0x0000000000000000,
+            p2_capstones: 0x0000000000000000,
             p1_pieces: 0x0000000000000000,
             p2_pieces: 0x0000000000000000,
+            p1_road_groups: Vec::new(),
+            p2_road_groups: Vec::new(),
         }
+    }
+
+    pub fn add_flatstone(&mut self, color: Color, x: usize, y: usize, z: usize) {
+        match color {
+            Color::White => {
+                self.p1_flatstone_count += 1;
+
+                if z >= self.p1_flatstones.len() {
+                    for _ in 0..(z - self.p1_flatstones.len() + 1) {
+                        self.p1_flatstones.push(0x0000000000000000);
+                    }
+                }
+
+                self.p1_flatstones[z].set(x, y, self.board_size);
+                self.p1_pieces.set(x, y, self.board_size);
+            },
+            Color::Black => {
+                self.p2_flatstone_count += 1;
+
+                if z >= self.p2_flatstones.len() {
+                    for _ in 0..(z - self.p2_flatstones.len() + 1) {
+                        self.p2_flatstones.push(0x0000000000000000);
+                    }
+                }
+
+                self.p2_flatstones[z].set(x, y, self.board_size);
+                self.p2_pieces.set(x, y, self.board_size);
+            },
+        }
+    }
+
+    pub fn remove_flatstone(&mut self, color: Color, x: usize, y: usize, z: usize) {
+        match color {
+            Color::White => {
+                self.p1_flatstone_count -= 1;
+                self.p1_flatstones[z].clear(x, y, self.board_size);
+                self.p1_pieces.clear(x, y, self.board_size);
+            },
+            Color::Black => {
+                self.p2_flatstone_count -= 1;
+                self.p2_flatstones[z].clear(x, y, self.board_size);
+                self.p2_pieces.clear(x, y, self.board_size);
+            },
+        }
+    }
+
+    pub fn reveal_flatstone(&mut self, color: Color, x: usize, y: usize) {
+        match color {
+            Color::White => {
+                self.p1_flatstone_count += 1;
+                self.p1_pieces.set(x, y, self.board_size);
+            },
+            Color::Black => {
+                self.p2_flatstone_count += 1;
+                self.p2_pieces.set(x, y, self.board_size);
+            },
+        }
+    }
+
+    pub fn cover_flatstone(&mut self, color: Color, x: usize, y: usize) {
+        match color {
+            Color::White => {
+                self.p1_flatstone_count -= 1;
+                self.p1_pieces.clear(x, y, self.board_size);
+            },
+            Color::Black => {
+                self.p2_flatstone_count -= 1;
+                self.p2_pieces.clear(x, y, self.board_size);
+            },
+        }
+    }
+
+    pub fn add_blocking_stone(&mut self, piece: &Piece, x: usize, y: usize) {
+        match piece {
+            &Piece::StandingStone(color) => if color == Color::White {
+                self.p1_standing_stones.set(x, y, self.board_size);
+                self.p1_pieces.set(x, y, self.board_size);
+            } else {
+                self.p2_standing_stones.set(x, y, self.board_size);
+                self.p2_pieces.set(x, y, self.board_size);
+            },
+            &Piece::Capstone(color) => if color == Color::White {
+                self.p1_capstones.set(x, y, self.board_size);
+                self.p1_pieces.set(x, y, self.board_size);
+            } else {
+                self.p2_capstones.set(x, y, self.board_size);
+                self.p2_pieces.set(x, y, self.board_size);
+            },
+            _ => panic!("StateAnalysis.add_blocking_stone was passed a flatstone!"),
+        }
+    }
+
+    pub fn remove_blocking_stone(&mut self, piece: &Piece, x: usize, y: usize) {
+        match piece {
+            &Piece::StandingStone(color) => if color == Color::White {
+                self.p1_standing_stones.clear(x, y, self.board_size);
+                self.p1_pieces.clear(x, y, self.board_size);
+            } else {
+                self.p2_standing_stones.clear(x, y, self.board_size);
+                self.p2_pieces.clear(x, y, self.board_size);
+            },
+            &Piece::Capstone(color) => if color == Color::White {
+                self.p1_capstones.clear(x, y, self.board_size);
+                self.p1_pieces.clear(x, y, self.board_size);
+            } else {
+                self.p2_capstones.clear(x, y, self.board_size);
+                self.p2_pieces.clear(x, y, self.board_size);
+            },
+            _ => panic!("StateAnalysis.remove_blocking_stone was passed a flatstone!"),
+        }
+    }
+
+    pub fn calculate_road_groups(&mut self) {
+        self.p1_road_groups = (self.p1_pieces & !self.p1_standing_stones).get_groups(self.board_size);
+        self.p2_road_groups = (self.p2_pieces & !self.p2_standing_stones).get_groups(self.board_size);
     }
 }
 
