@@ -19,7 +19,9 @@
 
 #[macro_use]
 extern crate lazy_static;
+extern crate time;
 
+mod ai;
 mod tak;
 
 use std::fmt::Write;
@@ -30,7 +32,7 @@ fn main() {
     let mut state = State::new(5);
 
     let mut p1 = cli_player::CliPlayer::new(Color::White);
-    let mut p2 = cli_player::CliPlayer::new(Color::Black);
+    let mut p2 = ai::MinimaxBot::new(4);
 
     let mut ptn = String::new();
     'main: loop {

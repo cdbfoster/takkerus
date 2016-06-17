@@ -17,10 +17,6 @@
 // Copyright 2016 Chris Foster
 //
 
-lazy_static! {
-    pub static ref SLIDE_TABLE: Vec<Vec<Vec<u8>>> = generate_slide_table(8);
-}
-
 use std::fmt::{self, Write};
 
 use tak::{Color, GameError, Piece, Ply, Seat, StateAnalysis, Win};
@@ -395,29 +391,4 @@ impl fmt::Display for State {
 
         write!(f, "\n")
     }
-}
-
-fn generate_slide_table(size: u8) -> Vec<Vec<Vec<u8>>> {
-    let mut result: Vec<Vec<Vec<u8>>> = Vec::with_capacity(size as usize);
-    result.push(Vec::new());
-
-    for stack in 1..(size + 1) {
-        let mut out = Vec::with_capacity((2 as usize).pow(stack as u32) - 1);
-
-        for i in 1..(stack + 1) {
-            out.push(vec![i]);
-
-            for sub in &result[(stack - i) as usize] {
-                let mut t = vec![0; sub.len() + 1];
-                t[0] = i;
-                t[1..].clone_from_slice(sub);
-
-                out.push(t);
-            }
-        }
-
-        result.push(out);
-    }
-
-    result
 }
