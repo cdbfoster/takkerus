@@ -22,14 +22,12 @@ use std::io::{self, Write};
 use tak::{Color, Piece, Player, Ply, State};
 
 pub struct CliPlayer {
-    pub color: Color,
     stdin: io::Stdin,
 }
 
 impl CliPlayer {
-    pub fn new(color: Color) -> CliPlayer {
+    pub fn new() -> CliPlayer {
         CliPlayer {
-            color: color,
             stdin: io::stdin(),
         }
     }
@@ -41,8 +39,14 @@ impl Player for CliPlayer {
 
         let board_size = state.board.len();
 
+        let player_color = if state.ply_count % 2 == 0 {
+            Color::White
+        } else {
+            Color::Black
+        };
+
         while ply.is_none() {
-            print!("Enter {}'s move (Turn {}): ", match self.color {
+            print!("Enter {}'s move (Turn {}): ", match player_color {
                 Color::White => "Player 1",
                 Color::Black => "Player 2",
             }, state.ply_count / 2 + 1);
@@ -50,7 +54,7 @@ impl Player for CliPlayer {
 
             let mut input = String::new();
             match self.stdin.read_line(&mut input) {
-                Ok(_) => ply = Ply::from_ptn(input.trim(), self.color),
+                Ok(_) => ply = Ply::from_ptn(input.trim(), player_color),
                 Err(e) => panic!("Error: {}", e),
             }
 
@@ -75,7 +79,7 @@ impl Player for CliPlayer {
                     Some(Ply::Slide { x, y, .. }) => match state.board[x][y].last() {
                         Some(&Piece::Flatstone(color)) |
                         Some(&Piece::StandingStone(color)) |
-                        Some(&Piece::Capstone(color)) => if color != self.color {
+                        Some(&Piece::Capstone(color)) => if color != player_color {
                             println!("  Illegal move.");
                             ply = None;
                         },
