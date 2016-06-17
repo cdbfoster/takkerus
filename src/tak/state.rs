@@ -173,7 +173,7 @@ impl State {
 
                     if !next.board[nx as usize][ny as usize].is_empty() {
                         let target_top = next.board[nx as usize][ny as usize].last().unwrap().clone();
-                        match  target_top {
+                        match target_top {
                             Piece::Flatstone(color) => if color == Color::White {
                                 a.p1_flatstone_count -= 1;
                                 a.p1_total_road.clear(nx as usize, ny as usize, board_size);
