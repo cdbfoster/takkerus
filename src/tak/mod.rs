@@ -70,7 +70,7 @@ impl Direction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Win {
     None,
     Road(Color),
