@@ -30,7 +30,7 @@ pub enum Ply {
         x: usize,
         y: usize,
         direction: Direction,
-        drops: Vec<usize>
+        drops: Vec<u8>
     },
 }
 
@@ -60,7 +60,7 @@ impl Ply {
         let grab = match next {
             Some(c) => if c.is_digit(10) {
                 next = chars.next();
-                Some((c as u8 - 48) as usize)
+                Some(c as u8 - 48)
             } else {
                 None
             },
@@ -102,7 +102,7 @@ impl Ply {
         let mut drops = Vec::new();
         for c in chars {
             if c.is_digit(10) {
-                drops.push((c as u8 - 48) as usize);
+                drops.push(c as u8 - 48);
             } else {
                 return None;
             }
