@@ -17,6 +17,8 @@
 // Copyright 2016 Chris Foster
 //
 
+use std::num::Wrapping;
+
 use tak::{Color, Piece};
 
 lazy_static! {
@@ -189,6 +191,7 @@ pub trait BitmapInterface {
     fn clear(&mut self, x: usize, y: usize, stride: usize);
     fn get(&self, x: usize, y: usize, stride: usize) -> bool;
     fn get_groups(&self, stride: usize) -> Vec<Bitmap>;
+    fn get_population(&self) -> u8;
 }
 
 impl BitmapInterface for Bitmap {
@@ -256,6 +259,19 @@ impl BitmapInterface for Bitmap {
         }
 
         groups
+    }
+
+    fn get_population(&self) -> u8 {
+        // Utter magic.
+        // https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+
+        let mut x = self - ((self >> 1) as u64 & 0x555555555555555);
+        x = ((x >> 2) & 0x3333333333333333) + (x & 0x3333333333333333);
+        x += x >> 4;
+        x &= 0x0F0F0F0F0F0F0F0F;
+        let overflow_x = Wrapping(x) * Wrapping(0x0101010101010101); // This can overflow, hence Wrapping
+        let Wrapping(population) = overflow_x >> 56;
+        population as u8
     }
 }
 
