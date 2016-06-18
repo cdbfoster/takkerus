@@ -100,9 +100,9 @@ impl fmt::Display for GameError {
 pub use self::player::*;
 pub use self::ply::Ply;
 pub use self::state::State;
-pub use self::state_analysis::StateAnalysis;
+pub use self::state_analysis::{BitmapInterface, StateAnalysis};
 
 pub mod player;
 mod ply;
 mod state;
-mod state_analysis;
+pub mod state_analysis;

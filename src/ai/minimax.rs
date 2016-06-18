@@ -17,11 +17,10 @@
 // Copyright 2016 Chris Foster
 //
 
-use std::i32;
 use time;
 
 use ai::{Ai, Extrapolatable};
-use tak::{Color, Player, Ply, State, Win};
+use tak::{BitmapInterface, Color, Player, Ply, State, Win};
 
 pub struct MinimaxBot {
     depth: u8,
@@ -37,7 +36,19 @@ impl MinimaxBot {
 
 impl Ai for MinimaxBot {
     fn analyze(&mut self, state: &State) -> Vec<Ply> {
-        minimax(state, Vec::new(), self.depth, i32::MIN + 1, i32::MAX).0
+        let (plies, eval) = minimax(state, Vec::new(), self.depth, MIN_EVAL, MAX_EVAL);
+
+        for i in 0..plies.len() {
+            print!("{}: ", if (state.ply_count + i as u16) % 2 == 0 {
+                "W"
+            } else {
+                "B"
+            });
+            println!("{:?}", plies[i]);
+        }
+
+        println!("{}", eval);
+        plies
     }
 }
 
@@ -57,29 +68,57 @@ impl Player for MinimaxBot {
 
 type Eval = i32;
 
+const MAX_EVAL: Eval = 100000;
+const MIN_EVAL: Eval = -MAX_EVAL;
+
+enum Weight {
+    Flatstone =     400,
+    StandingStone = 200,
+    Capstone =      300,
+}
+
 trait Evaluatable {
     fn evaluate(&self) -> Eval;
 }
 
 impl Evaluatable for State {
     fn evaluate(&self) -> Eval {
+        let next_color = if self.ply_count % 2 == 0 {
+            Color::White
+        } else {
+            Color::Black
+        };
+
         match self.check_win() {
-            Win::None => 0,
+            Win::None => (),
             Win::Road(win_color) |
             Win::Flat(win_color) => {
-                let next_color = if self.ply_count % 2 == 0 {
-                    Color::White
-                } else {
-                    Color::Black
-                };
-
                 if win_color == next_color {
-                    i32::MAX - self.ply_count as i32
+                    return MAX_EVAL - self.ply_count as i32;
                 } else {
-                    i32::MIN + 1 + self.ply_count as i32
+                    return MIN_EVAL + self.ply_count as i32;
                 }
             },
-            Win::Draw => 0,
+            Win::Draw => return 0,
+        }
+
+        let mut p1_eval = 0;
+        let mut p2_eval = 0;
+
+        let a = &self.analysis;
+
+        p1_eval += (a.p1_pieces & !a.standing_stones & !a.capstones).get_population() as i32 * Weight::Flatstone as Eval;
+        p2_eval += (a.p2_pieces & !a.standing_stones & !a.capstones).get_population() as i32 * Weight::Flatstone as Eval;
+
+        p1_eval += (a.p1_pieces & a.standing_stones).get_population() as i32 * Weight::StandingStone as Eval;
+        p2_eval += (a.p2_pieces & a.standing_stones).get_population() as i32 * Weight::StandingStone as Eval;
+
+        p1_eval += (a.p1_pieces & a.capstones).get_population() as i32 * Weight::Capstone as Eval;
+        p2_eval += (a.p2_pieces & a.capstones).get_population() as i32 * Weight::Capstone as Eval;
+
+        match next_color {
+            Color::White => p1_eval - p2_eval,
+            Color::Black => p2_eval - p1_eval,
         }
     }
 }
@@ -90,7 +129,7 @@ fn minimax(state: &State, mut move_set: Vec<Ply>, depth: u8, mut alpha: Eval, be
     }
 
     let mut best_next_move_set = Vec::new();
-    let mut best_eval = i32::MIN;
+    let mut best_eval = MIN_EVAL;
 
     for ply in state.get_possible_moves() {
         let next_state = match state.execute_ply(&ply) {
