@@ -133,14 +133,22 @@ impl State {
 
                 let mut nx = x as i8;
                 let mut ny = y as i8;
+
+                {
+                    let (tx, ty) = (
+                        nx + dx * drops.len() as i8,
+                        ny + dy * drops.len() as i8,
+                    );
+
+                    if tx < 0 || tx >= board_size as i8 ||
+                       ty < 0 || ty >= board_size as i8 {
+                        return Err(GameError::OutOfBounds);
+                    }
+                }
+
                 for drop in drops {
                     nx += dx;
                     ny += dy;
-
-                    if nx < 0 || nx >= board_size as i8 ||
-                       ny < 0 || ny >= board_size as i8 {
-                        return Err(GameError::OutOfBounds);
-                    }
 
                     if !next.board[nx as usize][ny as usize].is_empty() {
                         let target_top = next.board[nx as usize][ny as usize].last().unwrap().clone();
