@@ -36,18 +36,8 @@ impl MinimaxBot {
 
 impl Ai for MinimaxBot {
     fn analyze(&mut self, state: &State) -> Vec<Ply> {
-        let (plies, eval) = minimax(state, Vec::new(), self.depth, MIN_EVAL, MAX_EVAL);
+        let (plies, _) = minimax(state, Vec::new(), self.depth, MIN_EVAL, MAX_EVAL);
 
-        for i in 0..plies.len() {
-            print!("{}: ", if (state.ply_count + i as u16) % 2 == 0 {
-                "W"
-            } else {
-                "B"
-            });
-            println!("{:?}", plies[i]);
-        }
-
-        println!("{}", eval);
         plies
     }
 }
