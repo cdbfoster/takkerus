@@ -32,7 +32,7 @@ fn main() {
     let mut state = State::new(5);
 
     let mut p1 = cli_player::CliPlayer::new();
-    let mut p2 = ai::MinimaxBot::new(4);
+    let mut p2 = ai::MinimaxBot::new(5);
 
     let mut ptn = String::new();
     'main: loop {
