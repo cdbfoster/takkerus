@@ -225,7 +225,7 @@ mod tests {
                 println!("{:?}\n", state.analysis);
             }
 
-            println!("{}: {:3} {:6} {:7.3} {:7.3} {:8.3}", ply_count,
+            println!("{:2}: {} {:6} {:7.3} {:7.3} {:8.3}", ply_count,
                 if ply_count % 2 == 1 {
                     "White"
                 } else {
