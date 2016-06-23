@@ -153,7 +153,7 @@ fn minimax(state: &State, mut move_set: Vec<Ply>, depth: u8, mut alpha: Eval, be
 
 #[cfg(test)]
 mod tests {
-    use std::{cmp, f32};
+    use std::f32;
     use time;
 
     use tak::*;
