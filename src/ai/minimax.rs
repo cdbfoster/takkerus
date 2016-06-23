@@ -97,8 +97,8 @@ impl Evaluatable for State {
 
         let a = &self.analysis;
 
-        p1_eval += (a.p1_pieces & !a.standing_stones & !a.capstones).get_population() as i32 * Weight::Flatstone as Eval;
-        p2_eval += (a.p2_pieces & !a.standing_stones & !a.capstones).get_population() as i32 * Weight::Flatstone as Eval;
+        p1_eval += a.p1_flatstone_count as i32 * Weight::Flatstone as Eval;
+        p2_eval += a.p2_flatstone_count as i32 * Weight::Flatstone as Eval;
 
         p1_eval += (a.p1_pieces & a.standing_stones).get_population() as i32 * Weight::StandingStone as Eval;
         p2_eval += (a.p2_pieces & a.standing_stones).get_population() as i32 * Weight::StandingStone as Eval;
