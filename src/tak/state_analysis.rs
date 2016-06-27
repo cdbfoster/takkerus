@@ -209,6 +209,7 @@ impl BitmapInterface for Bitmap {
         (self >> ((stride - 1 - x) + y * stride)) & 1 == 1
     }
 
+    // Returns a map of each discrete group larger than a single bit
     fn get_groups(&self, stride: usize) -> Vec<Bitmap> {
         fn pop_bit(map: Bitmap) -> (Bitmap, Bitmap) {
             let remainder = map & (map - 1);
@@ -243,7 +244,10 @@ impl BitmapInterface for Bitmap {
             let (bit, mut remainder) = pop_bit(map);
 
             let group = flood(bit, map, stride);
-            groups.push(group);
+
+            if group != bit {
+                groups.push(group);
+            }
 
             remainder &= !group;
             if remainder == 0 {
