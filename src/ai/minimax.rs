@@ -17,6 +17,7 @@
 // Copyright 2016 Chris Foster
 //
 
+use rand::{thread_rng, Rng};
 use time;
 
 use ai::{Ai, Extrapolatable};
@@ -121,7 +122,10 @@ fn minimax(state: &State, mut move_set: Vec<Ply>, depth: u8, mut alpha: Eval, be
     let mut best_next_move_set = Vec::new();
     let mut best_eval = MIN_EVAL;
 
-    for ply in state.get_possible_moves() {
+    let mut possible_moves = state.get_possible_moves();
+    thread_rng().shuffle(possible_moves.as_mut_slice());
+
+    for ply in possible_moves {
         let next_state = match state.execute_ply(&ply) {
             Ok(next) => next,
             Err(_) => continue,
