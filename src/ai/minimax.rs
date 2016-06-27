@@ -334,11 +334,11 @@ mod tests {
         let (plies, eval) = minimax(&state, Vec::new(), 5, MIN_EVAL, MAX_EVAL);
 
         for (i, ply) in plies.iter().enumerate() {
-            println!("{}: {:?}", if (state.ply_count + i as u16) % 2 == 0 {
-                "W"
+            println!("{}: {}", if (state.ply_count + i as u16) % 2 == 0 {
+                "White"
             } else {
-                "B"
-            }, ply);
+                "Black"
+            }, ply.to_ptn());
         }
 
         println!("{}", eval);
