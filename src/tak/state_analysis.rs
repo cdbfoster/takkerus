@@ -193,6 +193,7 @@ pub trait BitmapInterface {
     fn get_groups(&self, stride: usize) -> Vec<Bitmap>;
     fn get_population(&self) -> u8;
     fn get_dimensions(&self, stride: usize) -> (usize, usize);
+    fn grow(&self, bounds: Bitmap, stride: usize) -> Bitmap;
 }
 
 impl BitmapInterface for Bitmap {
@@ -216,17 +217,10 @@ impl BitmapInterface for Bitmap {
         }
 
         fn flood(bit: Bitmap, bounds: Bitmap, stride: usize) -> Bitmap {
-            use tak::Direction::*;
             let mut total = bit;
 
 	        loop {
-	            let mut next = total;
-
-	            next |= (total << 1) & !EDGE[stride][East as usize];
-	            next |= (total >> 1) & !EDGE[stride][West as usize];
-	            next |= total << stride;
-	            next |= total >> stride;
-	            next &= bounds;
+	            let next = total.grow(bounds, stride);
 
 	            if next == total {
 	                break;
@@ -313,6 +307,17 @@ impl BitmapInterface for Bitmap {
         } else {
             (0, 0)
         }
+    }
+
+    fn grow(&self, bounds: Bitmap, stride: usize) -> Bitmap {
+        use tak::Direction::*;
+
+        let mut next = *self;
+        next |= (*self << 1) & !EDGE[stride][East as usize];
+        next |= (*self >> 1) & !EDGE[stride][West as usize];
+        next |= *self << stride;
+        next |= *self >> stride;
+        next & bounds
     }
 }
 
