@@ -192,6 +192,7 @@ pub trait BitmapInterface {
     fn get(&self, x: usize, y: usize, stride: usize) -> bool;
     fn get_groups(&self, stride: usize) -> Vec<Bitmap>;
     fn get_population(&self) -> u8;
+    fn get_dimensions(&self, stride: usize) -> (usize, usize);
 }
 
 impl BitmapInterface for Bitmap {
@@ -272,6 +273,46 @@ impl BitmapInterface for Bitmap {
         let overflow_x = Wrapping(x) * Wrapping(0x0101010101010101); // This can overflow, hence Wrapping
         let Wrapping(population) = overflow_x >> 56;
         population as u8
+    }
+
+    fn get_dimensions(&self, stride: usize) -> (usize, usize) {
+        use tak::Direction::*;
+
+        if *self != 0 {
+            let width = {
+                let mut mask = EDGE[stride][West as usize];
+                while *self & mask == 0 {
+                    mask >>= 1;
+                }
+
+                let mut width = 0;
+                while mask != 0 && *self & mask != 0 && width < stride {
+                    mask >>= 1;
+                    width += 1;
+                }
+
+                width
+            };
+
+            let height = {
+                let mut mask = EDGE[stride][North as usize];
+                while *self & mask == 0 {
+                    mask >>= stride;
+                }
+
+                let mut height = 0;
+                while mask != 0 && *self & mask != 0 {
+                    mask >>= stride;
+                    height += 1;
+                }
+
+                height
+            };
+
+            (width, height)
+        } else {
+            (0, 0)
+        }
     }
 }
 
