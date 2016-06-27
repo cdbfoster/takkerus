@@ -21,7 +21,7 @@ use rand::{thread_rng, Rng};
 use time;
 
 use ai::{Ai, Extrapolatable};
-use tak::{BitmapInterface, Color, Player, Ply, State, Win};
+use tak::{Bitmap, BitmapInterface, Color, Player, Ply, State, Win};
 
 pub struct MinimaxBot {
     depth: u8,
@@ -66,7 +66,12 @@ enum Weight {
     Flatstone =     400,
     StandingStone = 200,
     Capstone =      300,
+
+    HardFlat =      125,
+    SoftFlat =      -75,
 }
+
+const GROUP_WEIGHT: [Eval; 8] = [0, 0, 0, 100, 300, 500, 0, 0];
 
 trait Evaluatable {
     fn evaluate(&self) -> Eval;
@@ -106,6 +111,44 @@ impl Evaluatable for State {
 
         p1_eval += (a.p1_pieces & a.capstones).get_population() as i32 * Weight::Capstone as Eval;
         p2_eval += (a.p2_pieces & a.capstones).get_population() as i32 * Weight::Capstone as Eval;
+
+        // Stacked flatstones
+        let mut p1_hard_flats = -(a.p1_flatstone_count as i32); // Top-level flatstones don't count
+        let mut p1_soft_flats = 0;
+        for level in a.p1_flatstones.iter() {
+            if *level != 0 {
+                p1_hard_flats += (level & a.p1_pieces).get_population() as i32;
+                p1_soft_flats += (level & a.p2_pieces).get_population() as i32;
+            }
+        }
+
+        let mut p2_hard_flats = -(a.p2_flatstone_count as i32);
+        let mut p2_soft_flats = 0;
+        for level in a.p2_flatstones.iter() {
+            if *level != 0 {
+                p2_hard_flats += (level & a.p2_pieces).get_population() as i32;
+                p2_soft_flats += (level & a.p1_pieces).get_population() as i32;
+            }
+        }
+
+        p1_eval += p1_hard_flats * Weight::HardFlat as Eval + p2_soft_flats * Weight::SoftFlat as Eval;
+        p2_eval += p2_hard_flats * Weight::HardFlat as Eval + p1_soft_flats * Weight::SoftFlat as Eval;
+
+        // Road groups
+        fn evaluate_groups(groups: &Vec<Bitmap>, board_size: usize) -> Eval {
+            let mut eval = 0;
+
+            for group in groups.iter() {
+                let (width, height) = group.get_dimensions(board_size);
+
+                eval += GROUP_WEIGHT[width] + GROUP_WEIGHT[height];
+            }
+
+            eval
+        }
+
+        p1_eval += evaluate_groups(&a.p1_road_groups, a.board_size);
+        p2_eval += evaluate_groups(&a.p2_road_groups, a.board_size);
 
         match next_color {
             Color::White => p1_eval - p2_eval,
