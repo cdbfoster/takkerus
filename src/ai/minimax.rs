@@ -33,11 +33,53 @@ impl MinimaxBot {
             depth: depth,
         }
     }
+
+    fn minimax(&mut self, state: &State, mut move_set: Vec<Ply>, depth: u8, mut alpha: Eval, beta: Eval) -> (Vec<Ply>, Eval) {
+        if depth == 0 || state.check_win() != Win::None {
+            return (move_set, state.evaluate());
+        }
+
+        let mut best_next_move_set = Vec::new();
+        let mut best_eval = MIN_EVAL;
+
+        let mut possible_moves = state.get_possible_moves();
+        thread_rng().shuffle(possible_moves.as_mut_slice());
+
+        for ply in possible_moves {
+            let next_state = match state.execute_ply(&ply) {
+                Ok(next) => next,
+                Err(_) => continue,
+            };
+
+            let (mut next_move_set, mut next_eval) = self.minimax(&next_state, Vec::new(), depth - 1, -beta, -alpha);
+            next_eval = -next_eval;
+
+            if next_eval > best_eval {
+                best_eval = next_eval;
+                best_next_move_set.clear();
+                best_next_move_set.push(ply);
+                best_next_move_set.append(&mut next_move_set);
+            }
+
+            if next_eval > alpha {
+                alpha = next_eval;
+
+                if alpha >= beta {
+                    break;
+                }
+            }
+        }
+
+        move_set.append(&mut best_next_move_set);
+
+        (move_set, best_eval)
+    }
 }
 
 impl Ai for MinimaxBot {
     fn analyze(&mut self, state: &State) -> Vec<Ply> {
-        let (plies, _) = minimax(state, Vec::new(), self.depth, MIN_EVAL, MAX_EVAL);
+        let depth = self.depth;
+        let (plies, _) = self.minimax(state, Vec::new(), depth, MIN_EVAL, MAX_EVAL);
 
         plies
     }
@@ -157,54 +199,13 @@ impl Evaluatable for State {
     }
 }
 
-fn minimax(state: &State, mut move_set: Vec<Ply>, depth: u8, mut alpha: Eval, beta: Eval) -> (Vec<Ply>, Eval) {
-    if depth == 0 || state.check_win() != Win::None {
-        return (move_set, state.evaluate());
-    }
-
-    let mut best_next_move_set = Vec::new();
-    let mut best_eval = MIN_EVAL;
-
-    let mut possible_moves = state.get_possible_moves();
-    thread_rng().shuffle(possible_moves.as_mut_slice());
-
-    for ply in possible_moves {
-        let next_state = match state.execute_ply(&ply) {
-            Ok(next) => next,
-            Err(_) => continue,
-        };
-
-        let (mut next_move_set, mut next_eval) = minimax(&next_state, Vec::new(), depth - 1, -beta, -alpha);
-        next_eval = -next_eval;
-
-        if next_eval > best_eval {
-            best_eval = next_eval;
-            best_next_move_set.clear();
-            best_next_move_set.push(ply);
-            best_next_move_set.append(&mut next_move_set);
-        }
-
-        if next_eval > alpha {
-            alpha = next_eval;
-
-            if alpha >= beta {
-                break;
-            }
-        }
-    }
-
-    move_set.append(&mut best_next_move_set);
-
-    (move_set, best_eval)
-}
-
 #[cfg(test)]
 mod tests {
     use std::f32;
     use time;
 
     use tak::*;
-    use super::{MIN_EVAL, MAX_EVAL, minimax};
+    use super::{MAX_EVAL, MIN_EVAL, MinimaxBot};
 
     #[test]
     #[ignore]
@@ -213,10 +214,12 @@ mod tests {
 
         let depth = 5;
 
+        let mut p1 = MinimaxBot::new(depth);
         let mut p1_min_time = f32::MAX;
         let mut p1_max_time = 0.0;
         let mut p1_total_time = 0.0;
 
+        let mut p2 = MinimaxBot::new(depth);
         let mut p2_min_time = f32::MAX;
         let mut p2_max_time = 0.0;
         let mut p2_total_time = 0.0;
@@ -226,7 +229,11 @@ mod tests {
         loop {
             let old_time = time::precise_time_ns();
 
-            let (plies, eval) = minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL);
+            let (plies, eval) = if ply_count % 2 == 0 {
+                p1.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
+            } else {
+                p2.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
+            };
 
             let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
 
@@ -327,11 +334,16 @@ mod tests {
 
     #[test]
     fn test_eval() {
+        let depth = 5;
         let state = State::from_tps("[TPS \"112S,12S,x1,1,x1/2,2221C,22112C,x2/x1,22,2,12,x1/2,22,x1,12,x1/21,x2,21,x1 1 35\"]").unwrap();
         println!("{}", state);
         println!("{:?}\n", state.analysis);
 
-        let (plies, eval) = minimax(&state, Vec::new(), 5, MIN_EVAL, MAX_EVAL);
+        let old_time = time::precise_time_ns();
+
+        let (plies, eval) = MinimaxBot::new(depth).minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL);
+
+        let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
 
         for (i, ply) in plies.iter().enumerate() {
             println!("{}: {}", if (state.ply_count + i as u16) % 2 == 0 {
@@ -341,6 +353,7 @@ mod tests {
             }, ply.to_ptn());
         }
 
-        println!("{}", eval);
+        println!("\nEvaluation: {}", eval);
+        println!("Time: {:.3}", elapsed_time);
     }
 }
