@@ -179,7 +179,7 @@ fn minimax(state: &State, mut move_set: Vec<Ply>, depth: u8, mut alpha: Eval, be
 
         if next_eval > best_eval {
             best_eval = next_eval;
-            best_next_move_set = Vec::new();
+            best_next_move_set.clear();
             best_next_move_set.push(ply);
             best_next_move_set.append(&mut next_move_set);
         }
