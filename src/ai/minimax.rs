@@ -210,126 +210,181 @@ mod tests {
     #[test]
     #[ignore]
     fn test_minimax() {
-        let mut state = State::new(5);
+        let games = 20;
+        let mut total_ply_count = 0;
+        let mut total_min_time = 0.0;
+        let mut total_max_time = 0.0;
+        let mut total_time = 0.0;
 
-        let depth = 5;
+        let mut p1_wins = 0;
+        let mut p2_wins = 0;
 
-        let mut p1 = MinimaxBot::new(depth);
-        let mut p1_min_time = f32::MAX;
-        let mut p1_max_time = 0.0;
-        let mut p1_total_time = 0.0;
+        for _ in 1..(games + 1) {
+            let mut state = State::new(5);
 
-        let mut p2 = MinimaxBot::new(depth);
-        let mut p2_min_time = f32::MAX;
-        let mut p2_max_time = 0.0;
-        let mut p2_total_time = 0.0;
+            let depth = 5;
 
-        let mut ply_count = 0;
+            let mut p1 = MinimaxBot::new(depth);
+            let mut p1_min_time = f32::MAX;
+            let mut p1_max_time = 0.0;
+            let mut p1_total_time = 0.0;
 
-        loop {
-            let old_time = time::precise_time_ns();
+            let mut p2 = MinimaxBot::new(depth);
+            let mut p2_min_time = f32::MAX;
+            let mut p2_max_time = 0.0;
+            let mut p2_total_time = 0.0;
 
-            let (plies, eval) = if ply_count % 2 == 0 {
-                p1.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
-            } else {
-                p2.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
-            };
+            let mut ply_count = 0;
 
-            let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
+            'game: loop {
+                let old_time = time::precise_time_ns();
 
-            if ply_count % 2 == 0 {
-                if elapsed_time < p1_min_time {
-                    p1_min_time = elapsed_time;
-                }
+                let (plies, eval) = if ply_count % 2 == 0 {
+                    p1.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
+                } else {
+                    p2.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
+                };
 
-                if elapsed_time > p1_max_time {
-                    p1_max_time = elapsed_time;
-                }
+                let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
 
-                p1_total_time += elapsed_time;
-            } else {
-                if elapsed_time < p2_min_time {
-                    p2_min_time = elapsed_time;
-                }
-
-                if elapsed_time > p2_max_time {
-                    p2_max_time = elapsed_time;
-                }
-
-                p2_total_time += elapsed_time;
-            }
-
-            ply_count += 1;
-
-            match state.execute_ply(&plies[0]) {
-                Ok(next) => {
-                    state = next;
-
-                    match state.check_win() {
-                        Win::None => (),
-                        _ => break,
+                if ply_count % 2 == 0 {
+                    if elapsed_time < p1_min_time {
+                        p1_min_time = elapsed_time;
                     }
-                },
-                Err(error) => panic!("Minimax returned an illegal move.\n--------------------------------------------------\n{}\n{:?}\nError: {}", state, plies[0], error),
+
+                    if elapsed_time > p1_max_time {
+                        p1_max_time = elapsed_time;
+                    }
+
+                    p1_total_time += elapsed_time;
+                } else {
+                    if elapsed_time < p2_min_time {
+                        p2_min_time = elapsed_time;
+                    }
+
+                    if elapsed_time > p2_max_time {
+                        p2_max_time = elapsed_time;
+                    }
+
+                    p2_total_time += elapsed_time;
+                }
+
+                ply_count += 1;
+
+                match state.execute_ply(&plies[0]) {
+                    Ok(next) => {
+                        state = next;
+
+                        match state.check_win() {
+                            Win::None => (),
+                            _ => break 'game,
+                        }
+                    },
+                    Err(error) => panic!("Minimax returned an illegal move.\n--------------------------------------------------\n{}\n{:?}\nError: {}", state, plies[0], error),
+                }
+
+                if ply_count % 10 == 0 {
+                    println!("--------------------------------------------------");
+                    println!("{}", state);
+                    println!("{:?}\n", state.analysis);
+                }
+
+                println!("{:2}: {} {:6} {:7.3} {:7.3} {:8.3}", ply_count,
+                    if ply_count % 2 == 1 {
+                        "White"
+                    } else {
+                        "Black"
+                    },
+                    eval,
+                    elapsed_time,
+                    if ply_count % 2 == 1 {
+                        p1_total_time / ((ply_count + 1) / 2) as f32
+                    } else {
+                        p2_total_time / ((ply_count + 1) / 2) as f32
+                    },
+                    if ply_count % 2 == 1 {
+                        p1_total_time
+                    } else {
+                        p2_total_time
+                    },
+                );
             }
 
-            if ply_count % 10 == 0 {
-                println!("--------------------------------------------------");
-                println!("{}", state);
-                println!("{:?}\n", state.analysis);
+            match state.check_win() {
+                Win::Road(color) => match color {
+                    Color::White => println!("White wins. (R-0)"),
+                    Color::Black => println!("Black wins. (0-R)"),
+                },
+                Win::Flat(color) => match color {
+                    Color::White => println!("White wins. (F-0)"),
+                    Color::Black => println!("Black wins. (0-F)"),
+                },
+                Win::Draw => println!("Draw. (1/2-1/2)"),
+                _ => (),
             }
 
-            println!("{:2}: {} {:6} {:7.3} {:7.3} {:8.3}", ply_count,
-                if ply_count % 2 == 1 {
-                    "White"
-                } else {
-                    "Black"
+            match state.check_win() {
+                Win::Road(color) |
+                Win::Flat(color) => match color {
+                    Color::White => p1_wins += 1,
+                    Color::Black => p2_wins += 1,
                 },
-                eval,
-                elapsed_time,
-                if ply_count % 2 == 1 {
-                    p1_total_time / ((ply_count + 1) / 2) as f32
+                _ => (),
+            }
+
+            println!("--------------------------------------------------");
+            println!("{}", state);
+            println!("{:?\n}", state.analysis);
+
+            println!("Plies: {}", ply_count);
+            total_ply_count += ply_count;
+
+            println!("Minimum ply time: {:.3}", if p1_min_time < p2_min_time {
+                total_min_time = if p1_min_time < total_min_time {
+                    p1_min_time
                 } else {
-                    p2_total_time / ((ply_count + 1) / 2) as f32
-                },
-                if ply_count % 2 == 1 {
-                    p1_total_time
+                    total_min_time
+                };
+                p1_min_time
+            } else {
+                total_min_time = if p2_min_time < total_min_time {
+                    p2_min_time
                 } else {
-                    p2_total_time
-                },
-            );
+                    total_min_time
+                };
+                p2_min_time
+            });
+            println!("Maximum ply time: {:.3}", if p1_max_time > p2_max_time {
+                total_max_time = if p1_max_time < total_max_time {
+                    p1_max_time
+                } else {
+                    total_max_time
+                };
+                p1_max_time
+            } else {
+                total_max_time = if p2_max_time < total_max_time {
+                    p2_max_time
+                } else {
+                    total_max_time
+                };
+                p2_max_time
+            });
+
+            println!("Average ply time: {:.3}", (p1_total_time + p2_total_time) / ply_count as f32);
+
+            println!("Game time: {:.3}", p1_total_time + p2_total_time);
+            total_time += p1_total_time + p2_total_time;
+
+            println!("\nWhite wins: {} / {}", p1_wins, games);
+            println!("Black wins: {} / {}\n", p2_wins, games);
         }
 
-        match state.check_win() {
-            Win::Road(color) => match color {
-                Color::White => println!("White wins. (R-0)"),
-                Color::Black => println!("Black wins. (0-R)"),
-            },
-            Win::Flat(color) => match color {
-                Color::White => println!("White wins. (F-0)"),
-                Color::Black => println!("Black wins. (0-F)"),
-            },
-            Win::Draw => println!("Draw. (1/2-1/2)"),
-            _ => (),
-        }
-
-        println!("--------------------------------------------------");
-        println!("{}", state);
-        println!("{:?\n}", state.analysis);
-
-        println!("Plies: {}", ply_count);
-        println!("Minimum ply time: {:.3}", if p1_min_time < p2_min_time {
-            p1_min_time
-        } else {
-            p2_min_time
-        });
-        println!("Maximum ply time: {:.3}", if p1_max_time > p2_max_time {
-            p1_max_time
-        } else {
-            p2_max_time
-        });
-        println!("Average ply time: {:.3}", (p1_total_time + p2_total_time) / ply_count as f32);
-        println!("Game time: {:.3}", p1_total_time + p2_total_time);
+        println!("Games: {}", games);
+        println!("Total plies: {}", total_ply_count);
+        println!("Absolute minimum ply time: {:.3}", total_min_time);
+        println!("Absolute maximum ply time: {:.3}", total_max_time);
+        println!("Average ply time: {:.3}", total_time / total_ply_count as f32);
+        println!("Average game time: {:.3}", total_time / games as f32);
     }
 
     #[test]
