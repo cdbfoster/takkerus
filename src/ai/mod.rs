@@ -25,19 +25,19 @@ pub trait Ai : Player {
 
 pub use self::minimax::MinimaxBot;
 
-mod minimax;
+pub mod minimax;
 
 lazy_static! {
     static ref SLIDE_TABLE: Vec<Vec<Vec<u8>>> = generate_slide_table(8);
 }
 
 pub trait Extrapolatable {
-    fn get_possible_moves(&self) -> Vec<Ply>;
+    fn get_possible_plies(&self) -> Vec<Ply>;
 }
 
 impl Extrapolatable for State {
-    fn get_possible_moves(&self) -> Vec<Ply> {
-        let mut moves = Vec::new();
+    fn get_possible_plies(&self) -> Vec<Ply> {
+        let mut plies = Vec::new();
 
         let next_color = if self.ply_count % 2 == 0 {
             Color::White
@@ -49,12 +49,12 @@ impl Extrapolatable for State {
            for (x, column) in self.board.iter().enumerate() {
                 for (y, stack) in column.iter().enumerate() {
                     if stack.is_empty() {
-                        moves.push(Ply::Place {
+                        plies.push(Ply::Place {
                             x: x,
                             y: y,
                             piece: Piece::Flatstone(next_color),
                         });
-                        moves.push(Ply::Place {
+                        plies.push(Ply::Place {
                             x: x,
                             y: y,
                             piece: Piece::StandingStone(next_color),
@@ -62,14 +62,14 @@ impl Extrapolatable for State {
 
                         match next_color {
                             Color::White => if self.p1.capstone_count > 0 {
-                                moves.push(Ply::Place {
+                                plies.push(Ply::Place {
                                     x: x,
                                     y: y,
                                     piece: Piece::Capstone(next_color),
                                 });
                             },
                             Color::Black => if self.p2.capstone_count > 0 {
-                                moves.push(Ply::Place {
+                                plies.push(Ply::Place {
                                     x: x,
                                     y: y,
                                     piece: Piece::Capstone(next_color),
@@ -92,7 +92,7 @@ impl Extrapolatable for State {
 
                             for drops in SLIDE_TABLE[max_grab].iter() {
                                 if drops.len() <= distance {
-                                    moves.push(Ply::Slide {
+                                    plies.push(Ply::Slide {
                                         x: x,
                                         y: y,
                                         direction: direction,
@@ -108,7 +108,7 @@ impl Extrapolatable for State {
             for (x, column) in self.board.iter().enumerate() {
                 for (y, stack) in column.iter().enumerate() {
                     if stack.is_empty() {
-                        moves.push(Ply::Place {
+                        plies.push(Ply::Place {
                             x: x,
                             y: y,
                             piece: Piece::Flatstone(next_color.flip()),
@@ -118,7 +118,7 @@ impl Extrapolatable for State {
             }
         }
 
-        moves
+        plies
     }
 }
 

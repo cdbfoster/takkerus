@@ -19,7 +19,7 @@
 
 use tak::{Color, Direction, Piece};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Ply {
     Place {
         x: usize,

@@ -17,6 +17,8 @@
 // Copyright 2016 Chris Foster
 //
 
+use std::cell::RefCell;
+
 use rand::{thread_rng, Rng};
 use time;
 
@@ -25,63 +27,83 @@ use tak::{Bitmap, BitmapInterface, Color, Player, Ply, State, Win};
 
 pub struct MinimaxBot {
     depth: u8,
+    stats: Vec<RefCell<Statistics>>,
 }
 
 impl MinimaxBot {
     pub fn new(depth: u8) -> MinimaxBot {
         MinimaxBot {
             depth: depth,
+            stats: Vec::new(),
         }
     }
 
-    fn minimax(&mut self, state: &State, mut move_set: Vec<Ply>, depth: u8, mut alpha: Eval, beta: Eval) -> (Vec<Ply>, Eval) {
+    fn minimax(&self, state: &State, principal_variation: &mut Vec<Ply>, depth: u8, mut alpha: Eval, beta: Eval) -> Eval {
         if depth == 0 || state.check_win() != Win::None {
-            return (move_set, state.evaluate());
+            self.stats.last().unwrap().borrow_mut().evaluated += 1;
+
+            principal_variation.clear();
+            return state.evaluate();
         }
 
-        let mut best_next_move_set = Vec::new();
-        let mut best_eval = MIN_EVAL;
+        self.stats.last().unwrap().borrow_mut().visited += 1;
 
-        let mut possible_moves = state.get_possible_moves();
-        thread_rng().shuffle(possible_moves.as_mut_slice());
+        let mut next_principal_variation = Vec::new();
 
-        for ply in possible_moves {
+        let ply_generator = PlyGenerator::new(
+            state,
+            match principal_variation.first() {
+                Some(ply) => Some(ply.clone()),
+                None => None,
+            },
+        );
+
+        for ply in ply_generator {
             let next_state = match state.execute_ply(&ply) {
                 Ok(next) => next,
                 Err(_) => continue,
             };
 
-            let (mut next_move_set, mut next_eval) = self.minimax(&next_state, Vec::new(), depth - 1, -beta, -alpha);
-            next_eval = -next_eval;
-
-            if next_eval > best_eval {
-                best_eval = next_eval;
-                best_next_move_set.clear();
-                best_next_move_set.push(ply);
-                best_next_move_set.append(&mut next_move_set);
-            }
+            let next_eval = -self.minimax(
+                &next_state,
+                &mut next_principal_variation,
+                depth - 1,
+                -beta,
+                -alpha,
+            );
 
             if next_eval > alpha {
                 alpha = next_eval;
 
+                principal_variation.clear();
+                principal_variation.push(ply);
+                principal_variation.append(&mut next_principal_variation.clone());
+
                 if alpha >= beta {
-                    break;
+                    return beta;
                 }
             }
         }
 
-        move_set.append(&mut best_next_move_set);
-
-        (move_set, best_eval)
+        alpha
     }
 }
 
 impl Ai for MinimaxBot {
     fn analyze(&mut self, state: &State) -> Vec<Ply> {
-        let depth = self.depth;
-        let (plies, _) = self.minimax(state, Vec::new(), depth, MIN_EVAL, MAX_EVAL);
+        let mut principal_variation = Vec::new();
 
-        plies
+        for depth in 1..self.depth + 1 {
+            self.stats.push(RefCell::new(Statistics::new(depth)));
+
+            let eval = self.minimax(state, &mut principal_variation, depth, MIN_EVAL, MAX_EVAL);
+
+            if eval.abs() > WIN_THRESHOLD {
+                break;
+            }
+        }
+
+        principal_variation
     }
 }
 
@@ -99,10 +121,77 @@ impl Player for MinimaxBot {
     }
 }
 
+pub struct Statistics {
+    depth: u8,
+    visited: u32,
+    evaluated: u32,
+}
+
+impl Statistics {
+    pub fn new(depth: u8) -> Statistics {
+        Statistics {
+            depth: depth,
+            visited: 0,
+            evaluated: 0,
+        }
+    }
+}
+
+struct PlyGenerator<'a> {
+    state: &'a State,
+    principal_ply: Option<Ply>,
+    plies: Vec<Ply>,
+    operation: u8,
+}
+
+impl<'a> PlyGenerator<'a> {
+    fn new(state: &'a State, principal_ply: Option<Ply>) -> PlyGenerator<'a> {
+        PlyGenerator {
+            state: state,
+            principal_ply: principal_ply,
+            plies: Vec::new(),
+            operation: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for PlyGenerator<'a> {
+    type Item = Ply;
+
+    fn next(&mut self) -> Option<Ply> {
+        loop {
+            if self.operation == 0 {
+                self.operation += 1;
+
+                if self.principal_ply.is_some() {
+                    return self.principal_ply.clone();
+                }
+            }
+
+            if self.operation == 1 {
+                self.operation += 1;
+
+                self.plies = self.state.get_possible_plies();
+                thread_rng().shuffle(self.plies.as_mut_slice());
+            }
+
+            if self.operation == 2 {
+                let ply = self.plies.pop();
+
+                if ply != self.principal_ply || ply.is_none() {
+                    return ply;
+                }
+            }
+        }
+    }
+}
+
 type Eval = i32;
 
 const MAX_EVAL: Eval = 100000;
 const MIN_EVAL: Eval = -MAX_EVAL;
+
+const WIN_THRESHOLD: Eval = 99000;
 
 enum Weight {
     Flatstone =     400,
@@ -204,8 +293,9 @@ mod tests {
     use std::f32;
     use time;
 
+    use ai::Ai;
     use tak::*;
-    use super::{MAX_EVAL, MIN_EVAL, MinimaxBot};
+    use super::{MinimaxBot, Evaluatable};
 
     #[test]
     #[ignore]
@@ -239,10 +329,21 @@ mod tests {
             'game: loop {
                 let old_time = time::precise_time_ns();
 
-                let (plies, eval) = if ply_count % 2 == 0 {
-                    p1.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
+                let plies = if ply_count % 2 == 0 {
+                    p1.analyze(&state)
                 } else {
-                    p2.minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL)
+                    p2.analyze(&state)
+                };
+
+                let eval = {
+                    let mut temp_state = state.clone();
+                    for ply in plies.iter() {
+                        match temp_state.execute_ply(ply) {
+                            Ok(next) => temp_state = next,
+                            Err(error) => panic!("Error calculating evaluation: {}", error),
+                        }
+                    }
+                    temp_state.evaluate() * -((plies.len() as i32 % 2) * 2 - 1)
                 };
 
                 let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
@@ -390,25 +491,47 @@ mod tests {
     #[test]
     fn test_eval() {
         let depth = 5;
-        let state = State::from_tps("[TPS \"112S,12S,x1,1,x1/2,2221C,22112C,x2/x1,22,2,12,x1/2,22,x1,12,x1/21,x2,21,x1 1 35\"]").unwrap();
+
+        let mut state = State::from_tps("[TPS \"112S,12S,x1,1,x1/2,2221C,22112C,x2/x1,22,2,12,x1/2,22,x1,12,x1/21,x2,21,x1 1 35\"]").unwrap();
         println!("{}", state);
         println!("{:?}\n", state.analysis);
 
         let old_time = time::precise_time_ns();
 
-        let (plies, eval) = MinimaxBot::new(depth).minimax(&state, Vec::new(), depth, MIN_EVAL, MAX_EVAL);
+        let mut ai = MinimaxBot::new(depth);
+        let plies = ai.analyze(&state);
 
         let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
 
+        println!("Principal Variation:");
         for (i, ply) in plies.iter().enumerate() {
             println!("{}: {}", if (state.ply_count + i as u16) % 2 == 0 {
-                "White"
+                "  White"
             } else {
-                "Black"
+                "  Black"
             }, ply.to_ptn());
         }
 
+        println!("\nMinimax Searches:");
+        for stats in ai.stats.iter() {
+            let s = stats.borrow();
+            println!("  Depth {}:", s.depth);
+            println!("    {:10} {:8}", "Visited:", s.visited);
+            println!("    {:10} {:8}", "Evaluated:", s.evaluated);
+        }
+
+        let eval = {
+            for ply in plies.iter() {
+                match state.execute_ply(ply) {
+                    Ok(next) => state = next,
+                    Err(error) => panic!("Error calculating evaluation: {}", error),
+                }
+            }
+            state.evaluate() * -((plies.len() as i32 % 2) * 2 - 1)
+        };
         println!("\nEvaluation: {}", eval);
+
         println!("Time: {:.3}", elapsed_time);
+
     }
 }
