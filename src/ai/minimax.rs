@@ -300,7 +300,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_minimax() {
-        let games = 20;
+        let games = 50;
         let mut total_ply_count = 0;
         let mut total_min_time = f32::MAX;
         let mut total_max_time = 0.0;
