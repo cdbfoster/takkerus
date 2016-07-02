@@ -48,8 +48,6 @@ impl MinimaxBot {
 
         self.stats.last().unwrap().borrow_mut().visited += 1;
 
-        let mut next_principal_variation = Vec::new();
-
         let ply_generator = PlyGenerator::new(
             state,
             match principal_variation.first() {
@@ -58,19 +56,35 @@ impl MinimaxBot {
             },
         );
 
+        let mut next_principal_variation = Vec::new();
+        let mut first_iteration = true;
+
         for ply in ply_generator {
             let next_state = match state.execute_ply(&ply) {
                 Ok(next) => next,
                 Err(_) => continue,
             };
 
-            let next_eval = -self.minimax(
-                &next_state,
-                &mut next_principal_variation,
-                depth - 1,
-                -beta,
-                -alpha,
-            );
+            let next_eval = if first_iteration {
+                -self.minimax(
+                    &next_state, &mut next_principal_variation, depth - 1,
+                    -beta, -alpha,
+                )
+            } else {
+                let next_eval = -self.minimax(
+                    &next_state, &mut next_principal_variation, depth - 1,
+                    -alpha - 1, -alpha,
+                );
+
+                if next_eval > alpha && next_eval < beta {
+                    -self.minimax(
+                        &next_state, &mut next_principal_variation, depth - 1,
+                        -beta, -alpha,
+                    )
+                } else {
+                    next_eval
+                }
+            };
 
             if next_eval > alpha {
                 alpha = next_eval;
@@ -83,6 +97,8 @@ impl MinimaxBot {
                     return beta;
                 }
             }
+
+            first_iteration = false;
         }
 
         alpha
@@ -534,6 +550,5 @@ mod tests {
         println!("\nEvaluation: {}", eval);
 
         println!("Time: {:.3}", elapsed_time);
-
     }
 }
