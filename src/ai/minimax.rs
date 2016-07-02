@@ -302,7 +302,7 @@ mod tests {
     fn test_minimax() {
         let games = 20;
         let mut total_ply_count = 0;
-        let mut total_min_time = 0.0;
+        let mut total_min_time = f32::MAX;
         let mut total_max_time = 0.0;
         let mut total_time = 0.0;
 
@@ -457,14 +457,14 @@ mod tests {
                 p2_min_time
             });
             println!("Maximum ply time: {:.3}", if p1_max_time > p2_max_time {
-                total_max_time = if p1_max_time < total_max_time {
+                total_max_time = if p1_max_time > total_max_time {
                     p1_max_time
                 } else {
                     total_max_time
                 };
                 p1_max_time
             } else {
-                total_max_time = if p2_max_time < total_max_time {
+                total_max_time = if p2_max_time > total_max_time {
                     p2_max_time
                 } else {
                     total_max_time
@@ -483,7 +483,7 @@ mod tests {
 
         println!("Games: {}", games);
         println!("Total plies: {}", total_ply_count);
-        println!("Absolute minimum ply time: {:.3}", total_min_time);
+        println!("Absolute minimum ply time: {:.5}", total_min_time);
         println!("Absolute maximum ply time: {:.3}", total_max_time);
         println!("Average ply time: {:.3}", total_time / total_ply_count as f32);
         println!("Average plies per game: {:.1}", total_ply_count as f32 / games as f32);
