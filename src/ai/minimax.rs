@@ -486,6 +486,7 @@ mod tests {
         println!("Absolute minimum ply time: {:.3}", total_min_time);
         println!("Absolute maximum ply time: {:.3}", total_max_time);
         println!("Average ply time: {:.3}", total_time / total_ply_count as f32);
+        println!("Average plies per game: {:.1}", total_ply_count as f32 / games as f32);
         println!("Average game time: {:.3}", total_time / games as f32);
     }
 
