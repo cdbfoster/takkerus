@@ -127,6 +127,13 @@ impl State {
                 Some('x') => match chars.next() {
                     Some(c) => if c.is_digit(10) {
                         x += (c as u8 - 49) as usize;
+                    } else if c == ',' {
+                        x += 1;
+                    } else if c == '/' {
+                        x = 0;
+                        y += 1;
+                    } else if c == ' ' {
+                        break;
                     } else {
                         return None;
                     },
