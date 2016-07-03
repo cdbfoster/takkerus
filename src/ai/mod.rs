@@ -17,10 +17,13 @@
 // Copyright 2016 Chris Foster
 //
 
+use std::fmt::Display;
+
 use tak::{Color, Direction, Piece, Player, Ply, State};
 
 pub trait Ai : Player {
     fn analyze(&mut self, state: &State) -> Vec<Ply>;
+    fn get_stats(&self) -> Box<Display>;
 }
 
 pub use self::minimax::MinimaxBot;

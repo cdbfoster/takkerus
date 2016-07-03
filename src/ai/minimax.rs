@@ -18,6 +18,7 @@
 //
 
 use std::cell::RefCell;
+use std::fmt::{self, Write};
 
 use rand::{thread_rng, Rng};
 use time;
@@ -121,6 +122,26 @@ impl Ai for MinimaxBot {
 
         principal_variation
     }
+
+    fn get_stats(&self) -> Box<fmt::Display> {
+        struct StatisticPrinter(Vec<Statistics>);
+
+        impl fmt::Display for StatisticPrinter {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let result = write!(f, "Minimax Statistics:");
+                for stats in self.0.iter() {
+                    write!(f, "\n  Depth {}:\n", stats.depth).ok();
+                    write!(f, "    {:10} {:8}\n", "Visited:", stats.visited).ok();
+                    write!(f, "    {:10} {:8}", "Evaluated:", stats.evaluated).ok();
+                }
+                result
+            }
+        }
+
+        Box::new(StatisticPrinter(
+            self.stats.iter().map(|stats| stats.borrow().clone()).collect::<Vec<Statistics>>()
+        ))
+    }
 }
 
 impl Player for MinimaxBot {
@@ -137,6 +158,7 @@ impl Player for MinimaxBot {
     }
 }
 
+#[derive(Clone)]
 pub struct Statistics {
     depth: u8,
     visited: u32,
@@ -202,7 +224,7 @@ impl<'a> Iterator for PlyGenerator<'a> {
     }
 }
 
-type Eval = i32;
+pub type Eval = i32;
 
 const MAX_EVAL: Eval = 100000;
 const MIN_EVAL: Eval = -MAX_EVAL;
@@ -220,7 +242,7 @@ enum Weight {
 
 const GROUP_WEIGHT: [Eval; 8] = [0, 0, 0, 100, 300, 500, 0, 0];
 
-trait Evaluatable {
+pub trait Evaluatable {
     fn evaluate(&self) -> Eval;
 }
 
@@ -314,7 +336,6 @@ mod tests {
     use super::{MinimaxBot, Evaluatable};
 
     #[test]
-    #[ignore]
     fn test_minimax() {
         let games = 50;
         let mut total_ply_count = 0;
@@ -504,51 +525,5 @@ mod tests {
         println!("Average ply time: {:.3}", total_time / total_ply_count as f32);
         println!("Average plies per game: {:.1}", total_ply_count as f32 / games as f32);
         println!("Average game time: {:.3}", total_time / games as f32);
-    }
-
-    #[test]
-    fn test_eval() {
-        let depth = 5;
-
-        let mut state = State::from_tps("[TPS \"112S,12S,x1,1,x1/2,2221C,22112C,x2/x1,22,2,12,x1/2,22,x1,12,x1/21,x2,21,x1 1 35\"]").unwrap();
-        println!("{}", state);
-        println!("{:?}\n", state.analysis);
-
-        let old_time = time::precise_time_ns();
-
-        let mut ai = MinimaxBot::new(depth);
-        let plies = ai.analyze(&state);
-
-        let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
-
-        println!("Principal Variation:");
-        for (i, ply) in plies.iter().enumerate() {
-            println!("{}: {}", if (state.ply_count + i as u16) % 2 == 0 {
-                "  White"
-            } else {
-                "  Black"
-            }, ply.to_ptn());
-        }
-
-        println!("\nMinimax Searches:");
-        for stats in ai.stats.iter() {
-            let s = stats.borrow();
-            println!("  Depth {}:", s.depth);
-            println!("    {:10} {:8}", "Visited:", s.visited);
-            println!("    {:10} {:8}", "Evaluated:", s.evaluated);
-        }
-
-        let eval = {
-            for ply in plies.iter() {
-                match state.execute_ply(ply) {
-                    Ok(next) => state = next,
-                    Err(error) => panic!("Error calculating evaluation: {}", error),
-                }
-            }
-            state.evaluate() * -((plies.len() as i32 % 2) * 2 - 1)
-        };
-        println!("\nEvaluation: {}", eval);
-
-        println!("Time: {:.3}", elapsed_time);
     }
 }
