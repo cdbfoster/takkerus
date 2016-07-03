@@ -1,5 +1,5 @@
 # Takkerus
-Takkerus implements a [Tak](http://cheapass.com/node/215) AI and a playable Tak board.  The name comes from a respelling of "tak-rs", after Rust's crate-naming conventions.
+Takkerus implements a [Tak](http://cheapass.com/node/215) AI and a playable Tak board.  The name comes from a respelling of "tak-rs", after [Rust](https://www.rust-lang.org/)'s crate-naming conventions.
 
 ## Source
 Check out the source by cloning the repository:
