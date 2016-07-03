@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 use std::env::Args;
-use std::fmt::{self, Write};
+use std::fmt;
 use std::iter::Peekable;
 
 #[derive(Clone)]

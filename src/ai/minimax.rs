@@ -18,7 +18,7 @@
 //
 
 use std::cell::RefCell;
-use std::fmt::{self, Write};
+use std::fmt;
 
 use rand::{thread_rng, Rng};
 use time;
