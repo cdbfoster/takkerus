@@ -17,7 +17,7 @@ To build and run the program in one step, run:
 
     $ cargo run --release
 
-to compile the program (In "release" mode, with optimizations.  Highly recommended for this kind of program) and then run it if compilations succeeds.  You can pass command line options to the program by separating them from `cargo run --release` with `--`; for instance, `cargo run --release -- options go here`.
+to compile the program (In "release" mode, with optimizations.  Highly recommended for this kind of program) and then run it if compilation succeeds.  You can pass command line options to the program by separating them from `cargo run --release` with `--`; for instance, `cargo run --release -- options go here`.
 
 ## Using
 To use the program, either run `cargo run` like above, or run the compiled program from the output directory:
