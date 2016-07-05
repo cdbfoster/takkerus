@@ -61,7 +61,13 @@ impl Game {
     }
 
     pub fn to_state(&self) -> Option<State> {
-        let mut state = State::new(self.header.size as usize);
+        let mut state = if self.header.tps.is_empty() {
+            State::new(self.header.size as usize)
+        } else {
+            let mut tps = String::new();
+            write!(tps, "[TPS \"{}\"]", self.header.tps).ok();
+            State::from_tps(&tps).unwrap()
+        };
 
         for ply in self.plies.iter() {
             match state.execute_ply(ply) {
@@ -71,23 +77,6 @@ impl Game {
         }
 
         Some(state)
-    }
-
-    pub fn add_ply(&mut self, ply: Ply) {
-        self.plies.push(ply);
-
-        self.update_tps();
-    }
-
-    fn update_tps(&mut self) {
-        let tps_string = match self.to_state() {
-            Some(state) => state.to_tps(),
-            None => return,
-        };
-
-        let (_, value) = parse_tag(&mut tps_string.chars().peekable()).unwrap();
-
-        self.header.tps = value;
     }
 }
 
@@ -365,7 +354,7 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
     Some(header)
 }
 
-fn parse_plies(source: &mut Peekable<Chars>) -> Option<Vec<Ply>> {
+fn parse_plies(source: &mut Peekable<Chars>, turn_offset: usize) -> Option<Vec<Ply>> {
     fn parse_turn_number(source: &mut Peekable<Chars>) -> Option<usize> {
         advance_whitespace(source, true);
         parse_comment(source);
@@ -519,7 +508,7 @@ fn parse_plies(source: &mut Peekable<Chars>) -> Option<Vec<Ply>> {
             None => break,
         }
 
-        match parse_ptn(source, if turn_number != 1 {
+        match parse_ptn(source, if turn_number + turn_offset != 1 {
             Color::White
         } else {
             Color::Black
@@ -528,7 +517,7 @@ fn parse_plies(source: &mut Peekable<Chars>) -> Option<Vec<Ply>> {
             None => return None,
         }
 
-        match parse_ptn(source, if turn_number != 1 {
+        match parse_ptn(source, if turn_number + turn_offset != 1 {
             Color::Black
         } else {
             Color::White
@@ -549,7 +538,15 @@ fn parse_game(source: &mut Peekable<Chars>) -> Option<Game> {
         None => return None,
     };
 
-    let plies = match parse_plies(source) {
+    let turn_offset = if header.tps.is_empty() {
+        0
+    } else {
+        let mut tps = String::new();
+        write!(tps, "[TPS \"{}\"]", header.tps).ok();
+        State::from_tps(&tps).unwrap().ply_count as usize / 2
+    };
+
+    let plies = match parse_plies(source, turn_offset) {
         Some(plies) => plies,
         None => return None,
     };
@@ -627,8 +624,7 @@ pub fn check_tmp_file() -> GameState {
             let mut source = data.chars().peekable();
 
             match parse_game(&mut source) {
-                Some(mut game) => if game.to_state().is_some() {
-                    game.update_tps();
+                Some(game) => if game.to_state().is_some() {
                     GameState::Resume(game)
                 } else {
                     GameState::New(Game::new())

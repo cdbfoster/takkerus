@@ -429,7 +429,7 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
             if !game.header.date.is_empty() {
                 print!("  {}", game.header.date);
             }
-            println!("  {}x{}, turn {}\n", game.header.size, game.header.size, game.plies.len() / 2 + 1);
+            println!("  {}x{}, turn {}\n", game.header.size, game.header.size, game.to_state().unwrap().ply_count / 2 + 1);
 
             println!("Resume game? (y/n)");
             loop {
@@ -478,7 +478,7 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
                         ptn = String::new();
                         write!(ptn, "{:<5} ", ply.to_ptn()).ok();
 
-                        game.add_ply(ply.clone());
+                        game.plies.push(ply.clone());
                         logger::write_tmp_file(&game);
 
                         break 'p1_move;
@@ -509,7 +509,7 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
 
                     write!(ptn, "{}", ply.to_ptn()).ok();
 
-                    game.add_ply(ply.clone());
+                    game.plies.push(ply.clone());
                     logger::write_tmp_file(&game);
 
                     break 'p2_move;
