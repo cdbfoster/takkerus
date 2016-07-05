@@ -530,14 +530,14 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
 
     match state.check_win() {
         Win::Road(color) => match color {
-            Color::White => { println!("Player 1 wins! (R-0)"); game.header.result = String::from("(R-0)"); },
-            Color::Black => { println!("Player 2 wins! (0-R)"); game.header.result = String::from("(0-R)"); },
+            Color::White => { println!("Player 1 wins! (R-0)"); game.header.result = String::from("R-0"); },
+            Color::Black => { println!("Player 2 wins! (0-R)"); game.header.result = String::from("0-R"); },
         },
         Win::Flat(color) => match color {
-            Color::White => { println!("Player 1 wins! (F-0)"); game.header.result = String::from("(F-0)"); },
-            Color::Black => { println!("Player 2 wins! (0-F)"); game.header.result = String::from("(0-F)"); },
+            Color::White => { println!("Player 1 wins! (F-0)"); game.header.result = String::from("F-0"); },
+            Color::Black => { println!("Player 2 wins! (0-F)"); game.header.result = String::from("0-F"); },
         },
-        Win::Draw => { println!("Draw! (1/2-1/2)"); game.header.result = String::from("(1/2-1/2)"); },
+        Win::Draw => { println!("Draw! (1/2-1/2)"); game.header.result = String::from("1/2-1/2"); },
         _ => (),
     }
 

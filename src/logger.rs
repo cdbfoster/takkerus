@@ -49,7 +49,7 @@ impl Game {
                 date: {
                     let t = time::now();
                     let mut date = String::new();
-                    write!(date, "{:4}-{:02}-{:02}", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday).ok();
+                    write!(date, "{:4}.{:02}.{:02}", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday).ok();
                     date
                 },
                 result: String::new(),
