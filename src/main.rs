@@ -24,10 +24,12 @@ extern crate time;
 
 mod ai;
 mod arguments;
+mod logger;
 mod tak;
 
 use std::env;
 use std::fmt::Write;
+use std::io::{self, Write as IoWrite};
 use std::str::FromStr;
 
 use ai::Ai;
@@ -414,35 +416,84 @@ fn analyze(mut state: State, mut ai: Box<Ai>) {
 }
 
 fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
+    let mut game = match logger::check_tmp_file() {
+        logger::GameState::New(mut game) => {
+            logger::populate_game(&mut game, &*p1, &*p2);
+            game
+        },
+        logger::GameState::Resume(mut game) => {
+            println!("There is a game in progress.\n");
+            if !game.header.p1.is_empty() && !game.header.p2.is_empty() {
+                print!("  {} vs {}", game.header.p1, game.header.p2);
+            }
+            if !game.header.date.is_empty() {
+                print!("  {}", game.header.date);
+            }
+            println!("  {}x{}, turn {}\n", game.header.size, game.header.size, game.plies.len() / 2 + 1);
+
+            println!("Resume game? (y/n)");
+            loop {
+                print!("Option: ");
+                io::stdout().flush().ok();
+
+                let mut input = String::new();
+                match io::stdin().read_line(&mut input) {
+                    Ok(_) => {
+                        let response = input.trim().to_lowercase();
+                        if response == "y" {
+                            state = game.to_state().unwrap();
+                            break;
+                        } else if response == "n" {
+                            game = logger::Game::new();
+                            logger::populate_game(&mut game, &*p1, &*p2);
+                            break;
+                        }
+                    },
+                    Err(e) => panic!("Error: {}", e),
+                }
+            }
+
+            game
+        },
+    };
+
     let mut ptn = String::new();
     'main: loop {
-        println!("\n--------------------------------------------------");
-        println!("{}", state);
-        if state.ply_count >= 2 {
-            println!("Previous turn:   {}\n", ptn);
+        if state.ply_count % 2 == 0 {
+            println!("\n--------------------------------------------------");
+            println!("{}", state);
+            if state.ply_count >= 2 {
+                println!("Previous turn:   {}\n", ptn);
+            } else {
+                println!("First turn\n");
+            }
+
+            'p1_move: loop {
+                let ply = p1.get_move(&state);
+
+                match state.execute_ply(&ply) {
+                    Ok(next) => {
+                        state = next;
+
+                        ptn = String::new();
+                        write!(ptn, "{:<5} ", ply.to_ptn()).ok();
+
+                        game.add_ply(ply.clone());
+                        logger::write_tmp_file(&game);
+
+                        break 'p1_move;
+                    },
+                    Err(error) => println!("  {}", error),
+                }
+            }
         } else {
-            println!("First turn\n");
+            ptn = String::new();
+            write!(ptn, "{:<5} ", game.plies.last().unwrap().to_ptn()).ok();
         }
 
-        'p1_move: loop {
-            let ply = p1.get_move(&state);
-
-            match state.execute_ply(&ply) {
-                Ok(next) => {
-                    state = next;
-
-                    ptn = String::new();
-                    write!(ptn, "{:<5} ", ply.to_ptn()).ok();
-
-                    match state.check_win() {
-                        Win::None => (),
-                        _ => break 'main,
-                    }
-
-                    break 'p1_move;
-                },
-                Err(error) => println!("  {}", error),
-            }
+        match state.check_win() {
+            Win::None => (),
+            _ => break 'main,
         }
 
         println!("\n--------------------------------------------------");
@@ -458,15 +509,18 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
 
                     write!(ptn, "{}", ply.to_ptn()).ok();
 
-                    match state.check_win() {
-                        Win::None => (),
-                        _ => break 'main,
-                    }
+                    game.add_ply(ply.clone());
+                    logger::write_tmp_file(&game);
 
                     break 'p2_move;
                 },
                 Err(error) => println!("  {}", error),
             }
+        }
+
+        match state.check_win() {
+            Win::None => (),
+            _ => break 'main,
         }
     }
 
@@ -476,14 +530,17 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
 
     match state.check_win() {
         Win::Road(color) => match color {
-            Color::White => println!("Player 1 wins! (R-0)"),
-            Color::Black => println!("Player 2 wins! (0-R)"),
+            Color::White => { println!("Player 1 wins! (R-0)"); game.header.result = String::from("(R-0)"); },
+            Color::Black => { println!("Player 2 wins! (0-R)"); game.header.result = String::from("(0-R)"); },
         },
         Win::Flat(color) => match color {
-            Color::White => println!("Player 1 wins! (F-0)"),
-            Color::Black => println!("Player 2 wins! (0-F)"),
+            Color::White => { println!("Player 1 wins! (F-0)"); game.header.result = String::from("(F-0)"); },
+            Color::Black => { println!("Player 2 wins! (0-F)"); game.header.result = String::from("(0-F)"); },
         },
-        Win::Draw => println!("Draw! (1/2-1/2)"),
+        Win::Draw => { println!("Draw! (1/2-1/2)"); game.header.result = String::from("(1/2-1/2)"); },
         _ => (),
     }
+
+    logger::write_tmp_file(&game);
+    logger::finalize_tmp_file();
 }
