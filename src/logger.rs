@@ -354,6 +354,10 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
         State::from_tps(&tps)
     };
 
+    if state.is_none() && !header.tps.is_empty() {
+        return None;
+    }
+
     if state.is_some() && state.clone().unwrap().board.len() != header.size as usize {
         return None;
     }
