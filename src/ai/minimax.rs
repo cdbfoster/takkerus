@@ -18,7 +18,7 @@
 //
 
 use std::cell::RefCell;
-use std::fmt;
+use std::fmt::{self, Write};
 
 use rand::{thread_rng, Rng};
 use time;
@@ -155,6 +155,16 @@ impl Player for MinimaxBot {
         println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds", self.depth, elapsed_time as f32 / 1000000000.0);
 
         ply
+    }
+
+    fn get_name(&self) -> String {
+        let mut name = String::new();
+        write!(name, "Takkerus v{} (MinimaxBot - Depth: {})",
+            option_env!("CARGO_PKG_VERSION").unwrap_or("Unknown"),
+            self.depth,
+        ).ok();
+
+        name
     }
 }
 

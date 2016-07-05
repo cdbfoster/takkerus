@@ -191,7 +191,7 @@ fn main() {
         }
     } else {
         let mut state = State::new(5);
-        let mut p1: Box<Player> = Box::new(cli_player::CliPlayer::new());
+        let mut p1: Box<Player> = Box::new(cli_player::CliPlayer::new("Human"));
         let mut p2: Box<Player> = Box::new(ai::MinimaxBot::new(5));
 
         let next = match arguments::collect_next(&mut args, &[
@@ -244,7 +244,7 @@ fn main() {
 
         match next.get("-p1") {
             Some(strings) => if strings[0] == "human" {
-                p1 = Box::new(cli_player::CliPlayer::new());
+                p1 = Box::new(cli_player::CliPlayer::new("Human"));
             } else if strings[0] == "minimax" {
                 let mut depth = 5;
 
@@ -290,7 +290,7 @@ fn main() {
 
         match next.get("-p2") {
             Some(strings) => if strings[0] == "human" {
-                p2 = Box::new(cli_player::CliPlayer::new());
+                p2 = Box::new(cli_player::CliPlayer::new("Human"));
             } else if strings[0] == "minimax" {
                 let mut depth = 5;
 

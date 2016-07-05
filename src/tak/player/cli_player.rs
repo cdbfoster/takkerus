@@ -23,12 +23,14 @@ use tak::{Color, Piece, Player, Ply, State};
 
 pub struct CliPlayer {
     stdin: io::Stdin,
+    name: String,
 }
 
 impl CliPlayer {
-    pub fn new() -> CliPlayer {
+    pub fn new(name: &str) -> CliPlayer {
         CliPlayer {
             stdin: io::stdin(),
+            name: String::from(name),
         }
     }
 }
@@ -102,5 +104,9 @@ impl Player for CliPlayer {
         }
 
         ply.unwrap()
+    }
+
+    fn get_name(&self) -> String {
+        self.name.clone()
     }
 }

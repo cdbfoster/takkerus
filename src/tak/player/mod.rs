@@ -21,6 +21,7 @@ use tak::{Color, Ply, State};
 
 pub trait Player {
     fn get_move(&mut self, state: &State) -> Ply;
+    fn get_name(&self) -> String;
 }
 
 #[derive(Clone, Debug)]
