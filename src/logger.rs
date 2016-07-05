@@ -82,7 +82,7 @@ impl Game {
 
 impl fmt::Display for Game {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}\n", self.header).ok();
+        write!(f, "{}\r\n", self.header).ok();
 
         for turn in 0..(self.plies.len() + 1) / 2 {
             write!(f, "{:2}. {:8}", turn + 1, self.plies[turn * 2].to_ptn()).ok();
@@ -91,10 +91,10 @@ impl fmt::Display for Game {
                 write!(f, "{}", self.plies[turn * 2 + 1].to_ptn()).ok();
             }
 
-            write!(f, "\n").ok();
+            write!(f, "\r\n").ok();
         }
 
-        write!(f, "\n")
+        write!(f, "\r\n")
     }
 }
 
@@ -114,31 +114,31 @@ pub struct Header {
 impl fmt::Display for Header {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if !self.event.is_empty() {
-            write!(f, "[Event \"{}\"]\n", self.event).ok();
+            write!(f, "[Event \"{}\"]\r\n", self.event).ok();
         }
         if !self.site.is_empty() {
-            write!(f, "[Site \"{}\"]\n", self.site).ok();
+            write!(f, "[Site \"{}\"]\r\n", self.site).ok();
         }
         if !self.p1.is_empty() {
-            write!(f, "[Player1 \"{}\"]\n", self.p1).ok();
+            write!(f, "[Player1 \"{}\"]\r\n", self.p1).ok();
         }
         if !self.p2.is_empty() {
-            write!(f, "[Player2 \"{}\"]\n", self.p2).ok();
+            write!(f, "[Player2 \"{}\"]\r\n", self.p2).ok();
         }
         if !self.round.is_empty() {
-            write!(f, "[Round \"{}\"]\n", self.round).ok();
+            write!(f, "[Round \"{}\"]\r\n", self.round).ok();
         }
         if !self.date.is_empty() {
-            write!(f, "[Date \"{}\"]\n", self.date).ok();
+            write!(f, "[Date \"{}\"]\r\n", self.date).ok();
         }
         if !self.result.is_empty() {
-            write!(f, "[Result \"{}\"]\n", self.result).ok();
+            write!(f, "[Result \"{}\"]\r\n", self.result).ok();
         }
 
         let result = write!(f, "[Size \"{}\"]", self.size);
 
         if !self.tps.is_empty() {
-            write!(f, "\n[TPS \"{}\"]", self.tps).ok();
+            write!(f, "\r\n[TPS \"{}\"]", self.tps).ok();
         }
 
         result
@@ -157,7 +157,7 @@ fn advance_whitespace(source: &mut Peekable<Chars>, include_newline: bool) {
 
     while peek_char == ' ' ||
           peek_char == '\t' ||
-          (include_newline && peek_char == '\n') {
+          (include_newline && (peek_char == '\r' || peek_char == '\n')) {
         source.next();
 
         peek_char = {
@@ -218,6 +218,7 @@ fn parse_tag(source: &mut Peekable<Chars>) -> TagResult {
           peek_char != '[' &&
           peek_char != ']' &&
           peek_char != '\t' &&
+          peek_char != '\r' &&
           peek_char != '\n' {
         name.push(peek_char);
 
@@ -261,6 +262,7 @@ fn parse_tag(source: &mut Peekable<Chars>) -> TagResult {
     while peek_char != '"' &&
           peek_char != '[' &&
           peek_char != ']' &&
+          peek_char != '\r' &&
           peek_char != '\n' {
         value.push(peek_char);
 
