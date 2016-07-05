@@ -43,7 +43,7 @@ impl State {
             6 => (30, 1),
             7 => (40, 1),
             8 => (50, 2),
-            _ => panic!("Illegal board size!"),
+            s => panic!("Illegal board size: {}", s),
         };
 
         State {
