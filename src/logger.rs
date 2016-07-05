@@ -536,7 +536,11 @@ fn parse_plies(source: &mut Peekable<Chars>) -> Option<Vec<Ply>> {
         turn_number += 1;
     }
 
-    Some(plies)
+    if plies.is_empty() {
+        None
+    } else {
+        Some(plies)
+    }
 }
 
 fn parse_game(source: &mut Peekable<Chars>) -> Option<Game> {
