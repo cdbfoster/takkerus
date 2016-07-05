@@ -70,7 +70,7 @@ fn main() {
             println!("    -a, --ai    string   The type of AI to use.  Options are:");
             println!("                           minimax (default)");
             println!("  Minimax options:");
-            println!("    -d, --depth int       The depth of the search. (default 5)");
+            println!("    -d, --depth int      The depth of the search. (default 5)");
             println!("");
             return;
         } else if next.contains_key("play") {
@@ -84,8 +84,10 @@ fn main() {
             println!("    -p2         string   The type of player 2. Options are:");
             println!("                           human");
             println!("                           minimax (default)");
+            println!("  Human options:");
+            println!("    -n, --name  string   The name of the player to record. (default Human)");
             println!("  Minimax options:");
-            println!("    -d, --depth int       The depth of the search. (default 5)");
+            println!("    -d, --depth int      The depth of the search. (default 5)");
             println!("");
             return;
         } else {
@@ -244,7 +246,22 @@ fn main() {
 
         match next.get("-p1") {
             Some(strings) => if strings[0] == "human" {
-                p1 = Box::new(cli_player::CliPlayer::new("Human"));
+                let mut name = String::from("Human");
+
+                let next = match arguments::collect_next(&mut args, &[Option("-n", "--name", 1)]) {
+                    Ok(arguments) => arguments,
+                    Err(error) => {
+                        println!("  Error: {}", error);
+                        return;
+                    },
+                };
+
+                match next.get("--name") {
+                    Some(strings) => name = strings[0].clone(),
+                    None => (),
+                }
+
+                p1 = Box::new(cli_player::CliPlayer::new(&name));
             } else if strings[0] == "minimax" {
                 let mut depth = 5;
 
@@ -290,7 +307,22 @@ fn main() {
 
         match next.get("-p2") {
             Some(strings) => if strings[0] == "human" {
-                p2 = Box::new(cli_player::CliPlayer::new("Human"));
+                let mut name = String::from("Human");
+
+                let next = match arguments::collect_next(&mut args, &[Option("-n", "--name", 1)]) {
+                    Ok(arguments) => arguments,
+                    Err(error) => {
+                        println!("  Error: {}", error);
+                        return;
+                    },
+                };
+
+                match next.get("--name") {
+                    Some(strings) => name = strings[0].clone(),
+                    None => (),
+                }
+
+                p2 = Box::new(cli_player::CliPlayer::new(&name));
             } else if strings[0] == "minimax" {
                 let mut depth = 5;
 
