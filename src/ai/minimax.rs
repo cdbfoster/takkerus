@@ -24,7 +24,7 @@ use rand::{thread_rng, Rng};
 use time;
 
 use ai::{Ai, Extrapolatable};
-use tak::{Bitmap, BitmapInterface, Color, Player, Ply, State, Win};
+use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Player, Ply, State, Win};
 
 pub struct MinimaxBot {
     depth: u8,
@@ -343,6 +343,52 @@ impl Evaluatable for State {
 
         p1_eval += evaluate_groups(&a.p1_road_groups, a.board_size);
         p2_eval += evaluate_groups(&a.p2_road_groups, a.board_size);
+
+        // Threats
+        let total_pieces = a.p1_pieces | a.p2_pieces;
+
+        let evaluate_threats = |groups: &Vec<Bitmap>| {
+            let mut expanded_groups = vec![0; groups.len()];
+            let mut threats = 0;
+
+            for i in 0..groups.len() {
+                expanded_groups[i] = groups[i].grow(BOARD[a.board_size], a.board_size);
+            }
+
+            let is_road = |group: Bitmap| {
+                use tak::Direction::*;
+
+                if (group & EDGE[a.board_size][North as usize] != 0 &&
+                    group & EDGE[a.board_size][South as usize] != 0) ||
+                   (group & EDGE[a.board_size][West as usize] != 0 &&
+                    group & EDGE[a.board_size][East as usize] != 0) {
+                    return true;
+                }
+
+                false
+            };
+
+            for l in 0..groups.len() {
+                for r in l..groups.len() {
+                    if l != r {
+                        let overlap = expanded_groups[l] & expanded_groups[r] & !total_pieces;
+
+                        if overlap == 0 {
+                            continue;
+                        }
+
+                        if is_road(groups[l] | groups[r] | overlap) {
+                            threats += 1;
+                        }
+                    }
+                }
+            }
+
+            threats * WEIGHT.threat
+        };
+
+        p1_eval += evaluate_threats(&a.p1_road_groups);
+        p2_eval += evaluate_threats(&a.p2_road_groups);
 
         match next_color {
             Color::White => p1_eval - p2_eval,
