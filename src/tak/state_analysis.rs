@@ -245,9 +245,7 @@ impl BitmapInterface for Bitmap {
 
             let group = flood(bit, map, stride);
 
-            if group != bit {
-                groups.push(group);
-            }
+            groups.push(group);
 
             remainder &= !group;
             if remainder == 0 {
