@@ -85,7 +85,7 @@ impl fmt::Display for Game {
         write!(f, "{}\r\n", self.header).ok();
 
         for turn in 0..(self.plies.len() + 1) / 2 {
-            write!(f, "{:2}. {:8}", turn + 1, self.plies[turn * 2].to_ptn()).ok();
+            write!(f, "{:2}. {:7} ", turn + 1, self.plies[turn * 2].to_ptn()).ok();
 
             if turn * 2 + 1 < self.plies.len() {
                 write!(f, "{}", self.plies[turn * 2 + 1].to_ptn()).ok();
