@@ -241,16 +241,31 @@ const MIN_EVAL: Eval = -MAX_EVAL;
 
 const WIN_THRESHOLD: Eval = 99000;
 
-enum Weight {
-    Flatstone =     400,
-    StandingStone = 200,
-    Capstone =      300,
+struct Weights {
+    flatstone: Eval,
+    standing_stone: Eval,
+    capstone: Eval,
 
-    HardFlat =      125,
-    SoftFlat =      -75,
+    hard_flat: Eval,
+    soft_flat: Eval,
+
+    threat: Eval,
+
+    group: [Eval; 8],
 }
 
-const GROUP_WEIGHT: [Eval; 8] = [0, 0, 0, 100, 300, 500, 0, 0];
+const WEIGHT: Weights = Weights {
+    flatstone:          400,
+    standing_stone:     200,
+    capstone:           300,
+
+    hard_flat:          125,
+    soft_flat:          -75,
+
+    threat:             200,
+
+    group: [0, 0, 100, 200, 400, 600, 0, 0],
+};
 
 pub trait Evaluatable {
     fn evaluate(&self) -> Eval;
@@ -282,14 +297,14 @@ impl Evaluatable for State {
 
         let a = &self.analysis;
 
-        p1_eval += a.p1_flatstone_count as i32 * Weight::Flatstone as Eval;
-        p2_eval += a.p2_flatstone_count as i32 * Weight::Flatstone as Eval;
+        p1_eval += a.p1_flatstone_count as i32 * WEIGHT.flatstone as Eval;
+        p2_eval += a.p2_flatstone_count as i32 * WEIGHT.flatstone as Eval;
 
-        p1_eval += (a.p1_pieces & a.standing_stones).get_population() as i32 * Weight::StandingStone as Eval;
-        p2_eval += (a.p2_pieces & a.standing_stones).get_population() as i32 * Weight::StandingStone as Eval;
+        p1_eval += (a.p1_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone as Eval;
+        p2_eval += (a.p2_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone as Eval;
 
-        p1_eval += (a.p1_pieces & a.capstones).get_population() as i32 * Weight::Capstone as Eval;
-        p2_eval += (a.p2_pieces & a.capstones).get_population() as i32 * Weight::Capstone as Eval;
+        p1_eval += (a.p1_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone as Eval;
+        p2_eval += (a.p2_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone as Eval;
 
         // Stacked flatstones
         let mut p1_hard_flats = -(a.p1_flatstone_count as i32); // Top-level flatstones don't count
@@ -310,8 +325,8 @@ impl Evaluatable for State {
             }
         }
 
-        p1_eval += p1_hard_flats * Weight::HardFlat as Eval + p2_soft_flats * Weight::SoftFlat as Eval;
-        p2_eval += p2_hard_flats * Weight::HardFlat as Eval + p1_soft_flats * Weight::SoftFlat as Eval;
+        p1_eval += p1_hard_flats * WEIGHT.hard_flat as Eval + p2_soft_flats * WEIGHT.soft_flat as Eval;
+        p2_eval += p2_hard_flats * WEIGHT.hard_flat as Eval + p1_soft_flats * WEIGHT.soft_flat as Eval;
 
         // Road groups
         fn evaluate_groups(groups: &Vec<Bitmap>, board_size: usize) -> Eval {
@@ -320,7 +335,7 @@ impl Evaluatable for State {
             for group in groups.iter() {
                 let (width, height) = group.get_dimensions(board_size);
 
-                eval += GROUP_WEIGHT[width] + GROUP_WEIGHT[height];
+                eval += WEIGHT.group[width] + WEIGHT.group[height];
             }
 
             eval
