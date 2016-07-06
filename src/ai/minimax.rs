@@ -329,20 +329,20 @@ impl Evaluatable for State {
         p2_eval += p2_hard_flats * WEIGHT.hard_flat as Eval + p1_soft_flats * WEIGHT.soft_flat as Eval;
 
         // Road groups
-        fn evaluate_groups(groups: &Vec<Bitmap>, board_size: usize) -> Eval {
+        let evaluate_groups = |groups: &Vec<Bitmap>| {
             let mut eval = 0;
 
             for group in groups.iter() {
-                let (width, height) = group.get_dimensions(board_size);
+                let (width, height) = group.get_dimensions(a.board_size);
 
                 eval += WEIGHT.group[width] + WEIGHT.group[height];
             }
 
             eval
-        }
+        };
 
-        p1_eval += evaluate_groups(&a.p1_road_groups, a.board_size);
-        p2_eval += evaluate_groups(&a.p2_road_groups, a.board_size);
+        p1_eval += evaluate_groups(&a.p1_road_groups);
+        p2_eval += evaluate_groups(&a.p2_road_groups);
 
         // Threats
         let total_pieces = a.p1_pieces | a.p2_pieces;
