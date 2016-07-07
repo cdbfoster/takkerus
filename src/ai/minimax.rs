@@ -251,6 +251,8 @@ struct Weights {
 
     threat: Eval,
 
+    liberty: Eval,
+
     group: [Eval; 8],
 }
 
@@ -263,6 +265,8 @@ const WEIGHT: Weights = Weights {
     soft_flat:          -75,
 
     threat:             200,
+
+    liberty:             20,
 
     group: [0, 0, 100, 200, 400, 600, 0, 0],
 };
@@ -389,6 +393,13 @@ impl Evaluatable for State {
 
         p1_eval += evaluate_threats(&a.p1_road_groups);
         p2_eval += evaluate_threats(&a.p2_road_groups);
+
+        // Liberties
+        let p1_liberties = (a.p1_pieces & !a.standing_stones).grow(BOARD[a.board_size] & !a.p2_pieces, a.board_size) & !a.p1_pieces;
+        let p2_liberties = (a.p2_pieces & !a.standing_stones).grow(BOARD[a.board_size] & !a.p1_pieces, a.board_size) & !a.p2_pieces;
+
+        p1_eval += p1_liberties.get_population() as i32 * WEIGHT.liberty;
+        p2_eval += p2_liberties.get_population() as i32 * WEIGHT.liberty;
 
         match next_color {
             Color::White => p1_eval - p2_eval,
