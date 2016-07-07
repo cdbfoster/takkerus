@@ -253,6 +253,8 @@ struct Weights {
 
     liberty: Eval,
 
+    cover: (Eval, Eval, Eval),
+
     group: [Eval; 8],
 }
 
@@ -267,6 +269,8 @@ const WEIGHT: Weights = Weights {
     threat:             200,
 
     liberty:             20,
+
+    cover:              (20, 15, -10),
 
     group: [0, 0, 100, 200, 400, 600, 0, 0],
 };
@@ -301,14 +305,18 @@ impl Evaluatable for State {
 
         let a = &self.analysis;
 
-        p1_eval += a.p1_flatstone_count as i32 * WEIGHT.flatstone as Eval;
-        p2_eval += a.p2_flatstone_count as i32 * WEIGHT.flatstone as Eval;
+        let total_pieces = a.p1_pieces | a.p2_pieces;
+        let p1_flatstones = a.p1_pieces & !a.standing_stones & !a.capstones;
+        let p2_flatstones = a.p2_pieces & !a.standing_stones & !a.capstones;
 
-        p1_eval += (a.p1_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone as Eval;
-        p2_eval += (a.p2_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone as Eval;
+        p1_eval += a.p1_flatstone_count as i32 * WEIGHT.flatstone;
+        p2_eval += a.p2_flatstone_count as i32 * WEIGHT.flatstone;
 
-        p1_eval += (a.p1_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone as Eval;
-        p2_eval += (a.p2_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone as Eval;
+        p1_eval += (a.p1_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone;
+        p2_eval += (a.p2_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone;
+
+        p1_eval += (a.p1_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone;
+        p2_eval += (a.p2_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone;
 
         // Stacked flatstones
         let mut p1_hard_flats = -(a.p1_flatstone_count as i32); // Top-level flatstones don't count
@@ -329,8 +337,8 @@ impl Evaluatable for State {
             }
         }
 
-        p1_eval += p1_hard_flats * WEIGHT.hard_flat as Eval + p2_soft_flats * WEIGHT.soft_flat as Eval;
-        p2_eval += p2_hard_flats * WEIGHT.hard_flat as Eval + p1_soft_flats * WEIGHT.soft_flat as Eval;
+        p1_eval += p1_hard_flats * WEIGHT.hard_flat + p2_soft_flats * WEIGHT.soft_flat;
+        p2_eval += p2_hard_flats * WEIGHT.hard_flat + p1_soft_flats * WEIGHT.soft_flat;
 
         // Road groups
         let evaluate_groups = |groups: &Vec<Bitmap>| {
@@ -349,15 +357,9 @@ impl Evaluatable for State {
         p2_eval += evaluate_groups(&a.p2_road_groups);
 
         // Threats
-        let total_pieces = a.p1_pieces | a.p2_pieces;
-
         let evaluate_threats = |groups: &Vec<Bitmap>| {
             let mut expanded_groups = vec![0; groups.len()];
             let mut threats = 0;
-
-            for i in 0..groups.len() {
-                expanded_groups[i] = groups[i].grow(BOARD[a.board_size], a.board_size);
-            }
 
             let is_road = |group: Bitmap| {
                 use tak::Direction::*;
@@ -371,6 +373,10 @@ impl Evaluatable for State {
 
                 false
             };
+
+            for i in 0..groups.len() {
+                expanded_groups[i] = groups[i].grow(BOARD[a.board_size], a.board_size);
+            }
 
             for l in 0..groups.len() {
                 for r in l..groups.len() {
@@ -400,6 +406,55 @@ impl Evaluatable for State {
 
         p1_eval += p1_liberties.get_population() as i32 * WEIGHT.liberty;
         p2_eval += p2_liberties.get_population() as i32 * WEIGHT.liberty;
+
+        // Cover
+        let evaluate_cover = |pieces: Bitmap, own_flatstones: Bitmap, enemy_pieces: Bitmap| {
+            let evaluate_half = |mut half_pieces: Bitmap| {
+                fn pop_bit(map: Bitmap) -> (Bitmap, Bitmap) {
+                    let remainder = map & (map - 1);
+                    let bit = map & !remainder;
+                    (bit, remainder)
+                }
+
+                if half_pieces == 0 {
+                    return 0;
+                }
+
+                let expanded = half_pieces.grow(BOARD[a.board_size], a.board_size);
+
+                let covered = {
+                    let mut splat_board = 0;
+                    loop {
+                        let (bit, remainder) = pop_bit(half_pieces);
+
+                        if bit != 0 {
+                            let expanded_bit = bit.grow(BOARD[a.board_size], a.board_size);
+
+                            splat_board ^= expanded_bit;
+                        }
+
+                        if remainder == 0 {
+                            break;
+                        }
+
+                        half_pieces = remainder;
+                    }
+
+                    !splat_board & expanded
+                };
+
+                let mut eval = 0;
+                eval += (covered & own_flatstones).get_population() as i32 * WEIGHT.cover.0;
+                eval += (covered & !total_pieces).get_population() as i32 * WEIGHT.cover.1;
+                eval += (covered & enemy_pieces).get_population() as i32 * WEIGHT.cover.2;
+                eval
+            };
+
+            evaluate_half(pieces & 0x5555555555555555) + evaluate_half(pieces & 0xAAAAAAAAAAAAAAAA)
+        };
+
+        p1_eval += evaluate_cover(a.p1_pieces, p1_flatstones, a.p2_pieces);
+        p2_eval += evaluate_cover(a.p2_pieces, p2_flatstones, a.p1_pieces);
 
         match next_color {
             Color::White => p1_eval - p2_eval,
