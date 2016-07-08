@@ -246,8 +246,8 @@ struct Weights {
     standing_stone: Eval,
     capstone: Eval,
 
-    hard_flat: Eval,
-    soft_flat: Eval,
+    hard_flat: (Eval, Eval, Eval),
+    soft_flat: (Eval, Eval, Eval),
 
     threat: Eval,
 
@@ -263,8 +263,8 @@ const WEIGHT: Weights = Weights {
     standing_stone:     200,
     capstone:           300,
 
-    hard_flat:          125,
-    soft_flat:          -75,
+    hard_flat:         (125, 125, 150),
+    soft_flat:         (-75, -50, -25),
 
     threat:             200,
 
@@ -306,39 +306,77 @@ impl Evaluatable for State {
         let a = &self.analysis;
 
         let total_pieces = a.p1_pieces | a.p2_pieces;
+
         let p1_flatstones = a.p1_pieces & !a.standing_stones & !a.capstones;
         let p2_flatstones = a.p2_pieces & !a.standing_stones & !a.capstones;
+
+        let p1_standing_stones = a.p1_pieces & a.standing_stones;
+        let p2_standing_stones = a.p2_pieces & a.standing_stones;
+
+        let p1_capstones = a.p1_pieces & a.capstones;
+        let p2_capstones = a.p2_pieces & a.capstones;
 
         p1_eval += a.p1_flatstone_count as i32 * WEIGHT.flatstone;
         p2_eval += a.p2_flatstone_count as i32 * WEIGHT.flatstone;
 
-        p1_eval += (a.p1_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone;
-        p2_eval += (a.p2_pieces & a.standing_stones).get_population() as i32 * WEIGHT.standing_stone;
+        p1_eval += p1_standing_stones.get_population() as i32 * WEIGHT.standing_stone;
+        p2_eval += p2_standing_stones.get_population() as i32 * WEIGHT.standing_stone;
 
-        p1_eval += (a.p1_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone;
-        p2_eval += (a.p2_pieces & a.capstones).get_population() as i32 * WEIGHT.capstone;
+        p1_eval += p1_capstones.get_population() as i32 * WEIGHT.capstone;
+        p2_eval += p2_capstones.get_population() as i32 * WEIGHT.capstone;
 
         // Stacked flatstones
-        let mut p1_hard_flats = -(a.p1_flatstone_count as i32); // Top-level flatstones don't count
-        let mut p1_soft_flats = 0;
+        let mut p1_flatstone_hard_flats = -(a.p1_flatstone_count as i32); // Top-level flatstones don't count
+        let mut p1_flatstone_soft_flats = 0;
+
+        let mut p1_standing_stone_hard_flats = 0;
+        let mut p1_standing_stone_soft_flats = 0;
+
+        let mut p1_capstone_hard_flats = 0;
+        let mut p1_capstone_soft_flats = 0;
+
         for level in a.p1_flatstones.iter() {
             if *level != 0 {
-                p1_hard_flats += (level & a.p1_pieces).get_population() as i32;
-                p1_soft_flats += (level & a.p2_pieces).get_population() as i32;
+                p1_flatstone_hard_flats += (level & p1_flatstones).get_population() as i32;
+                p1_flatstone_soft_flats += (level & p2_flatstones).get_population() as i32;
+
+                p1_standing_stone_hard_flats += (level & p1_standing_stones).get_population() as i32;
+                p1_standing_stone_soft_flats += (level & p2_standing_stones).get_population() as i32;
+
+                p1_capstone_hard_flats += (level & p1_capstones).get_population() as i32;
+                p1_capstone_soft_flats += (level & p2_capstones).get_population() as i32;
             }
         }
 
-        let mut p2_hard_flats = -(a.p2_flatstone_count as i32);
-        let mut p2_soft_flats = 0;
+        let mut p2_flatstone_hard_flats = -(a.p2_flatstone_count as i32);
+        let mut p2_flatstone_soft_flats = 0;
+
+        let mut p2_standing_stone_hard_flats = 0;
+        let mut p2_standing_stone_soft_flats = 0;
+
+        let mut p2_capstone_hard_flats = 0;
+        let mut p2_capstone_soft_flats = 0;
+
         for level in a.p2_flatstones.iter() {
             if *level != 0 {
-                p2_hard_flats += (level & a.p2_pieces).get_population() as i32;
-                p2_soft_flats += (level & a.p1_pieces).get_population() as i32;
+                p2_flatstone_hard_flats += (level & p2_flatstones).get_population() as i32;
+                p2_flatstone_soft_flats += (level & p1_flatstones).get_population() as i32;
+
+                p2_standing_stone_hard_flats += (level & p2_standing_stones).get_population() as i32;
+                p2_standing_stone_soft_flats += (level & p1_standing_stones).get_population() as i32;
+
+                p2_capstone_hard_flats += (level & p2_capstones).get_population() as i32;
+                p2_capstone_soft_flats += (level & p1_capstones).get_population() as i32;
             }
         }
 
-        p1_eval += p1_hard_flats * WEIGHT.hard_flat + p2_soft_flats * WEIGHT.soft_flat;
-        p2_eval += p2_hard_flats * WEIGHT.hard_flat + p1_soft_flats * WEIGHT.soft_flat;
+        p1_eval += p1_flatstone_hard_flats * WEIGHT.hard_flat.0 + p2_flatstone_soft_flats * WEIGHT.soft_flat.0;
+        p1_eval += p1_standing_stone_hard_flats * WEIGHT.hard_flat.1 + p2_standing_stone_soft_flats * WEIGHT.soft_flat.1;
+        p1_eval += p1_capstone_hard_flats * WEIGHT.hard_flat.2 + p2_capstone_soft_flats * WEIGHT.soft_flat.2;
+
+        p2_eval += p2_flatstone_hard_flats * WEIGHT.hard_flat.0 + p1_flatstone_soft_flats * WEIGHT.soft_flat.0;
+        p2_eval += p2_standing_stone_hard_flats * WEIGHT.hard_flat.1 + p1_standing_stone_soft_flats * WEIGHT.soft_flat.1;
+        p2_eval += p2_capstone_hard_flats * WEIGHT.hard_flat.2 + p1_capstone_soft_flats * WEIGHT.soft_flat.2;
 
         // Road groups
         let evaluate_groups = |groups: &Vec<Bitmap>| {
