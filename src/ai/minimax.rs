@@ -18,6 +18,7 @@
 //
 
 use std::cell::RefCell;
+use std::cmp;
 use std::fmt::{self, Write};
 
 use rand::{thread_rng, Rng};
@@ -241,8 +242,10 @@ const MIN_EVAL: Eval = -MAX_EVAL;
 
 const WIN_THRESHOLD: Eval = 99000;
 
+const END_GAME_FLATSTONE_THRESHOLD: [i32; 9] = [0, 0, 0, 5, 8, 10, 15, 20, 25];
+
 struct Weights {
-    flatstone: Eval,
+    flatstone: (Eval, Eval),
     standing_stone: Eval,
     capstone: Eval,
 
@@ -259,7 +262,7 @@ struct Weights {
 }
 
 const WEIGHT: Weights = Weights {
-    flatstone:          400,
+    flatstone:         (400, 800),
     standing_stone:     200,
     capstone:           300,
 
@@ -316,8 +319,23 @@ impl Evaluatable for State {
         let p1_capstones = a.p1_pieces & a.capstones;
         let p2_capstones = a.p2_pieces & a.capstones;
 
-        p1_eval += a.p1_flatstone_count as i32 * WEIGHT.flatstone;
-        p2_eval += a.p2_flatstone_count as i32 * WEIGHT.flatstone;
+        let (p1_flatstone_weight, p2_flatstone_weight) = {
+            let flatstone_threshold = END_GAME_FLATSTONE_THRESHOLD[a.board_size];
+
+            let p1_position = cmp::min(self.p1.flatstone_count as i32, flatstone_threshold);
+            let p2_position = cmp::min(self.p2.flatstone_count as i32, flatstone_threshold);
+
+            (
+                WEIGHT.flatstone.0 * p1_position / flatstone_threshold +
+                WEIGHT.flatstone.1 * (flatstone_threshold - p1_position) / flatstone_threshold,
+                WEIGHT.flatstone.0 * p2_position / flatstone_threshold +
+                WEIGHT.flatstone.1 * (flatstone_threshold - p2_position) / flatstone_threshold,
+            )
+        };
+
+        // Top-level pieces
+        p1_eval += a.p1_flatstone_count as i32 * p1_flatstone_weight;
+        p2_eval += a.p2_flatstone_count as i32 * p2_flatstone_weight;
 
         p1_eval += p1_standing_stones.get_population() as i32 * WEIGHT.standing_stone;
         p2_eval += p2_standing_stones.get_population() as i32 * WEIGHT.standing_stone;
