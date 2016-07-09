@@ -143,6 +143,10 @@ impl Ai for MinimaxBot {
             self.stats.iter().map(|stats| stats.borrow().clone()).collect::<Vec<Statistics>>()
         ))
     }
+
+    fn as_player(&self) -> &Player {
+        self
+    }
 }
 
 impl Player for MinimaxBot {

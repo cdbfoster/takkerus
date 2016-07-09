@@ -24,6 +24,7 @@ use tak::{Color, Direction, Piece, Player, Ply, State};
 pub trait Ai : Player {
     fn analyze(&mut self, state: &State) -> Vec<Ply>;
     fn get_stats(&self) -> Box<Display>;
+    fn as_player(&self) -> &Player;
 }
 
 pub use self::minimax::MinimaxBot;
