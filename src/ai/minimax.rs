@@ -567,6 +567,9 @@ mod tests {
         let mut p1_wins = 0;
         let mut p2_wins = 0;
 
+        let mut draws = 0;
+        let mut loops = 0;
+
         for _ in 1..(games + 1) {
             let mut state = State::new(5);
 
@@ -668,6 +671,11 @@ mod tests {
                     },
                     &plies[0].to_ptn(),
                 );
+
+                if ply_count >= 150 {
+                    loops += 1;
+                    break 'game;
+                }
             }
 
             match state.check_win() {
@@ -689,6 +697,7 @@ mod tests {
                     Color::White => p1_wins += 1,
                     Color::Black => p2_wins += 1,
                 },
+                Win::Draw => draws += 1,
                 _ => (),
             }
 
@@ -736,7 +745,9 @@ mod tests {
             total_time += p1_total_time + p2_total_time;
 
             println!("\nWhite wins: {} / {}", p1_wins, games);
-            println!("Black wins: {} / {}\n", p2_wins, games);
+            println!("Black wins: {} / {}", p2_wins, games);
+            println!("Draws: {} / {}", draws, games);
+            println!("Loops: {} / {}\n", loops, games);
         }
 
         println!("Games: {}", games);
