@@ -186,4 +186,28 @@ impl Ply {
 
         ptn
     }
+
+    pub fn hash(&self) -> u64 {
+        let mut hash = 0;
+        match self {
+            &Ply::Place { x, y, ref piece } => {
+                hash = x as u64;
+                hash = (hash << 3) | y as u64;
+                match piece {
+                    &Piece::Flatstone(color) =>     hash = (hash << 3) | color as u64,
+                    &Piece::StandingStone(color) => hash = (hash << 3) | 2 | color as u64,
+                    &Piece::Capstone(color) =>      hash = (hash << 3) | 4 | color as u64,
+                }
+            },
+            &Ply::Slide { x, y, direction, ref drops } => {
+                for drop in drops {
+                    hash = (hash << 3) | *drop as u64;
+                }
+                hash = (hash << 3) | x as u64;
+                hash = (hash << 3) | y as u64;
+                hash = (hash << 3) | direction as u64;
+            },
+        }
+        hash
+    }
 }
