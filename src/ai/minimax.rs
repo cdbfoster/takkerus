@@ -19,6 +19,7 @@
 
 use std::cell::RefCell;
 use std::cmp;
+use std::collections::BTreeMap;
 use std::fmt::{self, Write};
 
 use rand::{thread_rng, Rng};
@@ -29,6 +30,7 @@ use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Player, Ply, State, Win};
 
 pub struct MinimaxBot {
     depth: u8,
+    history: RefCell<BTreeMap<u64, u32>>,
     stats: Vec<RefCell<Statistics>>,
 }
 
@@ -36,6 +38,7 @@ impl MinimaxBot {
     pub fn new(depth: u8) -> MinimaxBot {
         MinimaxBot {
             depth: depth,
+            history: RefCell::new(BTreeMap::new()),
             stats: Vec::new(),
         }
     }
@@ -51,6 +54,7 @@ impl MinimaxBot {
         self.stats.last().unwrap().borrow_mut().visited += 1;
 
         let ply_generator = PlyGenerator::new(
+            self,
             state,
             match principal_variation.first() {
                 Some(ply) => Some(ply.clone()),
@@ -92,10 +96,15 @@ impl MinimaxBot {
                 alpha = next_eval;
 
                 principal_variation.clear();
-                principal_variation.push(ply);
+                principal_variation.push(ply.clone());
                 principal_variation.append(&mut next_principal_variation.clone());
 
                 if alpha >= beta {
+                    {
+                        let mut history = self.history.borrow_mut();
+                        let entry = history.entry(ply.hash()).or_insert(0);
+                        *entry += 1 << depth;
+                    }
                     return beta;
                 }
             }
@@ -110,6 +119,8 @@ impl MinimaxBot {
 impl Ai for MinimaxBot {
     fn analyze(&mut self, state: &State) -> Vec<Ply> {
         let mut principal_variation = Vec::new();
+
+        self.history.borrow_mut().clear();
 
         for depth in 1..self.depth + 1 {
             self.stats.push(RefCell::new(Statistics::new(depth)));
@@ -191,6 +202,7 @@ impl Statistics {
 }
 
 struct PlyGenerator<'a> {
+    ai: &'a MinimaxBot,
     state: &'a State,
     principal_ply: Option<Ply>,
     plies: Vec<Ply>,
@@ -198,8 +210,9 @@ struct PlyGenerator<'a> {
 }
 
 impl<'a> PlyGenerator<'a> {
-    fn new(state: &'a State, principal_ply: Option<Ply>) -> PlyGenerator<'a> {
+    fn new(ai: &'a MinimaxBot, state: &'a State, principal_ply: Option<Ply>) -> PlyGenerator<'a> {
         PlyGenerator {
+            ai: ai,
             state: state,
             principal_ply: principal_ply,
             plies: Vec::new(),
@@ -226,6 +239,17 @@ impl<'a> Iterator for PlyGenerator<'a> {
 
                 self.plies = self.state.get_possible_plies();
                 thread_rng().shuffle(self.plies.as_mut_slice());
+
+                {
+                    let history = self.ai.history.borrow();
+
+                    if !history.is_empty() {
+                        self.plies.sort_by(|a, b| {
+                            history.get(&a.hash()).unwrap_or(&0).cmp(
+                            history.get(&b.hash()).unwrap_or(&0))
+                        });
+                    }
+                }
             }
 
             if self.operation == 2 {
