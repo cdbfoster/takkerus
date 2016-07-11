@@ -65,9 +65,9 @@ fn main() {
 
     let action = if next.contains_key("-h") || next.contains_key("--help") {
         if next.contains_key("analyze") {
-            println!("Usage:\n  takkerus analyze [-t string | -s int] [-a string [AI options]]\n");
+            println!("Usage:\n  takkerus analyze [-f file | -s int] [-a string [AI options]]\n");
             println!("Analyzes a board in TPS format or a blank board of the specified size, using the specified AI.");
-            println!("    -t, --tps   string   Specifies a board in TPS format.");
+            println!("    -f, --file  file     Specifies a PTN file.");
             println!("    -s, --size  int      Specifies a blank board of Size. (default 5)");
             println!("    -a, --ai    string   The type of AI to use.  Options are:");
             println!("                           minimax (default)");
@@ -107,7 +107,7 @@ fn main() {
 
         let next = match arguments::collect_next(&mut args, &[
             Option("-s", "--size", 1),
-            Option("-t", "--tps", 1),
+            Option("-f", "--file", 1),
         ]) {
             Ok(arguments) => arguments,
             Err(error) => {
@@ -133,11 +133,11 @@ fn main() {
 
                 state = State::new(size);
             },
-            None => match next.get("--tps") {
-                Some(strings) => state = match State::from_tps(&strings[0]) {
-                    Some(state) => state,
-                    None => {
-                        println!("  Error:  Invalid TPS.");
+            None => match next.get("--file") {
+                Some(strings) => state = match logger::open_ptn_file(&strings[0]) {
+                    Ok(game) => game.to_state().unwrap(),
+                    Err(logger::PtnFileError(error)) => {
+                        println!("  Error: {}", error);
                         return;
                     },
                 },
