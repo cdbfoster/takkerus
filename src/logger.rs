@@ -612,13 +612,10 @@ pub fn populate_game(game: &mut Game, p1: &Player, p2: &Player) {
 }
 
 #[derive(Debug)]
-pub enum GameState {
-    New(Game),
-    Resume(Game),
-}
+pub struct PtnFileError(pub String);
 
-pub fn check_tmp_file() -> GameState {
-    match OpenOptions::new().read(true).open(GAMES_LOG_TMP) {
+pub fn open_ptn_file(file_name: &str) -> Result<Game, PtnFileError> {
+    match OpenOptions::new().read(true).open(file_name) {
         Ok(mut file) => {
             let mut data = String::new();
             file.read_to_string(&mut data).ok();
@@ -627,14 +624,27 @@ pub fn check_tmp_file() -> GameState {
 
             match parse_game(&mut source) {
                 Some(game) => if game.to_state().is_some() {
-                    GameState::Resume(game)
+                    Ok(game)
                 } else {
-                    GameState::New(Game::new())
+                    Err(PtnFileError(String::from("Invalid PTN")))
                 },
-                None => GameState::New(Game::new()),
+                None => Err(PtnFileError(String::from("Invalid PTN"))),
             }
         },
-        _ => GameState::New(Game::new())
+        _ => Err(PtnFileError(String::from("Cannot open PTN file"))),
+    }
+}
+
+#[derive(Debug)]
+pub enum GameState {
+    New(Game),
+    Resume(Game),
+}
+
+pub fn check_tmp_file() -> GameState {
+    match open_ptn_file(GAMES_LOG_TMP) {
+        Ok(game) => GameState::Resume(game),
+        _ => GameState::New(Game::new()),
     }
 }
 
