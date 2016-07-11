@@ -76,9 +76,8 @@ fn main() {
             println!("");
             return;
         } else if next.contains_key("play") {
-            println!("Usage:\n  takkerus play [-t string | -s int] [-p1 string [Options]] [-p2 string [Options]]\n");
+            println!("Usage:\n  takkerus play [-s int] [-p1 string [Options]] [-p2 string [Options]]\n");
             println!("Starts a game of Tak between any combination of humans and AIs.");
-            println!("    -t, --tps   string   Specifies a board in TPS format.");
             println!("    -s, --size  int      Specifies a blank board of Size. (default 5)");
             println!("    -p1         string   The type of player 1. Options are:");
             println!("                           human (default)");
@@ -200,7 +199,6 @@ fn main() {
 
         let next = match arguments::collect_next(&mut args, &[
             Option("-s", "--size", 1),
-            Option("-t", "--tps", 1),
         ]) {
             Ok(arguments) => arguments,
             Err(error) => {
@@ -226,16 +224,7 @@ fn main() {
 
                 state = State::new(size);
             },
-            None => match next.get("--tps") {
-                Some(strings) => state = match State::from_tps(&strings[0]) {
-                    Some(state) => state,
-                    None => {
-                        println!("  Error:  Invalid TPS.");
-                        return;
-                    },
-                },
-                None => (),
-            },
+            None => (),
         }
 
         let next = match arguments::collect_next(&mut args, &[Option("-p1", "-p1", 1)]) {
