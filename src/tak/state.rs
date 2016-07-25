@@ -240,6 +240,21 @@ impl State {
                 }
             },
             &Ply::Slide { x, y, direction, ref drops } => {
+                let next_color = if self.ply_count % 2 == 0 {
+                    Color::White
+                } else {
+                    Color::Black
+                };
+
+                match next.board[x][y].last() {
+                    Some(&Piece::Flatstone(color)) |
+                    Some(&Piece::StandingStone(color)) |
+                    Some(&Piece::Capstone(color)) => if color != next_color {
+                        return Err(GameError::IllegalMove);
+                    },
+                    _ => (),
+                }
+
                 let grab = drops.iter().fold(0, |acc, x| acc + x) as usize;
 
                 if grab > board_size || next.board[x][y].len() < grab {

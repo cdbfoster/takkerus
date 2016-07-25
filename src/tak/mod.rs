@@ -80,6 +80,7 @@ pub enum Win {
 
 #[derive(Debug)]
 pub enum GameError {
+    IllegalMove,
     IllegalPlacement,
     InsufficientPieces,
     IllegalSlide,
@@ -89,6 +90,7 @@ pub enum GameError {
 impl fmt::Display for GameError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            &GameError::IllegalMove => write!(f, "Illegal move."),
             &GameError::IllegalPlacement => write!(f, "Illegal placement."),
             &GameError::InsufficientPieces => write!(f, "Not enough pieces."),
             &GameError::IllegalSlide => write!(f, "Illegal slide."),
