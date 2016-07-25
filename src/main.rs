@@ -31,6 +31,9 @@ use std::env;
 use std::fmt::Write;
 use std::io::{self, Write as IoWrite};
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
 
 use ai::Ai;
 use ai::minimax::Evaluatable;
@@ -405,7 +408,29 @@ fn analyze(mut state: State, mut ai: Box<Ai>) {
 }
 
 fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
-    let mut game = match logger::check_tmp_file() {
+    let (p1_game_sender, p1_game_receiver) = mpsc::channel();
+    let (game_p1_sender, game_p1_receiver) = mpsc::channel();
+
+    let (p2_game_sender, p2_game_receiver) = mpsc::channel();
+    let (game_p2_sender, game_p2_receiver) = mpsc::channel();
+
+    match p1.initialize(p1_game_sender, game_p1_receiver, &*p2) {
+        Err(_) => {
+            println!("Error: Failed to initialize player 1.");
+            return;
+        },
+        _ => (),
+    }
+
+    match p2.initialize(p2_game_sender, game_p2_receiver, &*p1) {
+        Err(_) => {
+            println!("Error: Failed to initialize player 2.");
+            return;
+        },
+        _ => (),
+    }
+
+    let game = match logger::check_tmp_file() {
         logger::GameState::New(mut game) => {
             logger::populate_game(&mut game, &*p1, &*p2);
             game
@@ -446,76 +471,126 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
         },
     };
 
-    let mut ptn = String::new();
-    'main: loop {
-        if state.ply_count % 2 == 0 {
-            println!("\n--------------------------------------------------");
-            println!("{}", state);
-            if state.ply_count >= 2 {
-                println!("Previous turn:   {}\n", ptn);
-            } else {
-                println!("First turn\n");
-            }
+    let state = Arc::new(Mutex::new(state));
+    let game = Arc::new(Mutex::new(game));
 
-            'p1_move: loop {
-                let ply = p1.get_move(&state);
+    let (state_sender, state_receiver) = mpsc::channel();
 
-                match state.execute_ply(&ply) {
-                    Ok(next) => {
-                        state = next;
+    fn handle_player(state: Arc<Mutex<State>>, game: Arc<Mutex<logger::Game>>, own_sender: Sender<Message>, own_receiver: Receiver<Message>, opponent_sender: Sender<Message>, state_sender: Sender<()>) {
+        thread::spawn(move || {
+            for message in own_receiver.iter() {
+                match message {
+                    Message::MoveResponse(ply) => {
+                        let mut state = state.lock().unwrap();
+                        match state.execute_ply(&ply) {
+                            Ok(next) => {
+                                *state = next;
 
-                        ptn = String::new();
-                        write!(ptn, "{:<5} ", ply.to_ptn()).ok();
+                                game.lock().unwrap().plies.push(ply.clone());
 
-                        game.plies.push(ply.clone());
-                        logger::write_tmp_file(&game);
-
-                        break 'p1_move;
+                                state_sender.send(()).ok();
+                            },
+                            Err(error) => {
+                                println!("  {}", error);
+                                own_sender.send(Message::MoveRequest(state.clone())).ok();
+                            },
+                        }
                     },
-                    Err(error) => println!("  {}", error),
+                    Message::UndoRequest => {
+                        opponent_sender.send(Message::UndoRequest).ok();
+                    },
+                    Message::UndoResponse(undo) => {
+                        opponent_sender.send(Message::UndoResponse(undo)).ok();
+
+                        if undo {
+                            let mut game = game.lock().unwrap();
+
+                            game.plies.pop();
+                            *state.lock().unwrap() = game.to_state().unwrap();
+                        }
+
+                        state_sender.send(()).ok();
+                    },
+                    _ => (),
                 }
             }
-        } else {
-            ptn = String::new();
-            write!(ptn, "{:<5} ", game.plies.last().unwrap().to_ptn()).ok();
-        }
+        });
+    }
 
-        match state.check_win() {
-            Win::None => (),
-            _ => break 'main,
-        }
+    handle_player(state.clone(), game.clone(), game_p1_sender.clone(), p1_game_receiver, game_p2_sender.clone(), state_sender.clone());
+    handle_player(state.clone(), game.clone(), game_p2_sender.clone(), p2_game_receiver, game_p1_sender.clone(), state_sender.clone());
+
+    game_p1_sender.send(Message::GameStart).ok();
+    game_p2_sender.send(Message::GameStart).ok();
+
+    state_sender.send(()).ok();
+    let mut first_ply = true;
+
+    'main: for _ in state_receiver.iter() {
+        let state = state.lock().unwrap();
+        let game = game.lock().unwrap();
 
         println!("\n--------------------------------------------------");
-        println!("{}", state);
-        println!("Previous move:   {}\n", ptn);
+        println!("{}", *state);
 
-        'p2_move: loop {
-            let ply = p2.get_move(&state);
-
-            match state.execute_ply(&ply) {
-                Ok(next) => {
-                    state = next;
-
-                    write!(ptn, "{}", ply.to_ptn()).ok();
-
-                    game.plies.push(ply.clone());
-                    logger::write_tmp_file(&game);
-
-                    break 'p2_move;
+        let mut ptn = String::new();
+        if state.ply_count % 2 == 0 {
+            write!(ptn, "{:<5} {}",
+                if game.plies.len() >= 2 {
+                    game.plies[game.plies.len() - 2].to_ptn()
+                } else {
+                    String::from("--")
                 },
-                Err(error) => println!("  {}", error),
-            }
+                match game.plies.last() {
+                    Some(ply) => ply.to_ptn(),
+                    None => String::new(),
+                },
+            ).ok();
+        } else if game.plies.len() >= 1 {
+            write!(ptn, "{}", game.plies.last().unwrap().to_ptn()).ok();
+        } else {
+            write!(ptn, "--").ok();
         }
 
         match state.check_win() {
             Win::None => (),
-            _ => break 'main,
+            _ => {
+                println!("Final state:     {}\n", ptn);
+                break 'main;
+            },
+        }
+
+        if state.ply_count > 0 {
+            println!("Previous {}:   {}\n", if state.ply_count % 2 == 0 {
+                "turn"
+            } else {
+                "move"
+            }, ptn);
+        } else {
+            println!("\n");
+        }
+
+        println!("Turn {} ({})", state.ply_count / 2 + 1, if state.ply_count % 2 == 0 {
+            "White"
+        } else {
+            "Black"
+        });
+
+        if state.ply_count % 2 == 0 {
+            game_p1_sender.send(Message::MoveRequest(state.clone())).ok();
+        } else {
+            game_p2_sender.send(Message::MoveRequest(state.clone())).ok();
+        }
+
+        if first_ply {
+            first_ply = false;
+        } else {
+            logger::write_tmp_file(&*game);
         }
     }
 
-    println!("\n--------------------------------------------------");
-    println!("{}", state);
-    println!("Final state:     {}\n", ptn);
+    let state = state.lock().unwrap();
+    let mut game = game.lock().unwrap();
 
     match state.check_win() {
         Win::Road(color) => match color {
@@ -530,6 +605,6 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
         _ => (),
     }
 
-    logger::write_tmp_file(&game);
+    logger::write_tmp_file(&*game);
     logger::finalize_tmp_file();
 }

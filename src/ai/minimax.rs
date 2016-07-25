@@ -17,29 +17,36 @@
 // Copyright 2016 Chris Foster
 //
 
+use std::any::Any;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::BTreeMap;
 use std::fmt::{self, Write};
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, Sender};
+use std::thread;
 
 use rand::{thread_rng, Rng};
 use time;
 
 use ai::{Ai, Extrapolatable};
-use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Player, Ply, State, Win};
+use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Message, Player, Ply, State, Win};
 
-pub struct MinimaxBot {
+pub struct Minimax {
     depth: u8,
     history: RefCell<BTreeMap<u64, u32>>,
     stats: Vec<RefCell<Statistics>>,
+
+    cancel: Arc<Mutex<bool>>,
 }
 
-impl MinimaxBot {
-    pub fn new(depth: u8) -> MinimaxBot {
-        MinimaxBot {
+impl Minimax {
+    pub fn new(depth: u8) -> Minimax {
+        Minimax {
             depth: depth,
             history: RefCell::new(BTreeMap::new()),
             stats: Vec::new(),
+            cancel: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -110,13 +117,15 @@ impl MinimaxBot {
             }
 
             first_iteration = false;
+
+            if *self.cancel.lock().unwrap() == true {
+                return 0;
+            }
         }
 
         alpha
     }
-}
 
-impl Ai for MinimaxBot {
     fn analyze(&mut self, state: &State) -> Vec<Ply> {
         let mut principal_variation = Vec::new();
 
@@ -133,6 +142,24 @@ impl Ai for MinimaxBot {
         }
 
         principal_variation
+    }
+}
+
+pub struct MinimaxBot {
+    ai: Arc<Mutex<Minimax>>,
+}
+
+impl MinimaxBot {
+    pub fn new(depth: u8) -> MinimaxBot {
+        MinimaxBot {
+            ai: Arc::new(Mutex::new(Minimax::new(depth))),
+        }
+    }
+}
+
+impl Ai for MinimaxBot {
+    fn analyze(&mut self, state: &State) -> Vec<Ply> {
+        self.ai.lock().unwrap().analyze(state)
     }
 
     fn get_stats(&self) -> Box<fmt::Display> {
@@ -151,7 +178,7 @@ impl Ai for MinimaxBot {
         }
 
         Box::new(StatisticPrinter(
-            self.stats.iter().map(|stats| stats.borrow().clone()).collect::<Vec<Statistics>>()
+            self.ai.lock().unwrap().stats.iter().map(|stats| stats.borrow().clone()).collect::<Vec<Statistics>>()
         ))
     }
 
@@ -161,26 +188,68 @@ impl Ai for MinimaxBot {
 }
 
 impl Player for MinimaxBot {
-    fn get_move(&mut self, state: &State) -> Ply {
-        let old_time = time::precise_time_ns();
+    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, _: &Player) -> Result<(), ()> {
+        let ai = self.ai.clone();
+        let cancel = ai.lock().unwrap().cancel.clone();
+        let mut undos = 1;
 
-        let ply = self.analyze(state)[0].clone();
+        thread::spawn(move || {
+            for message in receiver.iter() {
+                match message {
+                    Message::MoveRequest(state) => {
+                        let sender = sender.clone();
+                        let ai = ai.clone();
+                        let cancel = cancel.clone();
 
-        let elapsed_time = time::precise_time_ns() - old_time;
+                        {
+                            let mut cancel = cancel.lock().unwrap();
+                            if *cancel == true {
+                                *cancel = false;
+                            }
+                        }
 
-        println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds", self.depth, elapsed_time as f32 / 1000000000.0);
+                        thread::spawn(move || {
+                            let old_time = time::precise_time_ns();
+                            let ply = ai.lock().unwrap().analyze(&state)[0].clone();
+                            let elapsed_time = time::precise_time_ns() - old_time;
 
-        ply
+                            let mut cancel = cancel.lock().unwrap();
+                            if *cancel == false {
+                                println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds", ai.lock().unwrap().depth, elapsed_time as f32 / 1000000000.0);
+
+                                sender.send(Message::MoveResponse(ply)).ok();
+                            } else {
+                                *cancel = false;
+                            }
+                        });
+                    },
+                    Message::UndoRequest => if undos > 0 {
+                        undos -= 1;
+                        *cancel.lock().unwrap() = true;
+                        sender.send(Message::UndoResponse(true)).ok();
+                    } else {
+                        sender.send(Message::UndoResponse(false)).ok();
+                    },
+                    _ => (),
+                }
+            }
+        });
+
+        Ok(())
     }
 
     fn get_name(&self) -> String {
         let mut name = String::new();
         write!(name, "Takkerus v{} (MinimaxBot - Depth: {})",
             option_env!("CARGO_PKG_VERSION").unwrap_or("Unknown"),
-            self.depth,
+            self.ai.lock().unwrap().depth,
         ).ok();
 
         name
+    }
+
+    fn as_any(&self) -> &Any {
+        self
     }
 }
 
@@ -202,7 +271,7 @@ impl Statistics {
 }
 
 struct PlyGenerator<'a> {
-    ai: &'a MinimaxBot,
+    ai: &'a Minimax,
     state: &'a State,
     principal_ply: Option<Ply>,
     plies: Vec<Ply>,
@@ -210,7 +279,7 @@ struct PlyGenerator<'a> {
 }
 
 impl<'a> PlyGenerator<'a> {
-    fn new(ai: &'a MinimaxBot, state: &'a State, principal_ply: Option<Ply>) -> PlyGenerator<'a> {
+    fn new(ai: &'a Minimax, state: &'a State, principal_ply: Option<Ply>) -> PlyGenerator<'a> {
         PlyGenerator {
             ai: ai,
             state: state,

@@ -17,11 +17,24 @@
 // Copyright 2016 Chris Foster
 //
 
+use std::any::Any;
+use std::sync::mpsc::{Receiver, Sender};
+
 use tak::{Color, Ply, State};
 
 pub trait Player {
-    fn get_move(&mut self, state: &State) -> Ply;
+    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, opponent: &Player) -> Result<(), ()>;
     fn get_name(&self) -> String;
+    fn as_any(&self) -> &Any;
+}
+
+#[derive(Debug)]
+pub enum Message {
+    GameStart,
+    MoveRequest(State),
+    MoveResponse(Ply),
+    UndoRequest,
+    UndoResponse(bool),
 }
 
 #[derive(Clone, Debug)]
