@@ -120,9 +120,7 @@ impl Player for PlaytakPlayer {
                     let reader = BufReader::new(stream);
 
                     for line in reader.lines() {
-                        let line = line.unwrap().trim().to_string();
-                        println!("{}", line); // XXX Stop doing this
-                        connection_sender.send(line).ok();
+                        connection_sender.send(line.unwrap().trim().to_string()).ok();
                     }
                 })
             };
@@ -322,11 +320,13 @@ impl Player for PlaytakPlayer {
                 }
             }
 
+            let color = Arc::new(Mutex::new(Color::White));
             let state = Arc::new(Mutex::new(State::new(game_info_clone.lock().unwrap().size)));
             let request_undo = Arc::new(Mutex::new(false));
 
             // Game listener
             {
+                let color = color.clone();
                 let stream = stream.clone();
                 let game_info = game_info_clone.clone();
                 let state = state.clone();
@@ -335,6 +335,9 @@ impl Player for PlaytakPlayer {
                 thread::spawn(move || {
                     for message in receiver.iter() {
                         match message {
+                            Message::GameStart(own_color) => {
+                                *color.lock().unwrap() = own_color;
+                            },
                             Message::MoveRequest(new_state, Some(ply)) |
                             Message::FinalMove(new_state, ply) => {
                                 *state.lock().unwrap() = new_state;
@@ -355,6 +358,11 @@ impl Player for PlaytakPlayer {
                                 write_stream(&mut *stream.lock().unwrap(), &[
                                     &game_info.lock().unwrap().id,
                                     "RemoveUndo",
+                                ]).ok();
+                            },
+                            Message::Quit(_) => {
+                                write_stream(&mut *stream.lock().unwrap(), &[
+                                    "quit",
                                 ]).ok();
                             },
                             _ => (),
@@ -408,10 +416,12 @@ impl Player for PlaytakPlayer {
                         sender.send(Message::UndoRequest).ok();
                         sender.send(Message::Undo).ok();
                     }
+                } else if parts[1] == "Abandoned." {
+                    sender.send(Message::Quit(*color.lock().unwrap())).ok();
                 }
             }
 
-            // XXX Send some kind of message here (disconnect, or abandon, or something)
+            sender.send(Message::Quit(*color.lock().unwrap())).ok(); // Disconnected
         });
 
         match initialize_receiver.recv().unwrap() {

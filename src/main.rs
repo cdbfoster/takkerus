@@ -614,7 +614,12 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
 
                         game_sender.send(message).ok();
                     },
+                    Message::Quit(_) => {
+                        opponent_sender.send(message.clone()).ok();
+                        game_sender.send(message).ok();
+                    },
                     Message::EarlyEnd(_) => {
+                        opponent_sender.send(message.clone()).ok();
                         game_sender.send(message).ok();
                     },
                     _ => (),
@@ -626,10 +631,10 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
     handle_player(state.clone(), game.clone(), game_p1_sender.clone(), p1_game_receiver, game_p2_sender.clone(), game_sender.clone());
     handle_player(state.clone(), game.clone(), game_p2_sender.clone(), p2_game_receiver, game_p1_sender.clone(), game_sender.clone());
 
-    game_p1_sender.send(Message::GameStart).ok();
-    game_p2_sender.send(Message::GameStart).ok();
+    game_p1_sender.send(Message::GameStart(Color::White)).ok();
+    game_p2_sender.send(Message::GameStart(Color::Black)).ok();
 
-    game_sender.send(Message::GameStart).ok();
+    game_sender.send(Message::GameStart(Color::White)).ok();
     let mut first_ply = true;
 
     'main: for message in game_receiver.iter() {
@@ -675,16 +680,6 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
             },
         }
 
-        if let Message::EarlyEnd(string) = message.clone() {
-            if string == "1-0" {
-                println!("Player 1 wins. (1-0)");
-            } else if string == "0-1" {
-                println!("Player 2 wins. (0-1)");
-            }
-            game.header.result = string;
-            break 'main;
-        }
-
         if state.ply_count > 0 {
             println!("Previous {}:   {}\n", if state.ply_count % 2 == 0 {
                 "turn"
@@ -693,6 +688,27 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
             }, ptn);
         } else {
             println!("\n");
+        }
+
+        if let Message::Quit(color) = message.clone() {
+            if color == Color::Black {
+                println!("Player 1 wins. (1-0)");
+                game.header.result = String::from("1-0");
+            } else {
+                println!("Player 2 wins. (0-1)");
+                game.header.result = String::from("0-1");
+            }
+            break 'main;
+        }
+
+        if let Message::EarlyEnd(string) = message.clone() {
+            if string == "1-0" {
+                println!("Player 1 wins. (1-0)");
+            } else if string == "0-1" {
+                println!("Player 2 wins. (0-1)");
+            }
+            game.header.result = string;
+            break 'main;
         }
 
         println!("Turn {} ({})", state.ply_count / 2 + 1, if state.ply_count % 2 == 0 {

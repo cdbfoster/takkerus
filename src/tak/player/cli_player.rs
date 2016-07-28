@@ -45,6 +45,7 @@ impl Player for CliPlayer {
 
         #[derive(Clone)]
         struct Data {
+            color: Arc<Mutex<Color>>,
             state: Arc<Mutex<State>>,
             wait_move: Arc<Mutex<bool>>,
             wait_undo: Arc<Mutex<bool>>,
@@ -52,6 +53,7 @@ impl Player for CliPlayer {
         }
 
         let data = Data {
+            color: Arc::new(Mutex::new(Color::White)),
             state: Arc::new(Mutex::new(State::new(5))),
             wait_move: Arc::new(Mutex::new(false)),
             wait_undo: Arc::new(Mutex::new(false)),
@@ -72,7 +74,8 @@ impl Player for CliPlayer {
                     }
 
                     match message {
-                        Message::GameStart => {
+                        Message::GameStart(color) => {
+                            *data.color.lock().unwrap() = color;
                             game_start_sender.send(()).ok();
                             game_started = true;
                         },
@@ -172,7 +175,13 @@ impl Player for CliPlayer {
                 println!("Commands:");
                 println!("  undo        - Requests an undo from your opponent of the most recent move.");
                 println!("  cancel undo - Removes your request for an undo.");
+                println!("  quit        - Forfeits the game and exits.");
                 println!("  [move]      - Enters your move in PTN format, e.g. a1, or 3d3<12.");
+                return;
+            }
+
+            if input == "quit" {
+                sender.send(Message::Quit(*data.color.lock().unwrap())).ok();
                 return;
             }
 

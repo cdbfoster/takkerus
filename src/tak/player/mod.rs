@@ -30,13 +30,14 @@ pub trait Player {
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    GameStart,
+    GameStart(Color),
     MoveRequest(State, Option<Ply>),
     MoveResponse(Ply),
     Undo,
     UndoRequest,
     RemoveUndoRequest,
     FinalMove(State, Ply),
+    Quit(Color),
     EarlyEnd(String),
 }
 
