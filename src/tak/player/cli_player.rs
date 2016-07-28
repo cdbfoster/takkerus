@@ -38,12 +38,8 @@ impl CliPlayer {
 }
 
 impl Player for CliPlayer {
-    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, opponent: &Player) -> Result<(), ()> {
-        let share_stdin = if opponent.as_any().is::<CliPlayer>() {
-            true
-        } else {
-            false
-        };
+    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, opponent: &Player) -> Result<(), String> {
+        let share_stdin = opponent.as_any().is::<CliPlayer>();
 
         let (game_start_sender, game_start_receiver) = mpsc::channel();
 
@@ -52,12 +48,14 @@ impl Player for CliPlayer {
             state: Arc<Mutex<State>>,
             wait_move: Arc<Mutex<bool>>,
             wait_undo: Arc<Mutex<bool>>,
+            request_undo: Arc<Mutex<bool>>,
         }
 
         let data = Data {
             state: Arc::new(Mutex::new(State::new(5))),
             wait_move: Arc::new(Mutex::new(false)),
             wait_undo: Arc::new(Mutex::new(false)),
+            request_undo: Arc::new(Mutex::new(false)),
         };
 
         {
@@ -78,31 +76,47 @@ impl Player for CliPlayer {
                             game_start_sender.send(()).ok();
                             game_started = true;
                         },
-                        Message::MoveRequest(ref new_state) => {
+                        Message::MoveRequest(ref new_state, _) => {
                             *data.state.lock().unwrap() = new_state.clone();
                             *data.wait_move.lock().unwrap() = true;
+
+                            if !share_stdin {
+                                *data.wait_undo.lock().unwrap() = false;
+
+                                {
+                                    let mut request_undo = data.request_undo.lock().unwrap();
+                                    if *request_undo == true {
+                                        *request_undo = false;
+                                        println!("\n  Your opponent ignored your undo request.");
+                                    }
+                                }
+
+                                prompt(&data);
+                            }
                         },
                         Message::UndoRequest => {
-                            *data.wait_undo.lock().unwrap() = true;
-                            *data.wait_move.lock().unwrap() = false;
+                            {
+                                let mut request_undo = data.request_undo.lock().unwrap();
+                                if *request_undo == true {
+                                    println!("\n  Your opponent accepted your undo request.");
+                                    *request_undo = false;
+                                } else {
+                                    *data.wait_undo.lock().unwrap() = true;
+                                    println!("\n  Your opponent requests an undo.");
+                                }
+                            }
+
+                            prompt(&data);
                         },
-                        Message::UndoResponse(undo) => if undo {
-                            println!("  Your undo request was accepted.");
-                        } else {
-                            println!("  Your undo request was rejected.");
+                        Message::RemoveUndoRequest => if *data.wait_undo.lock().unwrap() == true {
+                            println!("\n  Your opponent has removed their undo request.");
+                            *data.wait_undo.lock().unwrap() = false;
+                            prompt(&data);
                         },
                         _ => (),
                     }
 
                     if game_started {
-                        match message {
-                            Message::MoveRequest(_) |
-                            Message::UndoRequest => {
-                                prompt(&data);
-                            },
-                            _ => (),
-                        }
-
                         if share_stdin && child.is_none() && waiting(&data) {
                             let sender = sender.clone();
                             let data = data.clone();
@@ -110,7 +124,8 @@ impl Player for CliPlayer {
                             child = Some(thread::spawn(move || {
                                 loop {
                                     if waiting(&data) {
-                                        process_command(&sender, &data);
+                                        prompt(&data);
+                                        process_command(&sender, &data, share_stdin);
                                     } else {
                                         break;
                                     }
@@ -130,7 +145,11 @@ impl Player for CliPlayer {
                 game_start_receiver.recv().ok();
 
                 loop {
-                    process_command(&sender, &data);
+                    process_command(&sender, &data, share_stdin);
+
+                    if *data.wait_move.lock().unwrap() == true {
+                        prompt(&data)
+                    }
                 }
             });
         }
@@ -140,65 +159,107 @@ impl Player for CliPlayer {
             *data.wait_undo.lock().unwrap()
         }
 
-        fn process_command(sender: &Sender<Message>, data: &Data) {
-            loop {
-                let input = {
-                    let mut input = String::new();
-                    match io::stdin().read_line(&mut input) {
-                        Ok(_) => input.trim().to_string(),
-                        Err(error) => panic!("Error: {}", error),
-                    }
-                };
+        fn process_command(sender: &Sender<Message>, data: &Data, share_stdin: bool) {
+            let input = {
+                let mut input = String::new();
+                match io::stdin().read_line(&mut input) {
+                    Ok(_) => input.trim().to_string(),
+                    Err(error) => panic!("Error: {}", error),
+                }
+            };
 
-                {
-                    let mut wait_undo = data.wait_undo.lock().unwrap();
-                    if *wait_undo == true {
-                        if input == "accept" {
-                            *wait_undo = false;
-                            sender.send(Message::UndoResponse(true)).ok();
-                            break;
-                        } else if input == "reject" {
-                            *wait_undo = false;
-                            sender.send(Message::UndoResponse(false)).ok();
-                            break;
+            if input == "help" {
+                println!("Commands:");
+                println!("  undo        - Requests an undo from your opponent of the most recent move.");
+                println!("  cancel undo - Removes your request for an undo.");
+                println!("  [move]      - Enters your move in PTN format, e.g. a1, or 3d3<12.");
+                return;
+            }
+
+            {
+                let mut request_undo = data.request_undo.lock().unwrap();
+                if *request_undo == true {
+                    if input == "cancel undo" {
+                        *request_undo = false;
+                        sender.send(Message::RemoveUndoRequest).ok();
+                    } else {
+                        println!("  You've requested an undo from your opponent.");
+                        println!("  Enter \"cancel undo\" if you'd like to withdraw your request.");
+                    }
+                    return;
+                } else if input == "undo" {
+                    if !share_stdin {
+                        if *data.wait_undo.lock().unwrap() == false {
+                            *request_undo = true;
+                            sender.send(Message::UndoRequest).ok();
+                        } else {
+                            println!("  Your opponent is already waiting for a response to an undo request.");
+                            println!("  Enter \"accept\" to accept their request.");
                         }
-                    } else if input == "undo" {
-                        *data.wait_move.lock().unwrap() = false;
-                        sender.send(Message::UndoRequest).ok();
-                        break;
-                    }
-                }
+                        return;
+                    } else {
+                        loop {
+                            println!("  Your opponent requests an undo.");
+                            println!("  Do you accept?");
+                            print!("Enter \"accept\" or \"reject\": ");
+                            io::stdout().flush().ok();
 
-                if input == "help" {
-                    println!("Commands:");
-                    println!("  undo   - Requests an undo from your opponent of the most recent move.");
-                    println!("  [move] - Enters your move in PTN format, e.g. a1, or 3d3<12.");
-                    prompt(&data);
-                    break;
-                }
+                            let input = {
+                                let mut input = String::new();
+                                match io::stdin().read_line(&mut input) {
+                                    Ok(_) => input.trim().to_string(),
+                                    Err(error) => panic!("Error: {}", error),
+                                }
+                            };
 
-                {
-                    let mut wait_move = data.wait_move.lock().unwrap();
-                    if *wait_move == true {
-                        match parse_ply(&input, &*data.state.lock().unwrap()) {
-                            Some(ply) => {
-                                *wait_move = false;
-                                sender.send(Message::MoveResponse(ply)).ok();
+                            if input == "accept" {
+                                *data.wait_move.lock().unwrap() = false;
+                                sender.send(Message::Undo).ok();
                                 break;
-                            },
-                            None => (),
+                            } else if input == "reject" {
+                                break;
+                            }
                         }
+                        return;
                     }
                 }
+            }
 
-                prompt(&data);
+            {
+                let mut wait_undo = data.wait_undo.lock().unwrap();
+                if *wait_undo == true {
+                    if input == "accept" {
+                        *wait_undo = false;
+                        sender.send(Message::UndoRequest).ok();
+                        sender.send(Message::Undo).ok();
+                        return;
+                    } else if input == "reject" {
+                        *wait_undo = false;
+                        return;
+                    }
+                }
+            }
+
+            {
+                let mut wait_move = data.wait_move.lock().unwrap();
+                if *wait_move == true {
+                    match parse_ply(&input, &*data.state.lock().unwrap()) {
+                        Some(ply) => {
+                            *wait_move = false;
+                            *data.wait_undo.lock().unwrap() = false;
+                            sender.send(Message::MoveResponse(ply)).ok();
+                        },
+                        None => (),
+                    }
+                }
             }
         }
 
         fn prompt(data: &Data) {
             if *data.wait_undo.lock().unwrap() == true {
-                println!("Your opponent requested to undo the last move.");
-                print!("  Enter response (\"accept\" or \"reject\"): ");
+                print!("Enter command (Your opponent requested an undo): ");
+            } else if *data.request_undo.lock().unwrap() == true {
+                print!("Enter command (You requested an undo): ");
             } else {
                 print!("Enter command: ");
             }

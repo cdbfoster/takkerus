@@ -188,7 +188,7 @@ impl Ai for MinimaxBot {
 }
 
 impl Player for MinimaxBot {
-    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, _: &Player) -> Result<(), ()> {
+    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, _: &Player) -> Result<(), String> {
         let ai = self.ai.clone();
         let cancel = ai.lock().unwrap().cancel.clone();
         let mut undos = 1;
@@ -196,7 +196,7 @@ impl Player for MinimaxBot {
         thread::spawn(move || {
             for message in receiver.iter() {
                 match message {
-                    Message::MoveRequest(state) => {
+                    Message::MoveRequest(state, _) => {
                         let sender = sender.clone();
                         let ai = ai.clone();
                         let cancel = cancel.clone();
@@ -226,9 +226,8 @@ impl Player for MinimaxBot {
                     Message::UndoRequest => if undos > 0 {
                         undos -= 1;
                         *cancel.lock().unwrap() = true;
-                        sender.send(Message::UndoResponse(true)).ok();
-                    } else {
-                        sender.send(Message::UndoResponse(false)).ok();
+                        sender.send(Message::UndoRequest).ok();
+                        sender.send(Message::Undo).ok();
                     },
                     _ => (),
                 }

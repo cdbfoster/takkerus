@@ -23,18 +23,21 @@ use std::sync::mpsc::{Receiver, Sender};
 use tak::{Color, Ply, State};
 
 pub trait Player {
-    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, opponent: &Player) -> Result<(), ()>;
+    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, opponent: &Player) -> Result<(), String>;
     fn get_name(&self) -> String;
     fn as_any(&self) -> &Any;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Message {
     GameStart,
-    MoveRequest(State),
+    MoveRequest(State, Option<Ply>),
     MoveResponse(Ply),
+    Undo,
     UndoRequest,
-    UndoResponse(bool),
+    RemoveUndoRequest,
+    FinalMove(State, Ply),
+    EarlyEnd(String),
 }
 
 #[derive(Clone, Debug)]
@@ -55,3 +58,4 @@ impl Seat {
 }
 
 pub mod cli_player;
+pub mod playtak_player;
