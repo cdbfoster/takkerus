@@ -572,6 +572,7 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
     } else {
         let mut game = logger::Game::new();
         logger::populate_game(&mut game, &*p1, &*p2);
+        game.header.site = String::from("playtak.com");
         game
     };
 
