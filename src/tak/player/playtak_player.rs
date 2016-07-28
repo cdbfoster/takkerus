@@ -463,10 +463,10 @@ fn ply_to_playtak(ply: &Ply) -> String {
             format_square(x, y),
             {
                 let (dx, dy) = direction.to_offset();
-                let (tx, ty) = (x + dx as usize * drops.len(), y + dy as usize * drops.len());
-                format_square(tx, ty)
+                let (tx, ty) = (x as i8 + dx * drops.len() as i8, y as i8 + dy * drops.len() as i8);
+                format_square(tx as usize, ty as usize)
             },
-            drops.iter().map(|drop| format!(" {}", drop)).collect::<Vec<_>>().join(" "),
+            drops.iter().map(|drop| format!(" {}", drop)).collect::<Vec<_>>().join(""),
         ),
     }
 }
