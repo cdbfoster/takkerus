@@ -34,6 +34,7 @@ use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Message, Player, Ply, Sta
 
 pub struct Minimax {
     depth: u8,
+    limit: u8,
     history: RefCell<BTreeMap<u64, u32>>,
     stats: Vec<RefCell<Statistics>>,
 
@@ -41,9 +42,10 @@ pub struct Minimax {
 }
 
 impl Minimax {
-    pub fn new(depth: u8) -> Minimax {
+    pub fn new(depth: u8, limit: u8) -> Minimax {
         Minimax {
             depth: depth,
+            limit: limit,
             history: RefCell::new(BTreeMap::new()),
             stats: Vec::new(),
             cancel: Arc::new(Mutex::new(false)),
@@ -131,12 +133,35 @@ impl Minimax {
 
         self.history.borrow_mut().clear();
 
-        for depth in 1..self.depth + 1 {
+        let max_depth = if self.depth == 0 {
+            15
+        } else {
+            self.depth
+        };
+
+        let start_move = time::precise_time_ns();
+
+        for depth in 1..max_depth + 1 {
             self.stats.push(RefCell::new(Statistics::new(depth)));
+
+            let start_search = time::precise_time_ns();
 
             let eval = self.minimax(state, &mut principal_variation, depth, MIN_EVAL, MAX_EVAL);
 
             if eval.abs() > WIN_THRESHOLD {
+                break;
+            }
+
+            let elapsed_search = (time::precise_time_ns() - start_search) as f32 / 1000000000.0;
+            let elapsed_move = (time::precise_time_ns() - start_move) as f32 / 1000000000.0;
+
+            let factor = if depth % 2 == 1 {
+                6.5
+            } else {
+                9.5
+            };
+
+            if self.limit != 0 && elapsed_move + elapsed_search * factor > self.limit as f32 {
                 break;
             }
         }
@@ -152,7 +177,7 @@ pub struct MinimaxBot {
 impl MinimaxBot {
     pub fn new(depth: u8) -> MinimaxBot {
         MinimaxBot {
-            ai: Arc::new(Mutex::new(Minimax::new(depth))),
+            ai: Arc::new(Mutex::new(Minimax::new(depth, 60))),
         }
     }
 }
@@ -210,14 +235,14 @@ impl Player for MinimaxBot {
 
                         thread::spawn(move || {
                             let old_time = time::precise_time_ns();
-                            let ply = ai.lock().unwrap().analyze(&state)[0].clone();
+                            let plies = ai.lock().unwrap().analyze(&state);
                             let elapsed_time = time::precise_time_ns() - old_time;
 
                             let mut cancel = cancel.lock().unwrap();
                             if *cancel == false {
-                                println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds", ai.lock().unwrap().depth, elapsed_time as f32 / 1000000000.0);
+                                println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds", plies.len(), elapsed_time as f32 / 1000000000.0);
 
-                                sender.send(Message::MoveResponse(ply)).ok();
+                                sender.send(Message::MoveResponse(plies[0].clone())).ok();
                             } else {
                                 *cancel = false;
                             }
