@@ -282,7 +282,7 @@ fn main() {
 
                     match next.get("--depth") {
                         Some(strings) => depth = match u8::from_str(&strings[0]) {
-                            Ok(depth) => if depth > 0 && depth <= 10 {
+                            Ok(depth) => if depth <= 15 {
                                 depth
                             } else {
                                 return Err(String::from("  Error: Invalid minimax search depth."));
