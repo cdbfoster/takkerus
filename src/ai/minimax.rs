@@ -21,7 +21,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::BTreeMap;
-use std::fmt::{self, Write};
+use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
@@ -263,13 +263,10 @@ impl Player for MinimaxBot {
     }
 
     fn get_name(&self) -> String {
-        let mut name = String::new();
-        write!(name, "Takkerus v{} (MinimaxBot - Depth: {})",
+        format!("Takkerus v{} (MinimaxBot - Depth: {})",
             option_env!("CARGO_PKG_VERSION").unwrap_or("Unknown"),
             self.ai.lock().unwrap().depth,
-        ).ok();
-
-        name
+        )
     }
 
     fn as_any(&self) -> &Any {

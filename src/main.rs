@@ -29,8 +29,7 @@ mod logger;
 mod tak;
 
 use std::env;
-use std::fmt::Write;
-use std::io::{self, Write as IoWrite};
+use std::io::{self, Write};
 use std::mem;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -645,9 +644,8 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
         println!("\n--------------------------------------------------");
         println!("{}", *state);
 
-        let mut ptn = String::new();
-        if state.ply_count % 2 == 0 {
-            write!(ptn, "{:<5} {}",
+        let ptn = if state.ply_count % 2 == 0 {
+            format!("{:<5} {}",
                 if game.plies.len() >= 2 {
                     game.plies[game.plies.len() - 2].to_ptn()
                 } else {
@@ -657,12 +655,12 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
                     Some(ply) => ply.to_ptn(),
                     None => String::new(),
                 },
-            ).ok();
+            )
         } else if game.plies.len() >= 1 {
-            write!(ptn, "{}", game.plies.last().unwrap().to_ptn()).ok();
+            format!("{}", game.plies.last().unwrap().to_ptn())
         } else {
-            write!(ptn, "--").ok();
-        }
+            String::from("--")
+        };
 
         match state.check_win() {
             Win::None => (),

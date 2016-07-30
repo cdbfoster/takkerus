@@ -18,10 +18,10 @@
 //
 
 use std::collections::HashMap;
-use std::fmt::{self, Write};
+use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::iter::Peekable;
-use std::io::{Read, Write as IoWrite};
+use std::io::{Read, Write};
 use std::str::{Chars, FromStr};
 
 use time;
@@ -48,9 +48,7 @@ impl Game {
                 round: String::new(),
                 date: {
                     let t = time::now();
-                    let mut date = String::new();
-                    write!(date, "{:4}.{:02}.{:02}", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday).ok();
-                    date
+                    format!("{:4}.{:02}.{:02}", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday)
                 },
                 result: String::new(),
                 size: 5,
@@ -64,9 +62,7 @@ impl Game {
         let mut state = if self.header.tps.is_empty() {
             State::new(self.header.size as usize)
         } else {
-            let mut tps = String::new();
-            write!(tps, "[TPS \"{}\"]", self.header.tps).ok();
-            State::from_tps(&tps).unwrap()
+            State::from_tps(&format!("[TPS \"{}\"]", self.header.tps)).unwrap()
         };
 
         for ply in self.plies.iter() {
@@ -338,12 +334,7 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
         return None;
     }
 
-    let state = {
-        let mut tps = String::new();
-        write!(tps, "[TPS \"{}\"]", header.tps).ok();
-
-        State::from_tps(&tps)
-    };
+    let state = State::from_tps(&format!("[TPS \"{}\"]", header.tps));
 
     if state.is_none() && !header.tps.is_empty() {
         return None;
@@ -543,9 +534,7 @@ fn parse_game(source: &mut Peekable<Chars>) -> Option<Game> {
     let turn_offset = if header.tps.is_empty() {
         0
     } else {
-        let mut tps = String::new();
-        write!(tps, "[TPS \"{}\"]", header.tps).ok();
-        State::from_tps(&tps).unwrap().ply_count as usize / 2
+        State::from_tps(&format!("[TPS \"{}\"]", header.tps)).unwrap().ply_count as usize / 2
     };
 
     let plies = match parse_plies(source, turn_offset) {
@@ -607,8 +596,7 @@ pub fn populate_game(game: &mut Game, p1: &Player, p2: &Player) {
         None => 1,
     };
 
-    game.header.round.clear();
-    write!(game.header.round, "{}", round).ok();
+    game.header.round = format!("{}", round);
 }
 
 #[derive(Debug)]
