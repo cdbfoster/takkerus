@@ -539,6 +539,7 @@ impl fmt::Display for State {
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub struct StateSignature {
     pub next_color: Color,
+
     // The maps of the flatstones at each layer of the board for each player
     pub p1_flatstones: Vec<Bitmap>,
     pub p2_flatstones: Vec<Bitmap>,
