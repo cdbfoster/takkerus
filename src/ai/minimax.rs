@@ -402,6 +402,7 @@ const WEIGHT: Weights = Weights {
 
 pub trait Evaluatable {
     fn evaluate(&self) -> Eval;
+    fn evaluate_plies(&self, plies: &[Ply]) -> Eval;
 }
 
 impl Evaluatable for State {
@@ -639,6 +640,17 @@ impl Evaluatable for State {
             Color::Black => p2_eval - p1_eval,
         }
     }
+
+    fn evaluate_plies(&self, plies: &[Ply]) -> Eval {
+        let mut temp_state = self.clone();
+        for ply in plies.iter() {
+            match temp_state.execute_ply(ply) {
+                Ok(next) => temp_state = next,
+                Err(error) => panic!("Error calculating evaluation: {}, {}", error, ply.to_ptn()),
+            }
+        }
+        temp_state.evaluate() * -((plies.len() as i32 % 2) * 2 - 1)
+    }
 }
 
 #[cfg(test)]
@@ -690,16 +702,7 @@ mod tests {
                     p2.analyze(&state)
                 };
 
-                let eval = {
-                    let mut temp_state = state.clone();
-                    for ply in plies.iter() {
-                        match temp_state.execute_ply(ply) {
-                            Ok(next) => temp_state = next,
-                            Err(error) => panic!("Error calculating evaluation: {}", error),
-                        }
-                    }
-                    temp_state.evaluate() * -((plies.len() as i32 % 2) * 2 - 1)
-                };
+                let eval = state.evaluate_plies(&plies);
 
                 let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
 
