@@ -760,7 +760,6 @@ impl Evaluatable for State {
 #[cfg(test)]
 mod tests {
     use std::f32;
-    use std::fmt::Write;
     use time;
 
     use tak::*;
