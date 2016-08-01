@@ -26,11 +26,15 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
-use rand::{thread_rng, Rng};
+use rand::{Rng, SeedableRng, StdRng};
 use time;
 
 use ai::{Ai, Extrapolatable};
 use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Message, Player, Ply, State, Win};
+
+lazy_static! {
+    pub static ref RNG: Mutex<StdRng> = Mutex::new(StdRng::from_seed(&[time::precise_time_ns() as usize]));
+}
 
 pub struct Minimax {
     depth: u8,
@@ -328,7 +332,7 @@ impl<'a> Iterator for PlyGenerator<'a> {
                 self.operation += 1;
 
                 self.plies = self.state.get_possible_plies();
-                thread_rng().shuffle(self.plies.as_mut_slice());
+                RNG.lock().unwrap().shuffle(self.plies.as_mut_slice());
 
                 {
                     let history = self.ai.history.borrow();
