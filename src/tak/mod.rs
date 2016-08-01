@@ -19,7 +19,7 @@
 
 use std::fmt;
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq, Debug)]
 pub enum Color {
     White,
     Black,
@@ -34,7 +34,7 @@ impl Color {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, Hash, PartialEq, Debug)]
 pub enum Piece {
     Flatstone(Color),
     StandingStone(Color),
@@ -101,7 +101,7 @@ impl fmt::Display for GameError {
 
 pub use self::player::*;
 pub use self::ply::Ply;
-pub use self::state::State;
+pub use self::state::{State, StateSignature};
 pub use self::state_analysis::{Bitmap, BitmapInterface, BOARD, EDGE, StateAnalysis};
 
 pub mod player;

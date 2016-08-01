@@ -20,17 +20,19 @@
 use std::any::Any;
 use std::cell::RefCell;
 use std::cmp;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::hash::BuildHasherDefault;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
+use fnv::FnvHasher;
 use rand::{Rng, SeedableRng, StdRng};
 use time;
 
 use ai::{Ai, Extrapolatable};
-use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Message, Player, Ply, State, Win};
+use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Message, Player, Ply, State, StateSignature, Win};
 
 lazy_static! {
     pub static ref RNG: Mutex<StdRng> = Mutex::new(StdRng::from_seed(&[time::precise_time_ns() as usize]));
@@ -40,6 +42,7 @@ pub struct Minimax {
     depth: u8,
     limit: u8,
     history: RefCell<BTreeMap<u64, u32>>,
+    transposition_table: RefCell<HashMap<StateSignature, TranspositionTableEntry, BuildHasherDefault<FnvHasher>>>,
     stats: Vec<RefCell<Statistics>>,
 
     cancel: Arc<Mutex<bool>>,
@@ -51,6 +54,7 @@ impl Minimax {
             depth: depth,
             limit: limit,
             history: RefCell::new(BTreeMap::new()),
+            transposition_table: RefCell::new(HashMap::default()),
             stats: Vec::new(),
             cancel: Arc::new(Mutex::new(false)),
         }
@@ -66,6 +70,40 @@ impl Minimax {
 
         self.stats.last().unwrap().borrow_mut().visited += 1;
 
+        match self.transposition_table.borrow().get(&state.get_signature()) {
+            Some(entry) => {
+                self.stats.last().unwrap().borrow_mut().tt_hits += 1;
+
+                let mut usable = false;
+
+                if entry.depth >= depth &&
+                  (entry.bound_type == BoundType::Exact ||
+                  (entry.bound_type == BoundType::Upper && entry.value < alpha) ||
+                  (entry.bound_type == BoundType::Lower && entry.value >= beta)) {
+                    usable = true;
+                }
+
+                if entry.bound_type == BoundType::Exact && entry.value.abs() > WIN_THRESHOLD {
+                    usable = true;
+                }
+
+                if usable {
+                    match state.execute_ply(&entry.principal_variation[0]) {
+                        Ok(_) => {
+                            self.stats.last().unwrap().borrow_mut().tt_saves += 1;
+
+                            principal_variation.clear();
+                            principal_variation.append(&mut entry.principal_variation.clone());
+
+                            return entry.value;
+                        },
+                        _ => (),
+                    }
+                }
+            },
+            None => (),
+        }
+
         let ply_generator = PlyGenerator::new(
             self,
             state,
@@ -75,8 +113,14 @@ impl Minimax {
             },
         );
 
-        let mut next_principal_variation = Vec::new();
+        let mut next_principal_variation = if !principal_variation.is_empty() {
+            principal_variation.clone()[1..].to_vec()
+        } else {
+            Vec::new()
+        };
+
         let mut first_iteration = true;
+        let mut raised_alpha = false;
 
         for ply in ply_generator {
             let next_state = match state.execute_ply(&ply) {
@@ -90,8 +134,9 @@ impl Minimax {
                     -beta, -alpha,
                 )
             } else {
+                let mut npv = next_principal_variation.clone();
                 let next_eval = -self.minimax(
-                    &next_state, &mut next_principal_variation, depth - 1,
+                    &next_state, &mut npv, depth - 1,
                     -alpha - 1, -alpha,
                 );
 
@@ -101,12 +146,14 @@ impl Minimax {
                         -beta, -alpha,
                     )
                 } else {
+                    next_principal_variation = npv;
                     next_eval
                 }
             };
 
             if next_eval > alpha {
                 alpha = next_eval;
+                raised_alpha = true;
 
                 principal_variation.clear();
                 principal_variation.push(ply.clone());
@@ -118,7 +165,7 @@ impl Minimax {
                         let entry = history.entry(ply.hash()).or_insert(0);
                         *entry += 1 << depth;
                     }
-                    return beta;
+                    break;
                 }
             }
 
@@ -127,6 +174,30 @@ impl Minimax {
             if *self.cancel.lock().unwrap() == true {
                 return 0;
             }
+        }
+
+        match principal_variation.first() {
+            Some(ply) => match state.execute_ply(ply) {
+                Ok(_) => {
+                    self.transposition_table.borrow_mut().insert(state.get_signature(),
+                        TranspositionTableEntry {
+                            depth: depth,
+                            value: alpha,
+                            bound_type: if !raised_alpha {
+                                BoundType::Upper
+                            } else if alpha >= beta {
+                                BoundType::Lower
+                            } else {
+                                BoundType::Exact
+                            },
+                            principal_variation: principal_variation.clone(),
+                        }
+                    );
+                    self.stats.last().unwrap().borrow_mut().tt_stores += 1;
+                },
+                _ => (),
+            },
+            None => (),
         }
 
         alpha
@@ -143,9 +214,21 @@ impl Minimax {
             self.depth
         };
 
+        let precalculated = match self.transposition_table.borrow().get(&state.get_signature()) {
+            Some(entry) => {
+                if entry.bound_type == BoundType::Exact {
+                    principal_variation.append(&mut entry.principal_variation.clone());
+                    entry.depth
+                } else {
+                    0
+                }
+            },
+            None => 0,
+        };
+
         let start_move = time::precise_time_ns();
 
-        for depth in 1..max_depth + 1 {
+        for depth in 1 + precalculated..max_depth + 1 {
             self.stats.push(RefCell::new(Statistics::new(depth)));
 
             let start_search = time::precise_time_ns();
@@ -199,8 +282,9 @@ impl Ai for MinimaxBot {
                 let result = write!(f, "Minimax Statistics:");
                 for stats in self.0.iter() {
                     write!(f, "\n  Depth {}:\n", stats.depth).ok();
-                    write!(f, "    {:10} {:8}\n", "Visited:", stats.visited).ok();
-                    write!(f, "    {:10} {:8}", "Evaluated:", stats.evaluated).ok();
+                    write!(f, "    {:21} {:14}\n", "Visited:", stats.visited).ok();
+                    write!(f, "    {:21} {:14}\n", "Evaluated:", stats.evaluated).ok();
+                    write!(f, "    {:21} {:4}/{:4}/{:4}", "TT Saves/Hits/Stores:", stats.tt_saves, stats.tt_hits, stats.tt_stores).ok();
                 }
                 result
             }
@@ -278,11 +362,28 @@ impl Player for MinimaxBot {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum BoundType {
+    Lower,
+    Exact,
+    Upper,
+}
+
+struct TranspositionTableEntry {
+    depth: u8,
+    value: Eval,
+    bound_type: BoundType,
+    principal_variation: Vec<Ply>,
+}
+
 #[derive(Clone)]
 pub struct Statistics {
     depth: u8,
     visited: u32,
     evaluated: u32,
+    tt_saves: u32,
+    tt_hits: u32,
+    tt_stores: u32,
 }
 
 impl Statistics {
@@ -291,6 +392,9 @@ impl Statistics {
             depth: depth,
             visited: 0,
             evaluated: 0,
+            tt_saves: 0,
+            tt_hits: 0,
+            tt_stores: 0,
         }
     }
 }
@@ -656,11 +760,11 @@ impl Evaluatable for State {
 #[cfg(test)]
 mod tests {
     use std::f32;
+    use std::fmt::Write;
     use time;
 
-    use ai::Ai;
     use tak::*;
-    use super::{MinimaxBot, Evaluatable};
+    use super::*;
 
     #[test]
     fn test_minimax() {
@@ -681,12 +785,12 @@ mod tests {
 
             let depth = 5;
 
-            let mut p1 = MinimaxBot::new(depth);
+            let mut p1 = Minimax::new(depth, 0);
             let mut p1_min_time = f32::MAX;
             let mut p1_max_time = 0.0;
             let mut p1_total_time = 0.0;
 
-            let mut p2 = MinimaxBot::new(depth);
+            let mut p2 = Minimax::new(depth, 0);
             let mut p2_min_time = f32::MAX;
             let mut p2_max_time = 0.0;
             let mut p2_total_time = 0.0;
@@ -766,7 +870,7 @@ mod tests {
                     } else {
                         p2_total_time
                     },
-                    &plies[0].to_ptn(),
+                    plies[0].to_ptn(),
                 );
 
                 if ply_count >= 150 {

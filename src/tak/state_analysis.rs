@@ -28,7 +28,7 @@ lazy_static! {
 
 pub type Bitmap = u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct StateAnalysis {
     pub board_size: usize,
 

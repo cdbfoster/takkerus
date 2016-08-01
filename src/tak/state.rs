@@ -433,6 +433,22 @@ impl State {
 
         self.analysis.calculate_road_groups();
     }
+
+    pub fn get_signature(&self) -> StateSignature {
+        StateSignature {
+            next_color: if self.ply_count % 2 == 0 {
+                Color::White
+            } else {
+                Color::Black
+            },
+            p1_flatstones: self.analysis.p1_flatstones.clone(),
+            p2_flatstones: self.analysis.p2_flatstones.clone(),
+            standing_stones: self.analysis.standing_stones,
+            capstones: self.analysis.capstones,
+            p1_pieces: self.analysis.p1_pieces,
+            p2_pieces: self.analysis.p2_pieces,
+        }
+    }
 }
 
 impl fmt::Display for State {
@@ -518,4 +534,20 @@ impl fmt::Display for State {
 
         write!(f, "\n")
     }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub struct StateSignature {
+    pub next_color: Color,
+    // The maps of the flatstones at each layer of the board for each player
+    pub p1_flatstones: Vec<Bitmap>,
+    pub p2_flatstones: Vec<Bitmap>,
+
+    // The maps of all standing stones and capstones on the board
+    pub standing_stones: Bitmap,
+    pub capstones: Bitmap,
+
+    // The map of all top pieces for each player
+    pub p1_pieces: Bitmap,
+    pub p2_pieces: Bitmap,
 }
