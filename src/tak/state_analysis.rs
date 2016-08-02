@@ -28,7 +28,7 @@ lazy_static! {
 
 pub type Bitmap = u64;
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct StateAnalysis {
     pub board_size: usize,
 
@@ -183,6 +183,38 @@ impl StateAnalysis {
     pub fn calculate_road_groups(&mut self) {
         self.p1_road_groups = (self.p1_pieces & !self.standing_stones).get_groups(self.board_size);
         self.p2_road_groups = (self.p2_pieces & !self.standing_stones).get_groups(self.board_size);
+    }
+}
+
+impl Clone for StateAnalysis {
+    fn clone(&self) -> StateAnalysis {
+        StateAnalysis {
+            board_size: self.board_size,
+            p1_flatstone_count: self.p1_flatstone_count,
+            p2_flatstone_count: self.p2_flatstone_count,
+            p1_flatstones: self.p1_flatstones.clone(),
+            p2_flatstones: self.p2_flatstones.clone(),
+            standing_stones: self.standing_stones,
+            capstones: self.capstones,
+            p1_pieces: self.p1_pieces,
+            p2_pieces: self.p2_pieces,
+            p1_road_groups: self.p1_road_groups.clone(),
+            p2_road_groups: self.p2_road_groups.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &StateAnalysis) {
+        self.board_size = source.board_size;
+        self.p1_flatstone_count = source.p1_flatstone_count;
+        self.p2_flatstone_count = source.p2_flatstone_count;
+        self.p1_flatstones.clone_from(&source.p1_flatstones);
+        self.p2_flatstones.clone_from(&source.p2_flatstones);
+        self.standing_stones = source.standing_stones;
+        self.capstones = source.capstones;
+        self.p1_pieces = source.p1_pieces;
+        self.p2_pieces = source.p2_pieces;
+        self.p1_road_groups.clone_from(&source.p1_road_groups);
+        self.p2_road_groups.clone_from(&source.p2_road_groups);
     }
 }
 

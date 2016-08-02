@@ -46,10 +46,18 @@ pub struct Minimax {
     stats: Vec<RefCell<Statistics>>,
 
     cancel: Arc<Mutex<bool>>,
+
+    states: Vec<RefCell<State>>,
 }
 
 impl Minimax {
     pub fn new(depth: u8, limit: u8) -> Minimax {
+        let max_depth = if depth == 0 {
+            15
+        } else {
+            depth as usize
+        };
+
         Minimax {
             depth: depth,
             limit: limit,
@@ -57,16 +65,19 @@ impl Minimax {
             transposition_table: RefCell::new(HashMap::default()),
             stats: Vec::new(),
             cancel: Arc::new(Mutex::new(false)),
+            states: vec![RefCell::new(State::new(5)); max_depth],
         }
     }
 
-    fn minimax(&self, state: &State, principal_variation: &mut Vec<Ply>, depth: u8, mut alpha: Eval, beta: Eval) -> Eval {
+    fn minimax(&self, state: &State, principal_variation: &mut Vec<Ply>, depth: u8, max_depth: u8, mut alpha: Eval, beta: Eval) -> Eval {
         if depth == 0 || state.check_win() != Win::None {
             self.stats.last().unwrap().borrow_mut().evaluated += 1;
 
             principal_variation.clear();
             return state.evaluate();
         }
+
+        let search_iteration = (max_depth - depth) as usize;
 
         self.stats.last().unwrap().borrow_mut().visited += 1;
 
@@ -88,7 +99,7 @@ impl Minimax {
                 }
 
                 if usable {
-                    match state.execute_ply(&entry.principal_variation[0]) {
+                    match state.execute_ply_preallocated(&entry.principal_variation[0], &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
                         Ok(_) => {
                             self.stats.last().unwrap().borrow_mut().tt_saves += 1;
 
@@ -123,26 +134,30 @@ impl Minimax {
         let mut raised_alpha = false;
 
         for ply in ply_generator {
-            let next_state = match state.execute_ply(&ply) {
-                Ok(next) => next,
-                Err(_) => continue,
+            let next_state = {
+                match state.execute_ply_preallocated(&ply, &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
+                    Err(_) => continue,
+                    _ => (),
+                };
+
+                self.states[search_iteration].borrow()
             };
 
             let next_eval = if first_iteration {
                 -self.minimax(
-                    &next_state, &mut next_principal_variation, depth - 1,
+                    &next_state, &mut next_principal_variation, depth - 1, max_depth,
                     -beta, -alpha,
                 )
             } else {
                 let mut npv = next_principal_variation.clone();
                 let next_eval = -self.minimax(
-                    &next_state, &mut npv, depth - 1,
+                    &next_state, &mut npv, depth - 1, max_depth,
                     -alpha - 1, -alpha,
                 );
 
                 if next_eval > alpha && next_eval < beta {
                     -self.minimax(
-                        &next_state, &mut next_principal_variation, depth - 1,
+                        &next_state, &mut next_principal_variation, depth - 1, max_depth,
                         -beta, -alpha,
                     )
                 } else {
@@ -177,7 +192,7 @@ impl Minimax {
         }
 
         match principal_variation.first() {
-            Some(ply) => match state.execute_ply(ply) {
+            Some(ply) => match state.execute_ply_preallocated(ply, &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
                 Ok(_) => {
                     self.transposition_table.borrow_mut().insert(state.get_signature(),
                         TranspositionTableEntry {
@@ -228,12 +243,13 @@ impl Minimax {
 
         let start_move = time::precise_time_ns();
 
-        for depth in 1 + precalculated..max_depth + 1 {
+        for depth in 1..max_depth + 1 - precalculated {
             self.stats.push(RefCell::new(Statistics::new(depth)));
 
             let start_search = time::precise_time_ns();
 
-            let eval = self.minimax(state, &mut principal_variation, depth, MIN_EVAL, MAX_EVAL);
+            let search_depth = depth + precalculated;
+            let eval = self.minimax(state, &mut principal_variation, search_depth, search_depth, MIN_EVAL, MAX_EVAL);
 
             if eval.abs() > WIN_THRESHOLD {
                 break;

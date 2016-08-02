@@ -23,7 +23,7 @@ use std::str::FromStr;
 use tak::{Color, GameError, Piece, Ply, Seat, StateAnalysis, Win};
 use tak::state_analysis::{BOARD, EDGE, Bitmap};
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct State {
     pub p1: Seat,
     pub p2: Seat,
@@ -194,6 +194,14 @@ impl State {
 
     pub fn execute_ply(&self, ply: &Ply) -> Result<State, GameError> {
         let mut next = self.clone();
+        match self.execute_ply_preallocated(ply, &mut next) {
+            Ok(_) => Ok(next),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn execute_ply_preallocated(&self, ply: &Ply, next: &mut State) -> Result<(), GameError> {
+        next.clone_from(self);
         next.ply_count += 1;
 
         let board_size = next.board.len();
@@ -354,7 +362,7 @@ impl State {
             },
         }
 
-        Ok(next)
+        Ok(())
     }
 
     pub fn check_win(&self) -> Win {
@@ -448,6 +456,26 @@ impl State {
             p1_pieces: self.analysis.p1_pieces,
             p2_pieces: self.analysis.p2_pieces,
         }
+    }
+}
+
+impl Clone for State {
+    fn clone(&self) -> State {
+        State {
+            p1: self.p1,
+            p2: self.p2,
+            board: self.board.clone(),
+            ply_count: self.ply_count,
+            analysis: self.analysis.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &State) {
+        self.p1 = source.p1;
+        self.p2 = source.p2;
+        self.board.clone_from(&source.board);
+        self.ply_count = source.ply_count;
+        self.analysis.clone_from(&source.analysis);
     }
 }
 

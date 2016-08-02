@@ -41,7 +41,7 @@ pub enum Message {
     EarlyEnd(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Seat {
     pub color: Color,
     pub flatstone_count: u8,
