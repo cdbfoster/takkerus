@@ -564,7 +564,7 @@ impl fmt::Display for State {
     }
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct StateSignature {
     pub next_color: Color,
 

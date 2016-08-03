@@ -206,6 +206,7 @@ impl Minimax {
                                 BoundType::Exact
                             },
                             principal_variation: principal_variation.clone(),
+                            lifetime: 2,
                         }
                     );
                     self.stats.last().unwrap().borrow_mut().tt_stores += 1;
@@ -242,6 +243,24 @@ impl Minimax {
         };
 
         let start_move = time::precise_time_ns();
+
+        // Purge transposition table
+        {
+            let mut forget = Vec::with_capacity(400000);
+
+            for (key, entry) in self.transposition_table.borrow_mut().iter_mut() {
+                if entry.lifetime > 0 {
+                    entry.lifetime -= 1;
+                } else {
+                    forget.push(key.clone());
+                }
+            }
+
+            let mut transposition_table = self.transposition_table.borrow_mut();
+            for key in forget {
+                transposition_table.remove(&key);
+            }
+        }
 
         for depth in 1..max_depth + 1 - precalculated {
             self.stats.push(RefCell::new(Statistics::new(depth)));
@@ -390,6 +409,7 @@ struct TranspositionTableEntry {
     value: Eval,
     bound_type: BoundType,
     principal_variation: Vec<Ply>,
+    lifetime: u8,
 }
 
 #[derive(Clone)]
