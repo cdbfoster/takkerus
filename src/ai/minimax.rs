@@ -223,6 +223,7 @@ impl Minimax {
         let mut principal_variation = Vec::new();
 
         self.history.borrow_mut().clear();
+        self.stats.clear();
 
         let max_depth = if self.depth == 0 {
             15
@@ -260,6 +261,10 @@ impl Minimax {
             for key in forget {
                 transposition_table.remove(&key);
             }
+        }
+
+        for depth in 1..precalculated + 1 {
+            self.stats.push(RefCell::new(Statistics::new(depth)));
         }
 
         for depth in 1..max_depth + 1 - precalculated {
