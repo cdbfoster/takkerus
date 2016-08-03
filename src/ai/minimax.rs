@@ -225,6 +225,8 @@ impl Minimax {
         self.history.borrow_mut().clear();
         self.stats.clear();
 
+        let start_move = time::precise_time_ns();
+
         let max_depth = if self.depth == 0 {
             15
         } else {
@@ -242,8 +244,6 @@ impl Minimax {
             },
             None => 0,
         };
-
-        let start_move = time::precise_time_ns();
 
         // Purge transposition table
         {
