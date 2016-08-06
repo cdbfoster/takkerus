@@ -245,6 +245,10 @@ impl Minimax {
             None => 0,
         };
 
+        for depth in 1..precalculated + 1 {
+            self.stats.push(RefCell::new(Statistics::new(depth)));
+        }
+
         // Purge transposition table
         {
             let mut forget = Vec::with_capacity(400000);
@@ -261,10 +265,6 @@ impl Minimax {
             for key in forget {
                 transposition_table.remove(&key);
             }
-        }
-
-        for depth in 1..precalculated + 1 {
-            self.stats.push(RefCell::new(Statistics::new(depth)));
         }
 
         for depth in 1..max_depth + 1 - precalculated {
