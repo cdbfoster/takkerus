@@ -297,9 +297,9 @@ pub struct MinimaxBot {
 }
 
 impl MinimaxBot {
-    pub fn new(depth: u8) -> MinimaxBot {
+    pub fn new(depth: u8, goal: u16) -> MinimaxBot {
         MinimaxBot {
-            ai: Arc::new(Mutex::new(Minimax::new(depth, 60))),
+            ai: Arc::new(Mutex::new(Minimax::new(depth, goal))),
         }
     }
 }

@@ -80,6 +80,7 @@ fn main() {
             println!("                           minimax (default)");
             println!("  Minimax options:");
             println!("    -d, --depth int      The depth of the search. (default 5)");
+            println!("    -g, --goal  int      The number of seconds per move to aim for (default 0)");
             println!("");
             return;
         } else if next.contains_key("play") {
@@ -98,6 +99,7 @@ fn main() {
             println!("    -n, --name  string   The name of the player to record. (default Human)");
             println!("\n  Minimax options:");
             println!("    -d, --depth int      The depth of the search. (default 5)");
+            println!("    -g, --goal  int      The number of seconds per move to aim for (default 0)");
             println!("\n  Playtak options:");
             println!("    -h, --host  string   The host to connect to. (default \"playtak.com:10000)\"");
             println!("    -u, --user  string   The username to log in with. (default \"\" (Guest login))");
@@ -125,7 +127,7 @@ fn main() {
         }
     } else if next.contains_key("analyze") {
         let mut state = State::new(5);
-        let mut ai = Box::new(ai::MinimaxBot::new(5));
+        let mut ai = Box::new(ai::MinimaxBot::new(5, 0));
 
         let next = match arguments::collect_next(&mut args, &[
             Option("-s", "--size", 1),
@@ -178,8 +180,12 @@ fn main() {
         match next.get("--ai") {
             Some(strings) => if strings[0] == "minimax" {
                 let mut depth = 5;
+                let mut goal = 0;
 
-                let next = match arguments::collect_next(&mut args, &[Option("-d", "--depth", 1)]) {
+                let next = match arguments::collect_next(&mut args, &[
+                    Option("-d", "--depth", 1),
+                    Option("-g", "--goal", 1)
+                ]) {
                     Ok(arguments) => arguments,
                     Err(error) => {
                         println!("  Error: {}", error);
@@ -203,7 +209,18 @@ fn main() {
                     None => (),
                 };
 
-                ai = Box::new(ai::MinimaxBot::new(depth));
+                match next.get("--goal") {
+                    Some(strings) => goal = match u16::from_str(&strings[0]) {
+                        Ok(goal) => goal,
+                        _ => {
+                            println!("  Error: Invalid minimax search time goal.");
+                            return;
+                        },
+                    },
+                    None => (),
+                };
+
+                ai = Box::new(ai::MinimaxBot::new(depth, goal));
             } else {
                 println!("  Error: Invalid AI type.");
                 return;
@@ -219,7 +236,7 @@ fn main() {
         let mut size = 5;
         let mut state = State::new(size);
         let mut p1: Box<Player> = Box::new(cli_player::CliPlayer::new("Human"));
-        let mut p2: Box<Player> = Box::new(ai::MinimaxBot::new(5));
+        let mut p2: Box<Player> = Box::new(ai::MinimaxBot::new(5, 0));
 
         let next = match arguments::collect_next(&mut args, &[
             Option("-s", "--size", 1),
@@ -274,8 +291,12 @@ fn main() {
                     Ok(Box::new(cli_player::CliPlayer::new(&name)))
                 } else if strings[0] == "minimax" {
                     let mut depth = 5;
+                    let mut goal = 0;
 
-                    let next = match arguments::collect_next(&mut args, &[Option("-d", "--depth", 1)]) {
+                    let next = match arguments::collect_next(&mut args, &[
+                        Option("-d", "--depth", 1),
+                        Option("-g", "--goal", 1)
+                    ]) {
                         Ok(arguments) => arguments,
                         Err(error) => return Err(format!("  Error: {}", error)),
                     };
@@ -290,9 +311,17 @@ fn main() {
                             _ => return Err(String::from("  Error: Invalid minimax search depth.")),
                         },
                         None => (),
-                    }
+                    };
 
-                    Ok(Box::new(ai::MinimaxBot::new(depth)))
+                    match next.get("--goal") {
+                        Some(strings) => goal = match u16::from_str(&strings[0]) {
+                            Ok(goal) => goal,
+                            _ => return Err(String::from("  Error: Invalid minimax search time goal.")),
+                        },
+                        None => (),
+                    };
+
+                    Ok(Box::new(ai::MinimaxBot::new(depth, goal)))
                 } else if strings[0] == "playtak" {
                     let mut host = String::from("playtak.com:10000");
                     let mut username = String::new();
