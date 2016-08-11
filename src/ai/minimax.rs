@@ -40,7 +40,7 @@ lazy_static! {
 
 pub struct Minimax {
     depth: u8,
-    limit: u8,
+    goal: u16,
     history: RefCell<BTreeMap<u64, u32>>,
     transposition_table: RefCell<HashMap<StateSignature, TranspositionTableEntry, BuildHasherDefault<FnvHasher>>>,
     stats: Vec<RefCell<Statistics>>,
@@ -51,7 +51,7 @@ pub struct Minimax {
 }
 
 impl Minimax {
-    pub fn new(depth: u8, limit: u8) -> Minimax {
+    pub fn new(depth: u8, goal: u16) -> Minimax {
         let max_depth = if depth == 0 {
             15
         } else {
@@ -60,7 +60,7 @@ impl Minimax {
 
         Minimax {
             depth: depth,
-            limit: limit,
+            goal: goal,
             history: RefCell::new(BTreeMap::new()),
             transposition_table: RefCell::new(HashMap::default()),
             stats: Vec::new(),
@@ -283,7 +283,7 @@ impl Minimax {
             let elapsed_move = (time::precise_time_ns() - start_move) as f32 / 1000000000.0;
 
             // Use a simple branching factor of 12, for now
-            if self.limit != 0 && elapsed_move + elapsed_search * 12.0 > self.limit as f32 {
+            if self.goal != 0 && elapsed_move + elapsed_search * 12.0 > self.goal as f32 {
                 break;
             }
         }
