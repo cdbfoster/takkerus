@@ -4,8 +4,8 @@ version = "0.1.2"
 authors = ["Chris Foster <cdbfoster@gmail.com>"]
 
 [dependencies]
-fnv = "1.0.*"
-lazy_static = "0.2.*"
-rand = "0.3.*"
-regex = "0.1.*"
-time = "0.1.*"
+fnv = "1.0"
+lazy_static = "0.2"
+rand = "0.3"
+regex = "0.1"
+time = "0.1"
