@@ -282,13 +282,8 @@ impl Minimax {
             let elapsed_search = (time::precise_time_ns() - start_search) as f32 / 1000000000.0;
             let elapsed_move = (time::precise_time_ns() - start_move) as f32 / 1000000000.0;
 
-            let factor = if depth % 2 == 1 {
-                6.5
-            } else {
-                9.5
-            };
-
-            if self.limit != 0 && elapsed_move + elapsed_search * factor > self.limit as f32 {
+            // Use a simple branching factor of 12, for now
+            if self.limit != 0 && elapsed_move + elapsed_search * 12.0 > self.limit as f32 {
                 break;
             }
         }
