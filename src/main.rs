@@ -510,8 +510,8 @@ fn analyze(mut state: State, mut ai: Box<Ai>) {
 }
 
 fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
-    let p1_playtak = p1.as_any().is::<playtak_player::PlaytakPlayer>();
-    let p2_playtak = p2.as_any().is::<playtak_player::PlaytakPlayer>();
+    let mut p1_playtak = p1.as_any().is::<playtak_player::PlaytakPlayer>();
+    let mut p2_playtak = p2.as_any().is::<playtak_player::PlaytakPlayer>();
     let using_playtak = p1_playtak || p2_playtak;
 
     let (p1_game_sender, mut p1_game_receiver) = mpsc::channel();
@@ -551,6 +551,7 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
 
         if (color == Color::White && p1_playtak) ||
            (color == Color::Black && p2_playtak) {
+            mem::swap(&mut p1_playtak, &mut p2_playtak);
             mem::swap(&mut p1, &mut p2);
             mem::swap(&mut game_p1_sender, &mut game_p2_sender);
             mem::swap(&mut p1_game_receiver, &mut p2_game_receiver);
@@ -601,7 +602,20 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
     } else {
         let mut game = logger::Game::new();
         logger::populate_game(&mut game, &*p1, &*p2);
-        game.header.site = String::from("playtak.com");
+        game.header.site = String::from("PlayTak.com");
+        game.header.size = if p1_playtak {
+            match p1.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
+                Some(player) => player.game_info.size as u8,
+                None => panic!("Player 1 isn't Playtak!"),
+            }
+        } else {
+            match p2.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
+                Some(player) => player.game_info.size as u8,
+                None => panic!("Player 2 isn't Playtak!"),
+            }
+        };
+
+        state = game.to_state().unwrap();
         game
     };
 
