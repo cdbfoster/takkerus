@@ -63,6 +63,7 @@ pub struct PlaytakPlayer {
     password: String,
     game: GameType,
     pub game_info: GameInfo,
+    pub resume_plies: Option<Vec<Ply>>,
 }
 
 impl PlaytakPlayer {
@@ -78,12 +79,19 @@ impl PlaytakPlayer {
                 size: 5,
                 color: None,
             },
+            resume_plies: None,
         }
     }
 }
 
 impl Player for PlaytakPlayer {
     fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, _: &Player) -> Result<(), String> {
+        #[derive(PartialEq)]
+        enum Action {
+            None,
+            NewGame,
+            ResumeGame,
+        }
         let (initialize_sender, initialize_receiver) = mpsc::channel();
 
         let game_info = Arc::new(Mutex::new(GameInfo {
@@ -93,11 +101,14 @@ impl Player for PlaytakPlayer {
             color: None,
         }));
 
+        let resume_plies = Arc::new(Mutex::new(None));
+
         let host = self.host.clone();
         let username = self.username.clone();
         let password = self.password.clone();
         let mut game = self.game.clone();
         let game_info_clone = game_info.clone();
+        let resume_plies_clone = resume_plies.clone();
 
         thread::spawn(move || {
             let stream = match TcpStream::connect(host.as_str()) {
@@ -207,6 +218,24 @@ impl Player for PlaytakPlayer {
 
             // Find/start a game
             {
+                fn parse_game_start(message: String) -> GameInfo {
+                    let parts = message.split_whitespace().collect::<Vec<_>>();
+                    GameInfo {
+                        id: format!("Game#{}", parts[2]),
+                        name: if parts[7] == "white" {
+                            parts[6].to_string()
+                        } else {
+                            parts[4].to_string()
+                        },
+                        size: usize::from_str(parts[3]).unwrap(),
+                        color: if parts[7] == "white" {
+                            Some(Color::White)
+                        } else {
+                            Some(Color::Black)
+                        },
+                    }
+                }
+
                 fn seek_game(stream: &Arc<Mutex<TcpStream>>, size: usize, time: u32, increment: u32, color: Option<Color>) {
                     let string = format!("{} {} {}",
                         size,
@@ -225,11 +254,7 @@ impl Player for PlaytakPlayer {
                     write_stream(&mut *stream.lock().unwrap(), &seek).ok();
                 }
 
-                if let GameType::Seek { size, time, increment, color } = game.clone() {
-                    seek_game(&stream, size, time, increment, color);
-                }
-
-                for message in connection_receiver.iter() {
+                let parse_message = |message: String, game: &mut GameType| {
                     if let GameType::Accept(from) = game.clone() {
                         if message.starts_with("Seek new") {
                             let parts = message.split_whitespace().collect::<Vec<_>>();
@@ -250,7 +275,7 @@ impl Player for PlaytakPlayer {
 
                                 if target != username.to_lowercase() &&
                                    format!("{}bot", target) != username.to_lowercase() {
-                                    continue;
+                                    return Action::None;
                                 }
 
                                 let command = captures[2].to_lowercase();
@@ -260,7 +285,7 @@ impl Player for PlaytakPlayer {
                                     if command == "size" {
                                         if let Ok(new_size) = usize::from_str(&value) {
                                             if new_size != size && new_size >= 4 && new_size <= 6 {
-                                                game = GameType::Seek {
+                                                *game = GameType::Seek {
                                                     size: new_size,
                                                     time: time,
                                                     increment: increment,
@@ -281,7 +306,7 @@ impl Player for PlaytakPlayer {
                                         }
 
                                         if new_color != color {
-                                            game = GameType::Seek {
+                                            *game = GameType::Seek {
                                                 size: size,
                                                 time: time,
                                                 increment: increment,
@@ -297,25 +322,67 @@ impl Player for PlaytakPlayer {
                     }
 
                     if message.starts_with("Game Start") {
+                        *game_info_clone.lock().unwrap() = parse_game_start(message);
+                        initialize_sender.send(Ok(Action::NewGame)).ok();
+                        return Action::NewGame;
+                    }
+
+                    Action::None
+                };
+
+                // Are we already in a game?
+                let message = connection_receiver.recv().unwrap();
+                if message.starts_with("Game Start") {
+                    *game_info_clone.lock().unwrap() = parse_game_start(message);
+
+                    let mut resume_plies = Vec::new();
+
+                    for message in connection_receiver.iter() {
+                        if message.starts_with("Message Your game is resumed") {
+                            break;
+                        }
+
                         let parts = message.split_whitespace().collect::<Vec<_>>();
 
-                        *game_info_clone.lock().unwrap() = GameInfo {
-                            id: format!("Game#{}", parts[2]),
-                            name: if parts[7] == "white" {
-                                parts[6].to_string()
-                            } else {
-                                parts[4].to_string()
-                            },
-                            size: usize::from_str(parts[3]).unwrap(),
-                            color: if parts[7] == "white" {
-                                Some(Color::White)
-                            } else {
-                                Some(Color::Black)
-                            },
-                        };
+                        if parts.len() <= 1 {
+                            continue;
+                        }
 
-                        initialize_sender.send(Ok(())).ok();
-                        break;
+                        if parts[1] == "P" || parts[1] == "M" {
+                            let string = parts[1..].join(" ");
+
+                            let next_color = {
+                                let next_color = if resume_plies.len() % 2 == 0 {
+                                    Color::White
+                                } else {
+                                    Color::Black
+                                };
+
+                                if resume_plies.len() < 2 {
+                                    next_color.flip()
+                                } else {
+                                    next_color
+                                }
+                            };
+
+                            if let Some(ply) = playtak_to_ply(&string, next_color) {
+                                resume_plies.push(ply);
+                            }
+                        }
+                    }
+
+                    *resume_plies_clone.lock().unwrap() = Some(resume_plies);
+
+                    initialize_sender.send(Ok(Action::ResumeGame)).ok();
+                } else if parse_message(message, &mut game) != Action::NewGame {
+                    if let GameType::Seek { size, time, increment, color } = game.clone() {
+                        seek_game(&stream, size, time, increment, color);
+                    }
+
+                    for message in connection_receiver.iter() {
+                        if parse_message(message, &mut game) == Action::NewGame {
+                            break;
+                        }
                     }
                 }
             }
@@ -337,6 +404,9 @@ impl Player for PlaytakPlayer {
                         match message {
                             Message::GameStart(own_color) => {
                                 *color.lock().unwrap() = own_color;
+                            },
+                            Message::MoveRequest(new_state, None) => { // This can happen while resuming a game
+                                *state.lock().unwrap() = new_state;
                             },
                             Message::MoveRequest(new_state, Some(ply)) |
                             Message::FinalMove(new_state, ply) => {
@@ -427,6 +497,7 @@ impl Player for PlaytakPlayer {
         match initialize_receiver.recv().unwrap() {
             Ok(_) => {
                 self.game_info = game_info.lock().unwrap().clone();
+                self.resume_plies = resume_plies.lock().unwrap().clone();
                 Ok(())
             },
             Err(error) => Err(error),

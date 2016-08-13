@@ -603,14 +603,28 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
         let mut game = logger::Game::new();
         logger::populate_game(&mut game, &*p1, &*p2);
         game.header.site = String::from("PlayTak.com");
-        game.header.size = if p1_playtak {
+        if p1_playtak {
             match p1.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
-                Some(player) => player.game_info.size as u8,
+                Some(player) => {
+                    game.header.size = player.game_info.size as u8;
+                    game.plies = if let Some(ref plies) = player.resume_plies {
+                        plies.clone()
+                    } else {
+                        Vec::new()
+                    };
+                },
                 None => panic!("Player 1 isn't Playtak!"),
             }
         } else {
             match p2.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
-                Some(player) => player.game_info.size as u8,
+                Some(player) => {
+                    game.header.size = player.game_info.size as u8;
+                    game.plies = if let Some(ref plies) = player.resume_plies {
+                        plies.clone()
+                    } else {
+                        Vec::new()
+                    };
+                },
                 None => panic!("Player 2 isn't Playtak!"),
             }
         };
