@@ -798,5 +798,5 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
     logger::write_tmp_file(&*game);
     logger::finalize_tmp_file();
 
-    thread::sleep(Duration::new(1, 0)); // Give things a bit of time to clear up.
+    thread::sleep(Duration::from_secs(1)); // Give things a bit of time to clear up.
 }
