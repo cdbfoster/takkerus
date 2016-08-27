@@ -220,7 +220,7 @@ impl Minimax {
         alpha
     }
 
-    fn analyze(&mut self, state: &State) -> Vec<Ply> {
+    pub fn analyze(&mut self, state: &State) -> Vec<Ply> {
         let mut principal_variation = Vec::new();
 
         self.history.borrow_mut().clear();

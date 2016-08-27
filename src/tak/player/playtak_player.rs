@@ -29,7 +29,9 @@ use std::thread;
 use std::time::Duration;
 
 use regex::Regex;
+use time;
 
+use ai::minimax::{Evaluatable, Minimax};
 use tak::{Color, Direction, Message, Piece, Player, Ply, State};
 
 lazy_static! {
@@ -442,6 +444,54 @@ impl Player for PlaytakPlayer {
             }
 
             for message in connection_receiver.iter() {
+                if message.starts_with("Shout") {
+                    match SHOUT_COMMAND.captures(&message) {
+                        Some(captures) => {
+                            let target = captures[1].to_lowercase();
+
+                            if target != username.to_lowercase() &&
+                               format!("{}bot", target) != username.to_lowercase() {
+                                continue;
+                            }
+
+                            let command = captures[2].to_lowercase();
+                            //let value = captures[3].to_lowercase();
+
+                            if command == "evaluate" || command == "evaluation" || command == "eval" {
+                                write_stream(&mut *stream.lock().unwrap(), &[
+                                    "Shout Evaluating...",
+                                ]).ok();
+
+                                let mut ai = Minimax::new(0, 10);
+                                let state = state.lock().unwrap();
+
+                                let start_time = time::precise_time_ns();
+                                let plies = ai.analyze(&*state);
+                                let elapsed_time = (time::precise_time_ns() - start_time) as f32 / 1000000000.0;
+
+                                let eval = state.evaluate_plies(&plies);
+
+                                write_stream(&mut *stream.lock().unwrap(), &[
+                                    "Shout",
+                                    &format!("Evaluation for {} (depth: {}, time: {:.2}s): {}",
+                                        if state.ply_count % 2 == 0 {
+                                            "white"
+                                        } else {
+                                            "black"
+                                        },
+                                        plies.len(),
+                                        elapsed_time,
+                                        eval,
+                                    ),
+                                ]).ok();
+                            }
+                        },
+                        None => (),
+                    }
+
+                    continue;
+                }
+
                 let parts = message.split_whitespace().collect::<Vec<_>>();
 
                 if parts.len() <= 1 {
@@ -466,6 +516,12 @@ impl Player for PlaytakPlayer {
                     };
 
                     if let Some(ply) = playtak_to_ply(&string, next_color) {
+                        let mut state = state.lock().unwrap();
+                        match state.execute_ply(&ply) {
+                            Ok(next) => *state = next,
+                            _ => (),
+                        }
+
                         sender.send(Message::MoveResponse(ply)).ok();
                     }
                 } else if parts[1] == "Over" {
