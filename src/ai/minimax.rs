@@ -541,9 +541,7 @@ struct Weights {
 
     threat: Eval,
 
-    liberty: Eval,
-
-    cover: (Eval, Eval, Eval),
+    influence: (Eval, Eval, Eval),
 
     group: [Eval; 8],
 }
@@ -558,9 +556,7 @@ const WEIGHT: Weights = Weights {
 
     threat:             200,
 
-    liberty:             20,
-
-    cover:              (20, 15, -10),
+    influence:         (20, 15, -5),
 
     group: [0, 0, 100, 200, 400, 600, 0, 0],
 };
@@ -744,61 +740,52 @@ impl Evaluatable for State {
         p1_eval += evaluate_threats(&a.p1_road_groups);
         p2_eval += evaluate_threats(&a.p2_road_groups);
 
-        // Liberties
-        let p1_liberties = (a.p1_pieces & !a.standing_stones).grow(BOARD[a.board_size] & !a.p2_pieces, a.board_size) & !a.p1_pieces;
-        let p2_liberties = (a.p2_pieces & !a.standing_stones).grow(BOARD[a.board_size] & !a.p1_pieces, a.board_size) & !a.p2_pieces;
+        // Influence
+        let evaluate_influence = |pieces: Bitmap, own_flatstones: Bitmap, enemy_pieces: Bitmap| {
+            let calculate_influence = |pieces: Bitmap| {
+                let mut influence = [0; 3];
 
-        p1_eval += p1_liberties.get_population() as i32 * WEIGHT.liberty;
-        p2_eval += p2_liberties.get_population() as i32 * WEIGHT.liberty;
+                fn add_influence(mut piece_influence: Bitmap, influence: &mut [Bitmap; 3]) {
+                    let mut level = 0;
 
-        // Cover
-        let evaluate_cover = |pieces: Bitmap, own_flatstones: Bitmap, enemy_pieces: Bitmap| {
-            let evaluate_half = |mut half_pieces: Bitmap| {
-                fn pop_bit(map: Bitmap) -> (Bitmap, Bitmap) {
-                    let remainder = map & (map - 1);
-                    let bit = map & !remainder;
-                    (bit, remainder)
-                }
-
-                if half_pieces == 0 {
-                    return 0;
-                }
-
-                let expanded = half_pieces.grow(BOARD[a.board_size], a.board_size);
-
-                let covered = {
-                    let mut splat_board = 0;
-                    loop {
-                        let (bit, remainder) = pop_bit(half_pieces);
-
-                        if bit != 0 {
-                            let expanded_bit = bit.grow(BOARD[a.board_size], a.board_size);
-
-                            splat_board ^= expanded_bit;
-                        }
-
-                        if remainder == 0 {
-                            break;
-                        }
-
-                        half_pieces = remainder;
+                    while piece_influence != 0 && level < 2 {
+                        let next = influence[level] & piece_influence;
+                        influence[level] ^= piece_influence;
+                        piece_influence = next;
+                        level += 1;
                     }
 
-                    !splat_board & expanded
-                };
+                    influence[level] |= piece_influence;
+                }
 
-                let mut eval = 0;
-                eval += (covered & own_flatstones).get_population() as i32 * WEIGHT.cover.0;
-                eval += (covered & !total_pieces).get_population() as i32 * WEIGHT.cover.1;
-                eval += (covered & enemy_pieces).get_population() as i32 * WEIGHT.cover.2;
-                eval
+                use tak::Direction::*;
+                add_influence((pieces << 1) & !EDGE[a.board_size][East as usize], &mut influence);
+                add_influence((pieces >> 1) & !EDGE[a.board_size][West as usize], &mut influence);
+                add_influence(pieces << a.board_size, &mut influence);
+                add_influence(pieces >> a.board_size, &mut influence);
+
+                influence
             };
 
-            evaluate_half(pieces & 0x5555555555555555) + evaluate_half(pieces & 0xAAAAAAAAAAAAAAAA)
+            let mut eval = 0;
+
+            let influence = calculate_influence(pieces);
+            for (level, map) in influence.iter().enumerate() {
+                eval += (map & own_flatstones).get_population() as i32 * (WEIGHT.influence.0 << level);
+                eval += (map & !total_pieces).get_population() as i32 * (WEIGHT.influence.1 << level);
+            }
+
+            // Reduce the penalty of a neighboring enemy per surrounding piece
+            eval += (influence[0] & !influence[1] & enemy_pieces).get_population() as i32 * WEIGHT.influence.2;
+            eval += (!influence[0] & influence[1] & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> 1);
+            eval += (influence[0] & influence[1] & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> 2);
+            eval += (influence[2] & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> 3);
+
+            eval
         };
 
-        p1_eval += evaluate_cover(a.p1_pieces, p1_flatstones, a.p2_pieces);
-        p2_eval += evaluate_cover(a.p2_pieces, p2_flatstones, a.p1_pieces);
+        p1_eval += evaluate_influence(a.p1_pieces, p1_flatstones, a.p2_pieces);
+        p2_eval += evaluate_influence(a.p2_pieces, p2_flatstones, a.p1_pieces);
 
         match next_color {
             Color::White => p1_eval - p2_eval,
