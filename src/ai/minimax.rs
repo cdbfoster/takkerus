@@ -356,7 +356,7 @@ impl Player for MinimaxBot {
         let vs_playtak = opponent.as_any().is::<PlaytakPlayer>();
         let ai = self.ai.clone();
         let cancel = ai.lock().unwrap().cancel.clone();
-        let mut undos = 1;
+        let mut undos = 0;
 
         thread::spawn(move || {
             for message in receiver.iter() {
