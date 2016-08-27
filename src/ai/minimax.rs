@@ -316,12 +316,27 @@ impl Ai for MinimaxBot {
         impl fmt::Display for StatisticPrinter {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 let result = write!(f, "Minimax Statistics:");
+
+                let mut total = Statistics::new(0);
+
                 for stats in self.0.iter() {
                     write!(f, "\n  Depth {}:\n", stats.depth).ok();
                     write!(f, "    {:21} {:14}\n", "Visited:", stats.visited).ok();
                     write!(f, "    {:21} {:14}\n", "Evaluated:", stats.evaluated).ok();
                     write!(f, "    {:21} {:4}/{:4}/{:4}", "TT Saves/Hits/Stores:", stats.tt_saves, stats.tt_hits, stats.tt_stores).ok();
+
+                    total.visited += stats.visited;
+                    total.evaluated += stats.evaluated;
+                    total.tt_saves += stats.tt_saves;
+                    total.tt_hits += stats.tt_hits;
+                    total.tt_stores += stats.tt_stores;
                 }
+
+                write!(f, "\n  Totals:\n").ok();
+                write!(f, "    {:21} {:14}\n", "Visited:", total.visited).ok();
+                write!(f, "    {:21} {:14}\n", "Evaluated:", total.evaluated).ok();
+                write!(f, "    {:21} {:4}/{:4}/{:4}", "TT Saves/Hits/Stores:", total.tt_saves, total.tt_hits, total.tt_stores).ok();
+
                 result
             }
         }
