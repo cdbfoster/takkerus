@@ -33,6 +33,7 @@ use time;
 
 use ai::{Ai, Extrapolatable};
 use tak::{Bitmap, BitmapInterface, BOARD, Color, EDGE, Message, Player, Ply, State, StateSignature, Win};
+use tak::playtak_player::PlaytakPlayer;
 
 lazy_static! {
     pub static ref RNG: Mutex<StdRng> = Mutex::new(StdRng::from_seed(&[time::precise_time_ns() as usize]));
@@ -336,7 +337,8 @@ impl Ai for MinimaxBot {
 }
 
 impl Player for MinimaxBot {
-    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, _: &Player) -> Result<(), String> {
+    fn initialize(&mut self, sender: Sender<Message>, receiver: Receiver<Message>, opponent: &Player) -> Result<(), String> {
+        let vs_playtak = opponent.as_any().is::<PlaytakPlayer>();
         let ai = self.ai.clone();
         let cancel = ai.lock().unwrap().cancel.clone();
         let mut undos = 1;
@@ -363,7 +365,15 @@ impl Player for MinimaxBot {
 
                             let mut cancel = cancel.lock().unwrap();
                             if *cancel == false {
-                                println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds", plies.len(), elapsed_time as f32 / 1000000000.0);
+                                println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds{}",
+                                    plies.len(),
+                                    elapsed_time as f32 / 1000000000.0,
+                                    if vs_playtak {
+                                        format!(", evaluation: {}", state.evaluate_plies(&plies))
+                                    } else {
+                                        String::new()
+                                    },
+                                );
 
                                 sender.send(Message::MoveResponse(plies[0].clone())).ok();
                             } else {
