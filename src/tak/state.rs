@@ -55,6 +55,19 @@ impl State {
         }
     }
 
+    pub fn from_plies(size: usize, plies: &[Ply]) -> Option<State> {
+        let mut state = State::new(size);
+
+        for ply in plies {
+            match state.execute_ply(ply) {
+                Ok(next) => state = next,
+                Err(_) => return None,
+            }
+        }
+
+        Some(state)
+    }
+
     pub fn from_tps(tps: &str) -> Option<State> {
         if &tps[0..6] != "[TPS \"" || &tps[(tps.len() - 2)..] != "\"]" {
             return None;
