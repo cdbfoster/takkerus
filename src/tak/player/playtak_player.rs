@@ -161,9 +161,8 @@ impl Player for PlaytakPlayer {
 
                         let mut stream = stream.lock().unwrap();
 
-                        match write_stream(&mut *stream, &["PING"]) {
-                            Err(_) => break,
-                            _ => (),
+                        if let Err(_) = write_stream(&mut *stream, &["PING"]) {
+                            break;
                         }
                     }
                 });
@@ -285,128 +284,122 @@ impl Player for PlaytakPlayer {
                     }
 
                     if message.starts_with("Shout") {
-                        match SHOUT_COMMAND.captures(&message) {
-                            Some(captures) => {
-                                let invoker = String::from(&captures[1]);
-                                let target = captures[2].to_lowercase();
+                        if let Some(captures) = SHOUT_COMMAND.captures(&message) {
+                            let invoker = String::from(&captures[1]);
+                            let target = captures[2].to_lowercase();
 
-                                if target != username.to_lowercase() &&
-                                   format!("{}bot", target) != username.to_lowercase() {
-                                    return Action::None;
-                                }
+                            if target != username.to_lowercase() &&
+                               format!("{}bot", target) != username.to_lowercase() {
+                                return Action::None;
+                            }
 
-                                let command = captures[3].to_lowercase();
-                                let value = captures[4].to_lowercase();
+                            let command = captures[3].to_lowercase();
+                            let value = captures[4].to_lowercase();
 
-                                if let GameType::Seek { size, time, increment, color } = game.clone() {
-                                    if command == "size" {
-                                        if let Ok(new_size) = usize::from_str(&value) {
-                                            if new_size != size && new_size >= 4 && new_size <= 6 {
-                                                *game = GameType::Seek {
-                                                    size: new_size,
-                                                    time: time,
-                                                    increment: increment,
-                                                    color: color,
-                                                };
-                                                seek_game(&stream, new_size, time, increment, color);
-                                            }
-                                        }
-                                    } else if command == "color" {
-                                        let mut new_color = color;
-
-                                        if value == "white" {
-                                            new_color = Some(Color::White);
-                                        } else if value == "black" {
-                                            new_color = Some(Color::Black);
-                                        } else if value == "none" {
-                                            new_color = None;
-                                        }
-
-                                        if new_color != color {
+                            if let GameType::Seek { size, time, increment, color } = game.clone() {
+                                if command == "size" {
+                                    if let Ok(new_size) = usize::from_str(&value) {
+                                        if new_size != size && new_size >= 4 && new_size <= 6 {
                                             *game = GameType::Seek {
-                                                size: size,
+                                                size: new_size,
                                                 time: time,
                                                 increment: increment,
-                                                color: new_color,
+                                                color: color,
                                             };
-                                            seek_game(&stream, size, time, increment, new_color);
+                                            seek_game(&stream, new_size, time, increment, color);
                                         }
                                     }
-                                }
+                                } else if command == "color" {
+                                    let mut new_color = color;
 
-                                if command == "evaluate" || command == "evaluation" || command == "eval" {
-                                    if let Some(index) = game_list.iter().position(|game| game.p1 == invoker || game.p2 == invoker) {
-                                        let game_listing = &game_list[index];
+                                    if value == "white" {
+                                        new_color = Some(Color::White);
+                                    } else if value == "black" {
+                                        new_color = Some(Color::Black);
+                                    } else if value == "none" {
+                                        new_color = None;
+                                    }
 
-                                        write_stream(&mut *stream.lock().unwrap(), &[
-                                            "Observe",
-                                            game_listing.id.split_at(5).1,
-                                        ]).ok();
-
-                                        let plies = collect_game(&game_listing.id, &connection_receiver);
-
-                                        write_stream(&mut *stream.lock().unwrap(), &[
-                                            "Unobserve",
-                                            game_listing.id.split_at(5).1,
-                                        ]).ok();
-
-                                        let state = State::from_plies(game_listing.size, &plies).unwrap();
-
-                                        write_stream(&mut *stream.lock().unwrap(), &[
-                                            "Shout Evaluating ",
-                                            &format!("{}'s", invoker),
-                                            "game...",
-                                        ]).ok();
-
-                                        let mut ai = Minimax::new(0, 10);
-
-                                        let start_time = time::precise_time_ns();
-                                        let plies = ai.analyze(&state);
-                                        let elapsed_time = (time::precise_time_ns() - start_time) as f32 / 1000000000.0;
-
-                                        let eval = state.evaluate_plies(&plies);
-
-                                        write_stream(&mut *stream.lock().unwrap(), &[
-                                            "Shout",
-                                            &format!("{}'s", invoker),
-                                            "game:",
-                                            &format!("Evaluation for {} (depth: {}, time: {:.2}s): {}",
-                                                if state.ply_count % 2 == 0 {
-                                                    "white"
-                                                } else {
-                                                    "black"
-                                                },
-                                                plies.len(),
-                                                elapsed_time,
-                                                eval,
-                                            ),
-                                        ]).ok();
+                                    if new_color != color {
+                                        *game = GameType::Seek {
+                                            size: size,
+                                            time: time,
+                                            increment: increment,
+                                            color: new_color,
+                                        };
+                                        seek_game(&stream, size, time, increment, new_color);
                                     }
                                 }
-                            },
-                            None => (),
+                            }
+
+                            if command == "evaluate" || command == "evaluation" || command == "eval" {
+                                if let Some(index) = game_list.iter().position(|game| game.p1 == invoker || game.p2 == invoker) {
+                                    let game_listing = &game_list[index];
+
+                                    write_stream(&mut *stream.lock().unwrap(), &[
+                                        "Observe",
+                                        game_listing.id.split_at(5).1,
+                                    ]).ok();
+
+                                    let plies = collect_game(&game_listing.id, &connection_receiver);
+
+                                    write_stream(&mut *stream.lock().unwrap(), &[
+                                        "Unobserve",
+                                        game_listing.id.split_at(5).1,
+                                    ]).ok();
+
+                                    let state = State::from_plies(game_listing.size, &plies).unwrap();
+
+                                    write_stream(&mut *stream.lock().unwrap(), &[
+                                        "Shout Evaluating ",
+                                        &format!("{}'s", invoker),
+                                        "game...",
+                                    ]).ok();
+
+                                    let mut ai = Minimax::new(0, 10);
+
+                                    let start_time = time::precise_time_ns();
+                                    let plies = ai.analyze(&state);
+                                    let elapsed_time = (time::precise_time_ns() - start_time) as f32 / 1000000000.0;
+
+                                    let eval = state.evaluate_plies(&plies);
+
+                                    write_stream(&mut *stream.lock().unwrap(), &[
+                                        "Shout",
+                                        &format!("{}'s", invoker),
+                                        "game:",
+                                        &format!("Evaluation for {} (depth: {}, time: {:.2}s): {}",
+                                            if state.ply_count % 2 == 0 {
+                                                "white"
+                                            } else {
+                                                "black"
+                                            },
+                                            plies.len(),
+                                            elapsed_time,
+                                            eval,
+                                        ),
+                                    ]).ok();
+                                }
+                            }
                         }
                     }
 
                     if message.starts_with("GameList") {
-                        match GAMELIST_CHANGE.captures(&message) {
-                            Some(captures) => {
-                                let game = ListedGame {
-                                    id: String::from(&captures[2]),
-                                    p1: String::from(&captures[3]),
-                                    p2: String::from(&captures[4]),
-                                    size: usize::from_str(&captures[5]).unwrap(),
-                                };
+                        if let Some(captures) = GAMELIST_CHANGE.captures(&message) {
+                            let game = ListedGame {
+                                id: String::from(&captures[2]),
+                                p1: String::from(&captures[3]),
+                                p2: String::from(&captures[4]),
+                                size: usize::from_str(&captures[5]).unwrap(),
+                            };
 
-                                if &captures[1] == "Add" {
-                                    game_list.push(game);
-                                } else if &captures[1] == "Remove" {
-                                    if let Some(index) = game_list.iter().position(|x| *x == game) {
-                                        game_list.remove(index);
-                                    }
+                            if &captures[1] == "Add" {
+                                game_list.push(game);
+                            } else if &captures[1] == "Remove" {
+                                if let Some(index) = game_list.iter().position(|x| *x == game) {
+                                    game_list.remove(index);
                                 }
-                            },
-                            None => (),
+                            }
                         }
                     }
 
@@ -499,88 +492,82 @@ impl Player for PlaytakPlayer {
 
             let mut parse_ingame_message = |message: String| {
                 if message.starts_with("Shout") {
-                    match SHOUT_COMMAND.captures(&message) {
-                        Some(captures) => {
-                            let invoker = String::from(&captures[1]);
-                            let target = captures[2].to_lowercase();
+                    if let Some(captures) = SHOUT_COMMAND.captures(&message) {
+                        let invoker = String::from(&captures[1]);
+                        let target = captures[2].to_lowercase();
 
-                            if target != username.to_lowercase() &&
-                               format!("{}bot", target) != username.to_lowercase() {
+                        if target != username.to_lowercase() &&
+                           format!("{}bot", target) != username.to_lowercase() {
+                            return;
+                        }
+
+                        let command = captures[3].to_lowercase();
+                        //let value = captures[4].to_lowercase();
+
+                        if command == "evaluate" || command == "evaluation" || command == "eval" {
+                            // If the invoker is in a game that's not our game
+                            if game_list.iter().position(|game|
+                                (game.p1 == invoker || game.p2 == invoker) &&
+                                (game.p1 != username && game.p2 != username)
+                            ).is_some() {
+                                write_stream(&mut *stream.lock().unwrap(), &[
+                                    "Shout ",
+                                    &format!("{}:", invoker),
+                                    "Can't evaluate your game right now; busy.",
+                                ]).ok();
+
                                 return;
                             }
 
-                            let command = captures[3].to_lowercase();
-                            //let value = captures[4].to_lowercase();
+                            write_stream(&mut *stream.lock().unwrap(), &[
+                                "Shout Evaluating...",
+                            ]).ok();
 
-                            if command == "evaluate" || command == "evaluation" || command == "eval" {
-                                // If the invoker is in a game that's not our game
-                                if game_list.iter().position(|game|
-                                    (game.p1 == invoker || game.p2 == invoker) &&
-                                    (game.p1 != username && game.p2 != username)
-                                ).is_some() {
-                                    write_stream(&mut *stream.lock().unwrap(), &[
-                                        "Shout ",
-                                        &format!("{}:", invoker),
-                                        "Can't evaluate your game right now; busy.",
-                                    ]).ok();
+                            let mut ai = Minimax::new(0, 10);
+                            let state = state.lock().unwrap();
 
-                                    return;
-                                }
+                            let start_time = time::precise_time_ns();
+                            let plies = ai.analyze(&*state);
+                            let elapsed_time = (time::precise_time_ns() - start_time) as f32 / 1000000000.0;
 
-                                write_stream(&mut *stream.lock().unwrap(), &[
-                                    "Shout Evaluating...",
-                                ]).ok();
+                            let eval = state.evaluate_plies(&plies);
 
-                                let mut ai = Minimax::new(0, 10);
-                                let state = state.lock().unwrap();
-
-                                let start_time = time::precise_time_ns();
-                                let plies = ai.analyze(&*state);
-                                let elapsed_time = (time::precise_time_ns() - start_time) as f32 / 1000000000.0;
-
-                                let eval = state.evaluate_plies(&plies);
-
-                                write_stream(&mut *stream.lock().unwrap(), &[
-                                    "Shout",
-                                    &format!("Evaluation for {} (depth: {}, time: {:.2}s): {}",
-                                        if state.ply_count % 2 == 0 {
-                                            "white"
-                                        } else {
-                                            "black"
-                                        },
-                                        plies.len(),
-                                        elapsed_time,
-                                        eval,
-                                    ),
-                                ]).ok();
-                            }
-                        },
-                        None => (),
-                    }
+                            write_stream(&mut *stream.lock().unwrap(), &[
+                                "Shout",
+                                &format!("Evaluation for {} (depth: {}, time: {:.2}s): {}",
+                                    if state.ply_count % 2 == 0 {
+                                        "white"
+                                    } else {
+                                        "black"
+                                    },
+                                    plies.len(),
+                                    elapsed_time,
+                                    eval,
+                                ),
+                            ]).ok();
+                        }
+                    };
 
                     return;
                 }
 
                 if message.starts_with("GameList") {
-                    match GAMELIST_CHANGE.captures(&message) {
-                        Some(captures) => {
-                            let game = ListedGame {
-                                id: String::from(&captures[2]),
-                                p1: String::from(&captures[3]),
-                                p2: String::from(&captures[4]),
-                                size: usize::from_str(&captures[5]).unwrap(),
-                            };
+                    if let Some(captures) = GAMELIST_CHANGE.captures(&message) {
+                        let game = ListedGame {
+                            id: String::from(&captures[2]),
+                            p1: String::from(&captures[3]),
+                            p2: String::from(&captures[4]),
+                            size: usize::from_str(&captures[5]).unwrap(),
+                        };
 
-                            if &captures[1] == "Add" {
-                                game_list.push(game);
-                            } else if &captures[1] == "Remove" {
-                                if let Some(index) = game_list.iter().position(|x| *x == game) {
-                                    game_list.remove(index);
-                                }
+                        if &captures[1] == "Add" {
+                            game_list.push(game);
+                        } else if &captures[1] == "Remove" {
+                            if let Some(index) = game_list.iter().position(|x| *x == game) {
+                                game_list.remove(index);
                             }
-                        },
-                        None => (),
-                    }
+                        }
+                    };
                 }
 
                 let parts = message.split_whitespace().collect::<Vec<_>>();
@@ -608,9 +595,8 @@ impl Player for PlaytakPlayer {
 
                     if let Some(ply) = playtak_to_ply(&string, next_color) {
                         let mut state = state.lock().unwrap();
-                        match state.execute_ply(&ply) {
-                            Ok(next) => *state = next,
-                            _ => (),
+                        if let Ok(next) = state.execute_ply(&ply) {
+                            *state = next;
                         }
 
                         sender.send(Message::MoveResponse(ply)).ok();
@@ -624,12 +610,12 @@ impl Player for PlaytakPlayer {
                     sender.send(Message::UndoRequest).ok();
                 } else if parts[1] == "RemoveUndo" {
                     let mut request_undo = request_undo.lock().unwrap();
-                    if *request_undo == true {
+                    if *request_undo {
                         sender.send(Message::RemoveUndoRequest).ok();
                         *request_undo = false;
                     }
                 } else if parts[1] == "Undo" {
-                    if *request_undo.lock().unwrap() == false {
+                    if !(*request_undo.lock().unwrap()) {
                         sender.send(Message::UndoRequest).ok();
                         sender.send(Message::Undo).ok();
                     }
@@ -672,16 +658,16 @@ fn ply_to_playtak(ply: &Ply) -> String {
         )
     }
 
-    match ply {
-        &Ply::Place { x, y, ref piece } => format!("P {}{}",
+    match *ply {
+        Ply::Place { x, y, ref piece } => format!("P {}{}",
             format_square(x, y),
-            match piece {
-                &Piece::Flatstone(_) => "",
-                &Piece::StandingStone(_) => " W",
-                &Piece::Capstone(_) => " C",
+            match *piece {
+                Piece::Flatstone(_) => "",
+                Piece::StandingStone(_) => " W",
+                Piece::Capstone(_) => " C",
             },
         ),
-        &Ply::Slide { x, y, direction, ref drops } => format!("M {} {}{}",
+        Ply::Slide { x, y, direction, ref drops } => format!("M {} {}{}",
             format_square(x, y),
             {
                 let (dx, dy) = direction.to_offset();

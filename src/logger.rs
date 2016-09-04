@@ -65,7 +65,7 @@ impl Game {
             State::from_tps(&format!("[TPS \"{}\"]", self.header.tps)).unwrap()
         };
 
-        for ply in self.plies.iter() {
+        for ply in &self.plies {
             match state.execute_ply(ply) {
                 Ok(next) => state = next,
                 _ => return None,
@@ -176,8 +176,8 @@ enum TagResult {
 
 impl TagResult {
     fn is_some(&self) -> bool {
-        match self {
-            &TagResult::Ok(_, _) => true,
+        match *self {
+            TagResult::Ok(_, _) => true,
             _ => false,
         }
     }
@@ -295,7 +295,7 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
     advance_whitespace(source, true);
     let mut tag = parse_tag(source);
 
-    'parse_tags: while tag.is_some() {
+    while tag.is_some() {
         let (name, value) = tag.clone().unwrap();
 
         if name == "Event" {
@@ -493,12 +493,9 @@ fn parse_plies(source: &mut Peekable<Chars>, turn_offset: usize) -> Option<Vec<P
     let mut turn_number = 1;
     let mut plies = Vec::new();
 
-    loop {
-        match parse_turn_number(source) {
-            Some(t) => if t != turn_number {
-                return None;
-            },
-            None => break,
+    while let Some(t) = parse_turn_number(source) {
+        if t != turn_number {
+            return None;
         }
 
         match parse_ptn(source, if turn_number + turn_offset != 1 {
@@ -568,13 +565,13 @@ fn parse_adversary_dictionary() -> HashMap<String, HashMap<String, usize>> {
         let header = game.unwrap().header;
 
         {
-            let p1_entry = dictionary.entry(header.p1.clone()).or_insert(HashMap::new());
+            let p1_entry = dictionary.entry(header.p1.clone()).or_insert_with(HashMap::new);
             let p2_entry = p1_entry.entry(header.p2.clone()).or_insert(0);
             *p2_entry += 1;
         }
 
         if header.p1 != header.p2 {
-            let p2_entry = dictionary.entry(header.p2.clone()).or_insert(HashMap::new());
+            let p2_entry = dictionary.entry(header.p2.clone()).or_insert_with(HashMap::new);
             let p1_entry = p2_entry.entry(header.p1.clone()).or_insert(0);
             *p1_entry += 1;
         }
@@ -637,29 +634,20 @@ pub fn check_tmp_file() -> GameState {
 }
 
 pub fn write_tmp_file(game: &Game) {
-    match OpenOptions::new().write(true).truncate(true).create(true).open(GAMES_LOG_TMP) {
-        Ok(mut file) => {
-            write!(&mut file, "{}", game).ok();
-        },
-        _ => (),
+    if let Ok(mut file) = OpenOptions::new().write(true).truncate(true).create(true).open(GAMES_LOG_TMP) {
+        write!(&mut file, "{}", game).ok();
     }
 }
 
 pub fn finalize_tmp_file() {
-    match OpenOptions::new().read(true).open(GAMES_LOG_TMP) {
-        Ok(mut tmp_file) => {
-            let mut tmp_data = String::new();
-            tmp_file.read_to_string(&mut tmp_data).ok();
+    if let Ok(mut tmp_file) = OpenOptions::new().read(true).open(GAMES_LOG_TMP) {
+        let mut tmp_data = String::new();
+        tmp_file.read_to_string(&mut tmp_data).ok();
 
-            match OpenOptions::new().append(true).create(true).open(GAMES_LOG) {
-                Ok(mut file) => {
-                    write!(&mut file, "{}", tmp_data).ok();
+        if let Ok(mut file) = OpenOptions::new().append(true).create(true).open(GAMES_LOG) {
+            write!(&mut file, "{}", tmp_data).ok();
 
-                    fs::remove_file(GAMES_LOG_TMP).ok();
-                },
-                _ => (),
-            }
-        },
-        _ => (),
+            fs::remove_file(GAMES_LOG_TMP).ok();
+        }
     }
 }

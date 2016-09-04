@@ -148,18 +148,18 @@ impl Ply {
     pub fn to_ptn(&self) -> String {
         let mut ptn = String::new();
 
-        match self {
-            &Ply::Place { x, y, ref piece } => {
-                match piece {
-                    &Piece::StandingStone(_) => ptn.push('S'),
-                    &Piece::Capstone(_) => ptn.push('C'),
+        match *self {
+            Ply::Place { x, y, ref piece } => {
+                match *piece {
+                    Piece::StandingStone(_) => ptn.push('S'),
+                    Piece::Capstone(_) => ptn.push('C'),
                     _ => (),
                 }
 
                 ptn.push((x as u8 + 97) as char);
                 ptn.push((y as u8 + 49) as char);
             },
-            &Ply::Slide { x, y, direction, ref drops } => {
+            Ply::Slide { x, y, direction, ref drops } => {
                 let grab = drops.iter().fold(0, |acc, x| acc + x);
 
                 if grab > 1 {
@@ -189,17 +189,17 @@ impl Ply {
 
     pub fn hash(&self) -> u64 {
         let mut hash = 0;
-        match self {
-            &Ply::Place { x, y, ref piece } => {
+        match *self {
+            Ply::Place { x, y, ref piece } => {
                 hash = x as u64;
                 hash = (hash << 3) | y as u64;
-                match piece {
-                    &Piece::Flatstone(color) =>     hash = (hash << 3) | color as u64,
-                    &Piece::StandingStone(color) => hash = (hash << 3) | 2 | color as u64,
-                    &Piece::Capstone(color) =>      hash = (hash << 3) | 4 | color as u64,
+                match *piece {
+                    Piece::Flatstone(color) =>     hash = (hash << 3) | color as u64,
+                    Piece::StandingStone(color) => hash = (hash << 3) | 2 | color as u64,
+                    Piece::Capstone(color) =>      hash = (hash << 3) | 4 | color as u64,
                 }
             },
-            &Ply::Slide { x, y, direction, ref drops } => {
+            Ply::Slide { x, y, direction, ref drops } => {
                 for drop in drops {
                     hash = (hash << 3) | *drop as u64;
                 }

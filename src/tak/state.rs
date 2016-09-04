@@ -106,34 +106,31 @@ impl State {
         while next.is_some() {
             ensure_dimensions(&mut board, x, y);
 
-            match piece_color {
-                Some(color) => {
-                    let piece = match next {
-                        Some('S') => Piece::StandingStone(color),
-                        Some('C') => Piece::Capstone(color),
-                        _ => Piece::Flatstone(color),
-                    };
+            if let Some(color) = piece_color {
+                let piece = match next {
+                    Some('S') => Piece::StandingStone(color),
+                    Some('C') => Piece::Capstone(color),
+                    _ => Piece::Flatstone(color),
+                };
 
-                    let (used_flatstones, used_capstones) = match color {
-                        Color::White => (&mut p1_used_flatstones, &mut p1_used_capstones),
-                        Color::Black => (&mut p2_used_flatstones, &mut p2_used_capstones),
-                    };
+                let (used_flatstones, used_capstones) = match color {
+                    Color::White => (&mut p1_used_flatstones, &mut p1_used_capstones),
+                    Color::Black => (&mut p2_used_flatstones, &mut p2_used_capstones),
+                };
 
-                    match piece {
-                        Piece::Capstone(_) => *used_capstones += 1,
-                        _ => *used_flatstones += 1,
-                    }
+                match piece {
+                    Piece::Capstone(_) => *used_capstones += 1,
+                    _ => *used_flatstones += 1,
+                }
 
-                    board[x][y].push(piece);
+                board[x][y].push(piece);
 
-                    piece_color = None;
-                    match next {
-                        Some('S') |
-                        Some('C') => next = chars.next(),
-                        _ => (),
-                    }
-                },
-                None => (),
+                piece_color = None;
+                match next {
+                    Some('S') |
+                    Some('C') => next = chars.next(),
+                    _ => (),
+                }
             }
 
             match next {
@@ -189,7 +186,7 @@ impl State {
             turn_count * 2 + player
         };
 
-        for column in board.iter_mut() {
+        for column in &mut board {
             column.reverse();
         }
 
@@ -219,20 +216,20 @@ impl State {
 
         let board_size = next.board.len();
 
-        match ply {
-            &Ply::Place { x, y, ref piece } => {
+        match *ply {
+            Ply::Place { x, y, ref piece } => {
                 if !next.board[x][y].is_empty() {
                     return Err(GameError::IllegalPlacement);
                 }
 
-                let count = match piece {
-                    &Piece::Flatstone(color) |
-                    &Piece::StandingStone(color) => if color == Color::White {
+                let count = match *piece {
+                    Piece::Flatstone(color) |
+                    Piece::StandingStone(color) => if color == Color::White {
                         &mut next.p1.flatstone_count
                     } else {
                         &mut next.p2.flatstone_count
                     },
-                    &Piece::Capstone(color) => if color == Color::White {
+                    Piece::Capstone(color) => if color == Color::White {
                         &mut next.p1.capstone_count
                     } else {
                         &mut next.p2.capstone_count
@@ -247,20 +244,20 @@ impl State {
 
                 next.board[x][y].push(piece.clone());
 
-                match piece {
-                    &Piece::Flatstone(color) => next.analysis.add_flatstone(
+                match *piece {
+                    Piece::Flatstone(color) => next.analysis.add_flatstone(
                         color, x, y, next.board[x][y].len() - 1,
                     ),
-                    block => next.analysis.add_blocking_stone(block, x, y),
+                    ref block => next.analysis.add_blocking_stone(block, x, y),
                 }
 
-                match piece {
-                    &Piece::Flatstone(_) |
-                    &Piece::Capstone(_) => next.analysis.calculate_road_groups(),
+                match *piece {
+                    Piece::Flatstone(_) |
+                    Piece::Capstone(_) => next.analysis.calculate_road_groups(),
                     _ => (),
                 }
             },
-            &Ply::Slide { x, y, direction, ref drops } => {
+            Ply::Slide { x, y, direction, ref drops } => {
                 let next_color = if self.ply_count % 2 == 0 {
                     Color::White
                 } else {
@@ -293,11 +290,10 @@ impl State {
                         ref block => next.analysis.remove_blocking_stone(block, x, y),
                     }
 
-                    match next.board[x][y].last() {
-                        Some(revealed) => next.analysis.reveal_flatstone(
+                    if let Some(revealed) = next.board[x][y].last() {
+                        next.analysis.reveal_flatstone(
                             revealed.get_color(), x, y,
-                        ),
-                        None => (),
+                        );
                     }
 
 	                stack.push(piece);
@@ -348,11 +344,10 @@ impl State {
                     }
 
                     for _ in 0..*drop {
-                        match next.board[nx as usize][ny as usize].last() {
-                            Some(covered) => next.analysis.cover_flatstone(
+                        if let Some(covered) = next.board[nx as usize][ny as usize].last() {
+                            next.analysis.cover_flatstone(
                                 covered.get_color(), nx as usize, ny as usize,
-                            ),
-                            None => (),
+                            );
                         }
 
                         let piece = stack.pop().unwrap();
@@ -499,8 +494,8 @@ impl fmt::Display for State {
         let column_widths = self.board.iter().map(|column| {
             column.iter().fold(6, |max, stack| {
                 let stack_width = stack.iter().fold(0, |acc, piece| {
-                    match piece {
-                        &Piece::Flatstone(_) => acc + 1,
+                    match *piece {
+                        Piece::Flatstone(_) => acc + 1,
                         _ => acc + 2,
                     }
                 }) + 3 + if !stack.is_empty() {
@@ -552,9 +547,9 @@ impl fmt::Display for State {
                         Color::Black => "B",
                     }).ok();
 
-                    match piece {
-                        &Piece::StandingStone(_) => { write!(c, "S").ok(); },
-                        &Piece::Capstone(_) => { write!(c, "C").ok(); },
+                    match *piece {
+                        Piece::StandingStone(_) => { write!(c, "S").ok(); },
+                        Piece::Capstone(_) => { write!(c, "C").ok(); },
                         _ => (),
                     }
                 }

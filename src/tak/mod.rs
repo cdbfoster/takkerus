@@ -43,10 +43,10 @@ pub enum Piece {
 
 impl Piece {
     pub fn get_color(&self) -> Color {
-        match self {
-            &Piece::Flatstone(color) |
-            &Piece::StandingStone(color) |
-            &Piece::Capstone(color) => color,
+        match *self {
+            Piece::Flatstone(color) |
+            Piece::StandingStone(color) |
+            Piece::Capstone(color) => color,
         }
     }
 }

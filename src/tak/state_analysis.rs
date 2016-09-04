@@ -141,15 +141,15 @@ impl StateAnalysis {
     }
 
     pub fn add_blocking_stone(&mut self, piece: &Piece, x: usize, y: usize) {
-        match piece {
-            &Piece::StandingStone(color) => if color == Color::White {
+        match *piece {
+            Piece::StandingStone(color) => if color == Color::White {
                 self.standing_stones.set(x, y, self.board_size);
                 self.p1_pieces.set(x, y, self.board_size);
             } else {
                 self.standing_stones.set(x, y, self.board_size);
                 self.p2_pieces.set(x, y, self.board_size);
             },
-            &Piece::Capstone(color) => if color == Color::White {
+            Piece::Capstone(color) => if color == Color::White {
                 self.capstones.set(x, y, self.board_size);
                 self.p1_pieces.set(x, y, self.board_size);
             } else {
@@ -161,15 +161,15 @@ impl StateAnalysis {
     }
 
     pub fn remove_blocking_stone(&mut self, piece: &Piece, x: usize, y: usize) {
-        match piece {
-            &Piece::StandingStone(color) => if color == Color::White {
+        match *piece {
+            Piece::StandingStone(color) => if color == Color::White {
                 self.standing_stones.clear(x, y, self.board_size);
                 self.p1_pieces.clear(x, y, self.board_size);
             } else {
                 self.standing_stones.clear(x, y, self.board_size);
                 self.p2_pieces.clear(x, y, self.board_size);
             },
-            &Piece::Capstone(color) => if color == Color::White {
+            Piece::Capstone(color) => if color == Color::White {
                 self.capstones.clear(x, y, self.board_size);
                 self.p1_pieces.clear(x, y, self.board_size);
             } else {

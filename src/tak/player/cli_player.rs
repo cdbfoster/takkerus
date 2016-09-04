@@ -88,7 +88,7 @@ impl Player for CliPlayer {
 
                                 {
                                     let mut request_undo = data.request_undo.lock().unwrap();
-                                    if *request_undo == true {
+                                    if *request_undo {
                                         *request_undo = false;
                                         println!("\n  Your opponent ignored your undo request.");
                                     }
@@ -100,7 +100,7 @@ impl Player for CliPlayer {
                         Message::UndoRequest => {
                             {
                                 let mut request_undo = data.request_undo.lock().unwrap();
-                                if *request_undo == true {
+                                if *request_undo {
                                     println!("\n  Your opponent accepted your undo request.");
                                     *request_undo = false;
                                 } else {
@@ -111,7 +111,7 @@ impl Player for CliPlayer {
 
                             prompt(&data);
                         },
-                        Message::RemoveUndoRequest => if *data.wait_undo.lock().unwrap() == true {
+                        Message::RemoveUndoRequest => if *data.wait_undo.lock().unwrap() {
                             println!("\n  Your opponent has removed their undo request.");
                             *data.wait_undo.lock().unwrap() = false;
                             prompt(&data);
@@ -119,22 +119,20 @@ impl Player for CliPlayer {
                         _ => (),
                     }
 
-                    if game_started {
-                        if share_stdin && child.is_none() && waiting(&data) {
-                            let sender = sender.clone();
-                            let data = data.clone();
+                    if game_started && share_stdin && child.is_none() && waiting(&data) {
+                        let sender = sender.clone();
+                        let data = data.clone();
 
-                            child = Some(thread::spawn(move || {
-                                loop {
-                                    if waiting(&data) {
-                                        prompt(&data);
-                                        process_command(&sender, &data, share_stdin);
-                                    } else {
-                                        break;
-                                    }
+                        child = Some(thread::spawn(move || {
+                            loop {
+                                if waiting(&data) {
+                                    prompt(&data);
+                                    process_command(&sender, &data, share_stdin);
+                                } else {
+                                    break;
                                 }
-                            }));
-                        }
+                            }
+                        }));
                     }
                 }
             });
@@ -150,7 +148,7 @@ impl Player for CliPlayer {
                 loop {
                     process_command(&sender, &data, share_stdin);
 
-                    if *data.wait_move.lock().unwrap() == true {
+                    if *data.wait_move.lock().unwrap() {
                         prompt(&data)
                     }
                 }
@@ -187,7 +185,7 @@ impl Player for CliPlayer {
 
             {
                 let mut request_undo = data.request_undo.lock().unwrap();
-                if *request_undo == true {
+                if *request_undo {
                     if input == "cancel undo" {
                         *request_undo = false;
                         sender.send(Message::RemoveUndoRequest).ok();
@@ -198,7 +196,7 @@ impl Player for CliPlayer {
                     return;
                 } else if input == "undo" {
                     if !share_stdin {
-                        if *data.wait_undo.lock().unwrap() == false {
+                        if !(*data.wait_undo.lock().unwrap()) {
                             *request_undo = true;
                             sender.send(Message::UndoRequest).ok();
                         } else {
@@ -236,7 +234,7 @@ impl Player for CliPlayer {
 
             {
                 let mut wait_undo = data.wait_undo.lock().unwrap();
-                if *wait_undo == true {
+                if *wait_undo {
                     if input == "accept" {
                         *wait_undo = false;
                         sender.send(Message::UndoRequest).ok();
@@ -251,23 +249,20 @@ impl Player for CliPlayer {
 
             {
                 let mut wait_move = data.wait_move.lock().unwrap();
-                if *wait_move == true {
-                    match parse_ply(&input, &*data.state.lock().unwrap()) {
-                        Some(ply) => {
-                            *wait_move = false;
-                            *data.wait_undo.lock().unwrap() = false;
-                            sender.send(Message::MoveResponse(ply)).ok();
-                        },
-                        None => (),
+                if *wait_move {
+                    if let Some(ply) = parse_ply(&input, &*data.state.lock().unwrap()) {
+                        *wait_move = false;
+                        *data.wait_undo.lock().unwrap() = false;
+                        sender.send(Message::MoveResponse(ply)).ok();
                     }
                 }
             }
         }
 
         fn prompt(data: &Data) {
-            if *data.wait_undo.lock().unwrap() == true {
+            if *data.wait_undo.lock().unwrap() {
                 print!("Enter command (Your opponent requested an undo): ");
-            } else if *data.request_undo.lock().unwrap() == true {
+            } else if *data.request_undo.lock().unwrap() {
                 print!("Enter command (You requested an undo): ");
             } else {
                 print!("Enter command: ");

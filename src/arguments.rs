@@ -44,12 +44,12 @@ pub fn collect_next(source: &mut Peekable<Args>, arguments: &[Type]) -> Result<H
             let mut match_peek = None;
 
             for argument in arguments.iter() {
-                match argument {
-                    &Type::Flag(string) => if peek_string == string {
+                match *argument {
+                    Type::Flag(string) => if peek_string == string {
                         match_peek = Some(argument.clone());
                         break;
                     },
-                    &Type::Option(string_1, string_2, _) => {
+                    Type::Option(string_1, string_2, _) => {
                         if peek_string == string_1 || peek_string == string_2 {
                             match_peek = Some(argument.clone());
                             break;
@@ -113,8 +113,8 @@ pub enum ArgumentError {
 
 impl fmt::Display for ArgumentError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &ArgumentError::NotEnoughParameters(option, expected, found) => {
+        match *self {
+            ArgumentError::NotEnoughParameters(option, expected, found) => {
                 write!(f, "Not enough parameters for option '{}'.  Expected {}, found {}.", option, expected, found)
             },
         }

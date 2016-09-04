@@ -94,7 +94,7 @@ impl Extrapolatable for State {
                                 board_size
                             };
 
-                            for drops in SLIDE_TABLE[max_grab].iter() {
+                            for drops in &SLIDE_TABLE[max_grab] {
                                 if drops.len() <= distance {
                                     plies.push(Ply::Slide {
                                         x: x,

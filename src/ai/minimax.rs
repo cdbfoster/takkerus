@@ -82,38 +82,32 @@ impl Minimax {
 
         self.stats.last().unwrap().borrow_mut().visited += 1;
 
-        match self.transposition_table.borrow().get(&state.get_signature()) {
-            Some(entry) => {
-                self.stats.last().unwrap().borrow_mut().tt_hits += 1;
+        if let Some(entry) = self.transposition_table.borrow().get(&state.get_signature()) {
+            self.stats.last().unwrap().borrow_mut().tt_hits += 1;
 
-                let mut usable = false;
+            let mut usable = false;
 
-                if entry.depth >= depth &&
-                  (entry.bound_type == BoundType::Exact ||
-                  (entry.bound_type == BoundType::Upper && entry.value < alpha) ||
-                  (entry.bound_type == BoundType::Lower && entry.value >= beta)) {
-                    usable = true;
+            if entry.depth >= depth &&
+              (entry.bound_type == BoundType::Exact ||
+              (entry.bound_type == BoundType::Upper && entry.value < alpha) ||
+              (entry.bound_type == BoundType::Lower && entry.value >= beta)) {
+                usable = true;
+            }
+
+            if entry.bound_type == BoundType::Exact && entry.value.abs() > WIN_THRESHOLD {
+                usable = true;
+            }
+
+            if usable {
+                if let Ok(_) = state.execute_ply_preallocated(&entry.principal_variation[0], &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
+                    self.stats.last().unwrap().borrow_mut().tt_saves += 1;
+
+                    principal_variation.clear();
+                    principal_variation.append(&mut entry.principal_variation.clone());
+
+                    return entry.value;
                 }
-
-                if entry.bound_type == BoundType::Exact && entry.value.abs() > WIN_THRESHOLD {
-                    usable = true;
-                }
-
-                if usable {
-                    match state.execute_ply_preallocated(&entry.principal_variation[0], &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
-                        Ok(_) => {
-                            self.stats.last().unwrap().borrow_mut().tt_saves += 1;
-
-                            principal_variation.clear();
-                            principal_variation.append(&mut entry.principal_variation.clone());
-
-                            return entry.value;
-                        },
-                        _ => (),
-                    }
-                }
-            },
-            None => (),
+            }
         }
 
         let ply_generator = PlyGenerator::new(
@@ -136,10 +130,9 @@ impl Minimax {
 
         for ply in ply_generator {
             let next_state = {
-                match state.execute_ply_preallocated(&ply, &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
-                    Err(_) => continue,
-                    _ => (),
-                };
+                if let Err(_) = state.execute_ply_preallocated(&ply, &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
+                    continue;
+                }
 
                 self.states[search_iteration].borrow()
             };
@@ -187,34 +180,30 @@ impl Minimax {
 
             first_iteration = false;
 
-            if *self.cancel.lock().unwrap() == true {
+            if *self.cancel.lock().unwrap() {
                 return 0;
             }
         }
 
-        match principal_variation.first() {
-            Some(ply) => match state.execute_ply_preallocated(ply, &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
-                Ok(_) => {
-                    self.transposition_table.borrow_mut().insert(state.get_signature(),
-                        TranspositionTableEntry {
-                            depth: depth,
-                            value: alpha,
-                            bound_type: if !raised_alpha {
-                                BoundType::Upper
-                            } else if alpha >= beta {
-                                BoundType::Lower
-                            } else {
-                                BoundType::Exact
-                            },
-                            principal_variation: principal_variation.clone(),
-                            lifetime: 2,
-                        }
-                    );
-                    self.stats.last().unwrap().borrow_mut().tt_stores += 1;
-                },
-                _ => (),
-            },
-            None => (),
+        if let Some(ply) = principal_variation.first() {
+            if let Ok(_) = state.execute_ply_preallocated(ply, &mut *self.states.get(search_iteration).unwrap().borrow_mut()) {
+                self.transposition_table.borrow_mut().insert(state.get_signature(),
+                    TranspositionTableEntry {
+                        depth: depth,
+                        value: alpha,
+                        bound_type: if !raised_alpha {
+                            BoundType::Upper
+                        } else if alpha >= beta {
+                            BoundType::Lower
+                        } else {
+                            BoundType::Exact
+                        },
+                        principal_variation: principal_variation.clone(),
+                        lifetime: 2,
+                    }
+                );
+                self.stats.last().unwrap().borrow_mut().tt_stores += 1;
+            }
         }
 
         alpha
@@ -319,7 +308,7 @@ impl Ai for MinimaxBot {
 
                 let mut total = Statistics::new(0);
 
-                for stats in self.0.iter() {
+                for stats in &self.0 {
                     write!(f, "\n  Depth {}:\n", stats.depth).ok();
                     write!(f, "    {:21} {:14}\n", "Visited:", stats.visited).ok();
                     write!(f, "    {:21} {:14}\n", "Evaluated:", stats.evaluated).ok();
@@ -368,7 +357,7 @@ impl Player for MinimaxBot {
 
                         {
                             let mut cancel = cancel.lock().unwrap();
-                            if *cancel == true {
+                            if *cancel {
                                 *cancel = false;
                             }
                         }
@@ -379,7 +368,7 @@ impl Player for MinimaxBot {
                             let elapsed_time = time::precise_time_ns() - old_time;
 
                             let mut cancel = cancel.lock().unwrap();
-                            if *cancel == false {
+                            if !(*cancel) {
                                 println!("[MinimaxBot] Decision time (depth {}): {:.3} seconds{}",
                                     plies.len(),
                                     elapsed_time as f32 / 1000000000.0,
@@ -637,7 +626,7 @@ impl Evaluatable for State {
         let mut p1_capstone_hard_flats = 0;
         let mut p1_capstone_soft_flats = 0;
 
-        for level in a.p1_flatstones.iter() {
+        for level in &a.p1_flatstones {
             if *level != 0 {
                 p1_flatstone_hard_flats += (level & p1_flatstones).get_population() as i32;
                 p1_flatstone_soft_flats += (level & p2_flatstones).get_population() as i32;
@@ -659,7 +648,7 @@ impl Evaluatable for State {
         let mut p2_capstone_hard_flats = 0;
         let mut p2_capstone_soft_flats = 0;
 
-        for level in a.p2_flatstones.iter() {
+        for level in &a.p2_flatstones {
             if *level != 0 {
                 p2_flatstone_hard_flats += (level & p2_flatstones).get_population() as i32;
                 p2_flatstone_soft_flats += (level & p1_flatstones).get_population() as i32;
@@ -744,7 +733,7 @@ impl Evaluatable for State {
         let evaluate_influence = |pieces: Bitmap, own_stacks: &Vec<Bitmap>, own_flatstones: Bitmap, enemy_pieces: Bitmap| {
             fn add_bitmap(mut bitmap: Bitmap, accumulator: &mut Vec<Bitmap>) {
                 let mut bit = 0;
-                if accumulator.len() == 0 {
+                if accumulator.is_empty() {
                     accumulator.push(0);
                 }
 
@@ -795,9 +784,9 @@ impl Evaluatable for State {
 
                 let mut cast_map = [pieces; 4];
                 for _ in 0..cast {
-                    cast_map[North as usize] = cast_map[North as usize] << a.board_size;
+                    cast_map[North as usize] <<= a.board_size;
                     cast_map[East as usize] = (cast_map[East as usize] >> 1) & !EDGE[a.board_size][West as usize];
-                    cast_map[South as usize] = cast_map[South as usize] >> a.board_size;
+                    cast_map[South as usize] >>= a.board_size;
                     cast_map[West as usize] = (cast_map[West as usize] << 1) & !EDGE[a.board_size][East as usize];
 
                     add_bitmap(cast_map[North as usize], influence);
@@ -820,7 +809,7 @@ impl Evaluatable for State {
                 convert_accumulator(&influence_accumulator)
             };
 
-            let eval = {
+            {
                 let mut eval = 0;
                 for (level, map) in influence.iter().enumerate() {
                     eval += (map & own_flatstones).get_population() as i32 * (WEIGHT.influence.0 * (level as i32 + 1));
@@ -828,9 +817,7 @@ impl Evaluatable for State {
                     eval += (map & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> level);
                 }
                 eval
-            };
-
-            eval
+            }
         };
 
         p1_eval += evaluate_influence(

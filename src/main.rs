@@ -157,15 +157,14 @@ fn main() {
 
                 state = State::new(size);
             },
-            None => match next.get("--file") {
-                Some(strings) => state = match logger::open_ptn_file(&strings[0]) {
+            None => if let Some(strings) = next.get("--file") {
+                state = match logger::open_ptn_file(&strings[0]) {
                     Ok(game) => game.to_state().unwrap(),
                     Err(logger::PtnFileError(error)) => {
                         println!("  Error: {}", error);
                         return;
                     },
-                },
-                None => (),
+                };
             },
         }
 
@@ -177,8 +176,8 @@ fn main() {
             },
         };
 
-        match next.get("--ai") {
-            Some(strings) => if strings[0] == "minimax" {
+        if let Some(strings) = next.get("--ai") {
+            if strings[0] == "minimax" {
                 let mut depth = 5;
                 let mut goal = 0;
 
@@ -193,8 +192,8 @@ fn main() {
                     },
                 };
 
-                match next.get("--depth") {
-                    Some(strings) => depth = match u8::from_str(&strings[0]) {
+                if let Some(strings) = next.get("--depth") {
+                    depth = match u8::from_str(&strings[0]) {
                         Ok(depth) => if depth <= 15 {
                             depth
                         } else {
@@ -205,27 +204,24 @@ fn main() {
                             println!("  Error: Invalid minimax search depth.");
                             return;
                         },
-                    },
-                    None => (),
-                };
+                    };
+                }
 
-                match next.get("--goal") {
-                    Some(strings) => goal = match u16::from_str(&strings[0]) {
+                if let Some(strings) = next.get("--goal") {
+                    goal = match u16::from_str(&strings[0]) {
                         Ok(goal) => goal,
                         _ => {
                             println!("  Error: Invalid minimax search time goal.");
                             return;
                         },
-                    },
-                    None => (),
-                };
+                    };
+                }
 
                 ai = Box::new(ai::MinimaxBot::new(depth, goal));
             } else {
                 println!("  Error: Invalid AI type.");
                 return;
-            },
-            None => (),
+            }
         }
 
         Action::Analyze {
@@ -248,24 +244,21 @@ fn main() {
             },
         };
 
-        match next.get("--size") {
-            Some(strings) => {
-                size = match usize::from_str(&strings[0]) {
-                    Ok(size) => if size >= 3 && size <= 8 {
-                        size
-                    } else {
-                        println!("  Error: Invalid size.");
-                        return;
-                    },
-                    _ => {
-                        println!("  Error: Invalid size.");
-                        return;
-                    },
-                };
+        if let Some(strings) = next.get("--size") {
+            size = match usize::from_str(&strings[0]) {
+                Ok(size) => if size >= 3 && size <= 8 {
+                    size
+                } else {
+                    println!("  Error: Invalid size.");
+                    return;
+                },
+                _ => {
+                    println!("  Error: Invalid size.");
+                    return;
+                },
+            };
 
-                state = State::new(size);
-            },
-            None => (),
+            state = State::new(size);
         }
 
         let mut parse_player = |player: &'static str,  default: Box<Player>| -> Result<Box<Player>, String> {
@@ -283,9 +276,8 @@ fn main() {
                         Err(error) => return Err(format!("  Error: {}", error)),
                     };
 
-                    match next.get("--name") {
-                        Some(strings) => name = strings[0].clone(),
-                        None => (),
+                    if let Some(strings) = next.get("--name") {
+                        name = strings[0].clone();
                     }
 
                     Ok(Box::new(cli_player::CliPlayer::new(&name)))
@@ -301,25 +293,23 @@ fn main() {
                         Err(error) => return Err(format!("  Error: {}", error)),
                     };
 
-                    match next.get("--depth") {
-                        Some(strings) => depth = match u8::from_str(&strings[0]) {
+                    if let Some(strings) = next.get("--depth") {
+                        depth = match u8::from_str(&strings[0]) {
                             Ok(depth) => if depth <= 15 {
                                 depth
                             } else {
                                 return Err(String::from("  Error: Invalid minimax search depth."));
                             },
                             _ => return Err(String::from("  Error: Invalid minimax search depth.")),
-                        },
-                        None => (),
-                    };
+                        };
+                    }
 
-                    match next.get("--goal") {
-                        Some(strings) => goal = match u16::from_str(&strings[0]) {
+                    if let Some(strings) = next.get("--goal") {
+                        goal = match u16::from_str(&strings[0]) {
                             Ok(goal) => goal,
                             _ => return Err(String::from("  Error: Invalid minimax search time goal.")),
-                        },
-                        None => (),
-                    };
+                        };
+                    }
 
                     Ok(Box::new(ai::MinimaxBot::new(depth, goal)))
                 } else if strings[0] == "playtak" {
@@ -339,19 +329,16 @@ fn main() {
                         Err(error) => return Err(format!("  Error: {}", error)),
                     };
 
-                    match next.get("--host") {
-                        Some(strings) => host = strings[0].clone(),
-                        None => (),
+                    if let Some(strings) = next.get("--host") {
+                        host = strings[0].clone();
                     }
 
-                    match next.get("--user") {
-                        Some(strings) => username = strings[0].clone(),
-                        None => (),
+                    if let Some(strings) = next.get("--user") {
+                        username = strings[0].clone();
                     }
 
-                    match next.get("--pass") {
-                        Some(strings) => password = strings[0].clone(),
-                        None => (),
+                    if let Some(strings) = next.get("--pass") {
+                        password = strings[0].clone();
                     }
 
                     if next.contains_key("--accept") {
@@ -378,28 +365,26 @@ fn main() {
                             Err(error) => return Err(format!("  Error: {}", error)),
                         };
 
-                        match next.get("--time") {
-                            Some(strings) => time = match u32::from_str(&strings[0]) {
+                        if let Some(strings) = next.get("--time") {
+                            time = match u32::from_str(&strings[0]) {
                                 Ok(time) => if time > 0 {
                                     time
                                 } else {
                                     return Err(String::from("  Error: Invalid player timer value."));
                                 },
                                 _ => return Err(String::from("  Error: Invalid player timer value.")),
-                            },
-                            None => (),
+                            };
                         }
 
-                        match next.get("--inc") {
-                            Some(strings) => increment = match u32::from_str(&strings[0]) {
+                        if let Some(strings) = next.get("--inc") {
+                            increment = match u32::from_str(&strings[0]) {
                                 Ok(increment) => increment,
                                 _ => return Err(String::from("  Error: Invalid player timer increment.")),
-                            },
-                            None => (),
+                            };
                         }
 
-                        match next.get("--color") {
-                            Some(strings) => color = if strings[0] == "white" {
+                        if let Some(strings) = next.get("--color") {
+                            color = if strings[0] == "white" {
                                 Some(Color::White)
                             } else if strings[0] == "black" {
                                 Some(Color::Black)
@@ -407,8 +392,7 @@ fn main() {
                                 None
                             } else {
                                 return Err(String::from("  Error: Invalid player color."));
-                            },
-                            None => (),
+                            };
                         }
 
                         game_type = playtak_player::GameType::Seek {
@@ -496,7 +480,7 @@ fn analyze(mut state: State, mut ai: Box<Ai>) {
     println!("\n{}", ai.get_stats());
 
     let eval = {
-        for ply in plies.iter() {
+        for ply in &plies {
             match state.execute_ply(ply) {
                 Ok(next) => state = next,
                 Err(error) => panic!("Error calculating evaluation: {}", error),
@@ -520,20 +504,14 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
     let (p2_game_sender, mut p2_game_receiver) = mpsc::channel();
     let (mut game_p2_sender, game_p2_receiver) = mpsc::channel();
 
-    match p1.initialize(p1_game_sender, game_p1_receiver, &*p2) {
-        Err(error) => {
-            println!("  Error: Failed to initialize player 1: {}", error);
-            return;
-        },
-        _ => (),
+    if let Err(error) = p1.initialize(p1_game_sender, game_p1_receiver, &*p2) {
+        println!("  Error: Failed to initialize player 1: {}", error);
+        return;
     }
 
-    match p2.initialize(p2_game_sender, game_p2_receiver, &*p1) {
-        Err(error) => {
-            println!("  Error: Failed to initialize player 2: {}", error);
-            return;
-        },
-        _ => (),
+    if let Err(error) = p2.initialize(p2_game_sender, game_p2_receiver, &*p1) {
+        println!("  Error: Failed to initialize player 2: {}", error);
+        return;
     }
 
     if using_playtak {
@@ -672,11 +650,7 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
 
                         game_sender.send(message).ok();
                     },
-                    Message::Quit(_) => {
-                        opponent_sender.send(message.clone()).ok();
-                        game_sender.send(message).ok();
-                    },
-                    Message::EarlyEnd(_) => {
+                    Message::Quit(_) | Message::EarlyEnd(_) => {
                         opponent_sender.send(message.clone()).ok();
                         game_sender.send(message).ok();
                     },
@@ -715,7 +689,7 @@ fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
                 },
             )
         } else if game.plies.len() >= 1 {
-            format!("{}", game.plies.last().unwrap().to_ptn())
+            game.plies.last().unwrap().to_ptn()
         } else {
             String::from("--")
         };
