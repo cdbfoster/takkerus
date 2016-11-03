@@ -368,12 +368,13 @@ impl Player for PlaytakPlayer {
                                         "Shout",
                                         &format!("{}'s", invoker),
                                         "game:",
-                                        &format!("Evaluation for {} (depth: {}, time: {:.2}s): {}",
+                                        &format!("Evaluation for {} on turn {} (depth: {}, time: {:.2}s): {}",
                                             if state.ply_count % 2 == 0 {
                                                 "white"
                                             } else {
                                                 "black"
                                             },
+                                            state.ply_count / 2 + 1,
                                             plies.len(),
                                             elapsed_time,
                                             eval,
@@ -534,12 +535,13 @@ impl Player for PlaytakPlayer {
 
                             write_stream(&mut *stream.lock().unwrap(), &[
                                 "Shout",
-                                &format!("Evaluation for {} (depth: {}, time: {:.2}s): {}",
+                                &format!("Evaluation for {} on turn {} (depth: {}, time: {:.2}s): {}",
                                     if state.ply_count % 2 == 0 {
                                         "white"
                                     } else {
                                         "black"
                                     },
+                                    state.ply_count / 2 + 1,
                                     plies.len(),
                                     elapsed_time,
                                     eval,
