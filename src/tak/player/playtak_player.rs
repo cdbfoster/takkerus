@@ -513,7 +513,7 @@ impl Player for PlaytakPlayer {
                                 write_stream(&mut *stream.lock().unwrap(), &[
                                     "Shout ",
                                     &format!("{}:", invoker),
-                                    "Can't evaluate your game right now; busy.",
+                                    "Sorry, can't evaluate your game right now; in a game.",
                                 ]).ok();
 
                                 return;
