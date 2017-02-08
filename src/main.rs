@@ -14,777 +14,297 @@
 // You should have received a copy of the GNU General Public License
 // along with Takkerus. If not, see <http://www.gnu.org/licenses/>.
 //
-// Copyright 2016 Chris Foster
+// Copyright 2016-2017 Chris Foster
 //
 
-extern crate fnv;
+#![feature(conservative_impl_trait)]
+
+extern crate getopts;
 #[macro_use]
 extern crate lazy_static;
-extern crate rand;
 extern crate regex;
 extern crate time;
-
-mod ai;
-mod arguments;
-mod logger;
-mod tak;
+extern crate zero_sum;
 
 use std::env;
-use std::io::{self, Write};
-use std::mem;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
-use std::time::Duration;
 
-use ai::Ai;
-use ai::minimax::Evaluatable;
-use tak::*;
+use zero_sum::analysis::search::{PvSearch, Search};
+use zero_sum::impls::tak::*;
 
-enum Action {
-    Play {
-        state: State,
-        p1: Box<Player>,
-        p2: Box<Player>,
-    },
-    Analyze {
-        state: State,
-        ai: Box<Ai>,
-    },
-}
+use arguments::{Options, parse_player};
+use game::{Game, logger};
 
 fn main() {
-    use arguments::Type::*;
+    let args: Vec<String> = env::args().collect();
 
-    let mut args = env::args().peekable();
-    args.next();
+    let mut main_options = Options::new();
+    main_options
+        .flag("h", "help")
+        .flag("v", "version");
 
-    let next = match arguments::collect_next(&mut args, &[
-        Flag("analyze"),
-        Flag("play"),
-        Flag("-h"),
-        Flag("--help"),
-    ]).ok() {
-        Some(arguments) => arguments,
-        None => panic!("Error collecting arguments"),
-    };
+    let matches = main_options.parse(&args[1..]);
 
-    let action = if next.contains_key("-h") || next.contains_key("--help") {
-        if next.contains_key("analyze") {
+    if matches.opt_present("help") {
+        println!("Usage:\n  takkerus [Command [Command options]]\n");
+        println!("A playable tak board.  Supports play between any combination of humans and AIs, and can act as a PlayTak.com client.");
+        println!("  Commands:");
+        println!("    analyze    Use an AI to analyze a board.");
+        println!("    play       Start a game between any combination of humans and AIs. (default)");
+        println!("\n  Use 'takkerus Command --help' for more info on Command.");
+        return;
+    }
+
+    if matches.opt_present("version") {
+        println!("Takkerus{}", if let Some(version) = option_env!("CARGO_PKG_VERSION") {
+            format!(" v{}", version)
+        } else {
+            String::from(" - version undefined")
+        });
+        return;
+    }
+
+    if !matches.free.is_empty() && matches.free[0] == "analyze" {
+        let mut analyze_options = Options::new();
+        analyze_options
+            .flag("h", "help")
+            .opt("f", "file")
+            .opt("s", "size")
+            .opt("a", "ai");
+
+        let mut matches = analyze_options.parse(&matches.free[1..]);
+
+        if matches.opt_present("help") {
             println!("Usage:\n  takkerus analyze [-f file | -s int] [-a string [AI options]]\n");
             println!("Analyzes a board in TPS format or a blank board of the specified size, using the specified AI.");
-            println!("    -f, --file  file     Specifies a PTN file.");
-            println!("    -s, --size  int      Specifies a blank board of Size. (default 5)");
-            println!("    -a, --ai    string   The type of AI to use.  Options are:");
-            println!("                           minimax (default)");
-            println!("  Minimax options:");
-            println!("    -d, --depth int      The depth of the search. (default 5)");
-            println!("    -g, --goal  int      The number of seconds per move to aim for (default 0)");
-            println!("");
-            return;
-        } else if next.contains_key("play") {
-            println!("Usage:\n  takkerus play [-s int] [-p1 string [Options]] [-p2 string [Options]]\n");
-            println!("Starts a game of Tak between any combination of humans and AIs.");
-            println!("    -s, --size  int      Specifies a blank board of Size. (default 5)");
-            println!("    -p1         string   The type of player 1. Options are:");
-            println!("                           human (default)");
-            println!("                           minimax");
-            println!("                           playtak");
-            println!("    -p2         string   The type of player 2. Options are:");
-            println!("                           human");
-            println!("                           minimax (default)");
-            println!("                           playtak");
-            println!("\n  Human options:");
-            println!("    -n, --name  string   The name of the player to record. (default Human)");
-            println!("\n  Minimax options:");
-            println!("    -d, --depth int      The depth of the search. (default 5)");
-            println!("    -g, --goal  int      The number of seconds per move to aim for (default 0)");
-            println!("\n  Playtak options:");
-            println!("    -h, --host  string   The host to connect to. (default \"playtak.com:10000)\"");
-            println!("    -u, --user  string   The username to log in with. (default \"\" (Guest login))");
-            println!("    -p, --pass  string   The password to use. (default \"\" (Guest login))");
-            println!("\n    --accept | --seek                         (default --seek)");
-            println!("\n      Accept options:");
-            println!("        -f, --from  string   The username to accept a game from.");
-            println!("      Seek options:");
-            println!("        -t, --time  int      The number of seconds per player. (default 1200)");
-            println!("        -i, --inc   int      The post-turn increment in seconds. (default 30)");
-            println!("        -c, --color string   The color to play. Options are:");
-            println!("                               white");
-            println!("                               black");
-            println!("                               none (default)");
-            println!("");
-            return;
-        } else {
-            println!("Usage:\n  takkerus [Command [Command options]]\n");
-            println!("A Tak program that can either analyze a given board, or play a game of Tak between two players, any combination of humans and AIs.");
-            println!("  Commands:");
-            println!("    analyze    Use an AI to analyze a board.");
-            println!("    play       Start a game between any combination of humans and AIs. (default)");
-            println!("\n  Use 'takkerus Command --help' for more info on Command.");
+            println!("    -f, --file  FILE     Specifies a PTN file.");
+            println!("    -s, --size  INT      Specifies a blank board of Size. (default 5)");
+            println!("    -a, --ai    STRING   The type of AI to use.  Options are:");
+            println!("                           pvsearch (default)");
+            println!("  PVSearch options:");
+            println!("    -d, --depth INT      The depth of the search.");
+            println!("    -g, --goal  INT      The maximum search time in seconds. (default 60)");
             return;
         }
-    } else if next.contains_key("analyze") {
-        let mut state = State::new(5);
-        let mut ai = Box::new(ai::MinimaxBot::new(5, 0));
 
-        let next = match arguments::collect_next(&mut args, &[
-            Option("-s", "--size", 1),
-            Option("-f", "--file", 1),
-        ]) {
-            Ok(arguments) => arguments,
-            Err(error) => {
-                println!("  Error: {}", error);
-                return;
-            },
-        };
-
-        match next.get("--size") {
-            Some(strings) => {
-                let size = match usize::from_str(&strings[0]) {
-                    Ok(size) => if size >= 3 && size <= 8 {
-                        size
-                    } else {
-                        println!("  Error: Invalid size.");
-                        return;
-                    },
-                    _ => {
-                        println!("  Error: Invalid size.");
-                        return;
-                    },
-                };
-
-                state = State::new(size);
-            },
-            None => if let Some(strings) = next.get("--file") {
-                state = match logger::open_ptn_file(&strings[0]) {
-                    Ok(game) => game.to_state().unwrap(),
-                    Err(logger::PtnFileError(error)) => {
-                        println!("  Error: {}", error);
-                        return;
-                    },
-                };
-            },
+        if matches.opt_present("file") && matches.opt_present("size") {
+            println!("  Error: Both file and size were specified.");
+            return;
         }
 
-        let next = match arguments::collect_next(&mut args, &[Option("-a", "--ai", 1)]) {
-            Ok(arguments) => arguments,
-            Err(error) => {
-                println!("  Error: {}", error);
-                return;
-            },
-        };
-
-        if let Some(strings) = next.get("--ai") {
-            if strings[0] == "minimax" {
-                let mut depth = 5;
-                let mut goal = 0;
-
-                let next = match arguments::collect_next(&mut args, &[
-                    Option("-d", "--depth", 1),
-                    Option("-g", "--goal", 1)
-                ]) {
-                    Ok(arguments) => arguments,
+        let state = if let Some(file_name) = matches.opt_str("file") {
+            match logger::open_ptn_file(&file_name) {
+                Ok((header, plies)) => match Game::into_state(header, plies) {
+                    Ok(state) => state,
                     Err(error) => {
                         println!("  Error: {}", error);
                         return;
                     },
-                };
-
-                if let Some(strings) = next.get("--depth") {
-                    depth = match u8::from_str(&strings[0]) {
-                        Ok(depth) => if depth <= 15 {
-                            depth
-                        } else {
-                            println!("  Error: Invalid minimax search depth.");
-                            return;
-                        },
-                        _ => {
-                            println!("  Error: Invalid minimax search depth.");
-                            return;
-                        },
-                    };
+                },
+                Err(error) => {
+                    println!("  Error: {}", error);
+                    return;
+                },
+            }
+        } else if let Some(size) = matches.opt_str("size") {
+            if let Ok(size) = usize::from_str(&size) {
+                if size >= 3 && size <= 8 {
+                    State::new(size)
+                } else {
+                    println!("  Error: Invalid size.");
+                    return;
                 }
-
-                if let Some(strings) = next.get("--goal") {
-                    goal = match u16::from_str(&strings[0]) {
-                        Ok(goal) => goal,
-                        _ => {
-                            println!("  Error: Invalid minimax search time goal.");
-                            return;
-                        },
-                    };
-                }
-
-                ai = Box::new(ai::MinimaxBot::new(depth, goal));
             } else {
-                println!("  Error: Invalid AI type.");
+                println!("  Error: Invalid size.");
+                return;
+            }
+        } else {
+            State::new(5)
+        };
+
+        let mut search: Box<Search<Evaluation, State, Ply, Resolution>> = if let Some(search) = matches.opt_str("ai") {
+            if search == "pvsearch" {
+                let mut pvsearch_options = Options::new();
+                pvsearch_options
+                    .opt("d", "depth")
+                    .opt("g", "goal");
+
+                matches = pvsearch_options.parse(&matches.free);
+
+                if !matches.free.is_empty() {
+                    println!("  Error: Unrecognized option: \"{}\".", matches.free[0]);
+                    return;
+                }
+
+                if matches.opt_present("depth") && matches.opt_present("goal") {
+                    println!("  Error: Both depth and goal were specified.");
+                    return;
+                }
+
+                if let Some(depth) = matches.opt_str("depth") {
+                    if let Ok(depth) = u8::from_str(&depth) {
+                        Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_depth(depth))
+                    } else {
+                        println!("  Error: Invalid depth.");
+                        return;
+                    }
+                } else if let Some(goal) = matches.opt_str("goal") {
+                    if let Ok(goal) = u16::from_str(&goal) {
+                        Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_goal(goal, 12.0))
+                    } else {
+                        println!("  Error: Invalid goal.");
+                        return;
+                    }
+                } else {
+                    Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_goal(60, 12.0))
+                }
+            } else {
+                println!("  Error: Unrecognized AI type: {}.", search);
+                return;
+            }
+        } else {
+            Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_goal(60, 12.0))
+        };
+
+        if !matches.free.is_empty() {
+            println!("  Error: Unrecognized option: \"{}\".", matches.free[0]);
+            return;
+        }
+
+        println!("Analyzing state...");
+        println!("Analysis:\n{}", search.search(&state, None));
+    } else if !matches.free.is_empty() && matches.free[0] == "play" {
+        let mut play_options = arguments::Options::new();
+        play_options
+            .flag("h", "help")
+            .opt("s", "size");
+
+        let mut matches = play_options.parse(&matches.free[1..]);
+
+        if matches.opt_present("help") {
+            println!("Usage:\n  takkerus play [-s int] [-p1 string [Options]] [-p2 string [Options]]\n");
+            println!("Starts a game of Tak between any combination of humans and AIs.");
+            println!("    -s, --size  INT      Specifies a blank board of Size. (default 5)");
+            println!("        --p1    STRING   The type of player 1. Options are:");
+            println!("                           human    (default)");
+            println!("                           pvsearch");
+            println!("                           playtak");
+            println!("        --p2    STRING   The type of player 2. Options are:");
+            println!("                           human");
+            println!("                           pvsearch (default)");
+            println!("                           playtak");
+            println!("\n  Human options:");
+            println!("    -n, --name  STRING   The name of the player to record. (default Human)");
+            println!("\n  PVSearch options:");
+            println!("    -d, --depth INT      The depth of the search.");
+            println!("    -g, --goal  INT      The number of seconds per move to aim for. (default 60)");
+            println!("\n  PlayTak options:");
+            println!("    -h, --host  STRING   The host to connect to. (default \"playtak.com:10000\")");
+            println!("    -u, --user  STRING   The username to log in with. (default \"\" (Guest login))");
+            println!("    -p, --pass  STRING   The password to use. (default \"\" (Guest login))");
+            println!("\n    --accept | --seek                         (default --seek)");
+            println!("\n      Accept options:");
+            println!("        -f, --from  STRING   The username to accept a game from.");
+            println!("      Seek options:");
+            println!("        -t, --time  INT      The number of seconds per player. (default 1200)");
+            println!("        -i, --inc   INT      The post-turn increment in seconds. (default 30)");
+            println!("        -c, --color STRING   The color to play. Options are:");
+            println!("                               white");
+            println!("                               black");
+            println!("                               none (default)");
+            return;
+        }
+
+        let mut game = Game::new();
+
+        if let Some(size) = matches.opt_str("size") {
+            if let Ok(size) = usize::from_str(&size) {
+                if size >= 3 && size <= 8 {
+                    game.header.size = size;
+                } else {
+                    println!("  Error: Invalid size.");
+                    return;
+                }
+            } else {
+                println!("  Error: Invalid size.");
                 return;
             }
         }
 
-        Action::Analyze {
-            state: state,
-            ai: ai,
-        }
-    } else {
-        let mut size = 5;
-        let mut state = State::new(size);
-        let mut p1: Box<Player> = Box::new(cli_player::CliPlayer::new("Human"));
-        let mut p2: Box<Player> = Box::new(ai::MinimaxBot::new(5, 0));
+        let mut p1_options = Options::new();
+        p1_options
+            .opt("", "p1");
 
-        let next = match arguments::collect_next(&mut args, &[
-            Option("-s", "--size", 1),
-        ]) {
-            Ok(arguments) => arguments,
+        matches = p1_options.parse(&matches.free);
+
+        let mut p1 = match parse_player(&game, "p1", &matches) {
+            Ok((player, free)) => {
+                matches.free = free;
+                player
+            },
             Err(error) => {
                 println!("  Error: {}", error);
                 return;
             },
         };
 
-        if let Some(strings) = next.get("--size") {
-            size = match usize::from_str(&strings[0]) {
-                Ok(size) => if size >= 3 && size <= 8 {
-                    size
-                } else {
-                    println!("  Error: Invalid size.");
-                    return;
-                },
-                _ => {
-                    println!("  Error: Invalid size.");
-                    return;
-                },
-            };
+        let mut p2_options = Options::new();
+        p2_options
+            .opt("", "p2");
 
-            state = State::new(size);
-        }
+        matches = p2_options.parse(&matches.free);
 
-        let mut parse_player = |player: &'static str,  default: Box<Player>| -> Result<Box<Player>, String> {
-            let next = match arguments::collect_next(&mut args, &[Option(player, player, 1)]) {
-                Ok(arguments) => arguments,
-                Err(error) => return Err(format!("  Error: {}", error)),
-            };
-
-            match next.get(player) {
-                Some(strings) => if strings[0] == "human" {
-                    let mut name = String::from("Human");
-
-                    let next = match arguments::collect_next(&mut args, &[Option("-n", "--name", 1)]) {
-                        Ok(arguments) => arguments,
-                        Err(error) => return Err(format!("  Error: {}", error)),
-                    };
-
-                    if let Some(strings) = next.get("--name") {
-                        name = strings[0].clone();
-                    }
-
-                    Ok(Box::new(cli_player::CliPlayer::new(&name)))
-                } else if strings[0] == "minimax" {
-                    let mut depth = 5;
-                    let mut goal = 0;
-
-                    let next = match arguments::collect_next(&mut args, &[
-                        Option("-d", "--depth", 1),
-                        Option("-g", "--goal", 1)
-                    ]) {
-                        Ok(arguments) => arguments,
-                        Err(error) => return Err(format!("  Error: {}", error)),
-                    };
-
-                    if let Some(strings) = next.get("--depth") {
-                        depth = match u8::from_str(&strings[0]) {
-                            Ok(depth) => if depth <= 15 {
-                                depth
-                            } else {
-                                return Err(String::from("  Error: Invalid minimax search depth."));
-                            },
-                            _ => return Err(String::from("  Error: Invalid minimax search depth.")),
-                        };
-                    }
-
-                    if let Some(strings) = next.get("--goal") {
-                        goal = match u16::from_str(&strings[0]) {
-                            Ok(goal) => goal,
-                            _ => return Err(String::from("  Error: Invalid minimax search time goal.")),
-                        };
-                    }
-
-                    Ok(Box::new(ai::MinimaxBot::new(depth, goal)))
-                } else if strings[0] == "playtak" {
-                    let mut host = String::from("playtak.com:10000");
-                    let mut username = String::new();
-                    let mut password = String::new();
-                    let game_type;
-
-                    let next = match arguments::collect_next(&mut args, &[
-                        Option("-h", "--host", 1),
-                        Option("-u", "--user", 1),
-                        Option("-p", "--pass", 1),
-                        Flag("--accept"),
-                        Flag("--seek"),
-                    ]) {
-                        Ok(arguments) => arguments,
-                        Err(error) => return Err(format!("  Error: {}", error)),
-                    };
-
-                    if let Some(strings) = next.get("--host") {
-                        host = strings[0].clone();
-                    }
-
-                    if let Some(strings) = next.get("--user") {
-                        username = strings[0].clone();
-                    }
-
-                    if let Some(strings) = next.get("--pass") {
-                        password = strings[0].clone();
-                    }
-
-                    if next.contains_key("--accept") {
-                        let next = match arguments::collect_next(&mut args, &[Option("-f", "--from", 1)]) {
-                            Ok(arguments) => arguments,
-                            Err(error) => return Err(format!("  Error: {}", error)),
-                        };
-
-                        match next.get("--from") {
-                            Some(strings) => game_type = playtak_player::GameType::Accept(strings[0].clone()),
-                            None => return Err(String::from("  Error: No --from user specified.")),
-                        }
-                    } else {
-                        let mut time = 1200;
-                        let mut increment = 30;
-                        let mut color = None;
-
-                        let next = match arguments::collect_next(&mut args, &[
-                            Option("-t", "--time", 1),
-                            Option("-i", "--inc", 1),
-                            Option("-c", "--color", 1),
-                        ]) {
-                            Ok(arguments) => arguments,
-                            Err(error) => return Err(format!("  Error: {}", error)),
-                        };
-
-                        if let Some(strings) = next.get("--time") {
-                            time = match u32::from_str(&strings[0]) {
-                                Ok(time) => if time > 0 {
-                                    time
-                                } else {
-                                    return Err(String::from("  Error: Invalid player timer value."));
-                                },
-                                _ => return Err(String::from("  Error: Invalid player timer value.")),
-                            };
-                        }
-
-                        if let Some(strings) = next.get("--inc") {
-                            increment = match u32::from_str(&strings[0]) {
-                                Ok(increment) => increment,
-                                _ => return Err(String::from("  Error: Invalid player timer increment.")),
-                            };
-                        }
-
-                        if let Some(strings) = next.get("--color") {
-                            color = if strings[0] == "white" {
-                                Some(Color::White)
-                            } else if strings[0] == "black" {
-                                Some(Color::Black)
-                            } else if strings[0] == "none" {
-                                None
-                            } else {
-                                return Err(String::from("  Error: Invalid player color."));
-                            };
-                        }
-
-                        game_type = playtak_player::GameType::Seek {
-                            size: size,
-                            time: time,
-                            increment: increment,
-                            color: color,
-                        };
-                    }
-
-                    Ok(Box::new(playtak_player::PlaytakPlayer::new(
-                        &host,
-                        &username,
-                        &password,
-                        game_type
-                    )))
-                } else {
-                    Err(String::from("  Error: Invalid player type."))
-                },
-                None => Ok(default),
-            }
+        let p2 = match parse_player(&game, "p2", &matches) {
+            Ok((player, free)) => {
+                matches.free = free;
+                player
+            },
+            Err(error) => {
+                println!("  Error: {}", error);
+                return;
+            },
         };
 
-        match parse_player("-p1", p1) {
-            Ok(player) => p1 = player,
-            Err(error) => {
-                println!("{}", error);
-                return;
-            },
+        // Search for p1 again in case p2 was specified first
+        if p1.is_none() {
+            matches = p1_options.parse(&matches.free);
+
+            p1 = match parse_player(&game, "p1", &matches) {
+                Ok((player, _)) => player,
+                Err(error) => {
+                    println!("  Error: {}", error);
+                    return;
+                },
+            };
         }
 
-        match parse_player("-p2", p2) {
-            Ok(player) => p2 = player,
-            Err(error) => {
-                println!("{}", error);
-                return;
-            },
-        }
-
-        if p1.as_any().is::<playtak_player::PlaytakPlayer>() &&
-           p2.as_any().is::<playtak_player::PlaytakPlayer>() {
-            println!("  Error: Only one player may be of type \"playtak\".");
+        if !matches.free.is_empty() {
+            println!("  Error: Unrecognized option: \"{}\".", matches.free[0]);
             return;
         }
 
-        Action::Play {
-            state: state,
-            p1: p1,
-            p2: p2,
+        game.add_player(p1.unwrap_or(Box::new(player::CliPlayer::new("Human")))).ok();
+        game.add_player(p2.unwrap_or(Box::new(player::PvSearchPlayer::with_goal(60)))).ok();
+
+        match game.play() {
+            Err(error) => println!("  Error: {}", error),
+            _ => (),
         }
-    };
+    } else if matches.free.is_empty() {
+        let mut game = Game::new();
 
-    match action {
-        Action::Analyze {
-            state,
-            ai,
-        } => analyze(state, ai),
-        Action::Play {
-            state,
-            p1,
-            p2,
-        } => play(state, p1, p2),
-    }
-}
+        let p1 = Box::new(player::CliPlayer::new("Human"));
+        let p2 = Box::new(player::PvSearchPlayer::with_goal(60));
 
-fn analyze(mut state: State, mut ai: Box<Ai>) {
-    println!("{}", state);
-    println!("{:?}\n", state.analysis);
+        game.add_player(p1).ok();
+        game.add_player(p2).ok();
 
-    let old_time = time::precise_time_ns();
-
-    let plies = ai.analyze(&state);
-
-    let elapsed_time = (time::precise_time_ns() - old_time) as f32 / 1000000000.0;
-
-    println!("Principal Variation:");
-    for (i, ply) in plies.iter().enumerate() {
-        println!("{}: {}", if (state.ply_count + i as u16) % 2 == 0 {
-            "  White"
-        } else {
-            "  Black"
-        }, ply.to_ptn());
-    }
-
-    println!("\n{}", ai.get_stats());
-
-    let eval = {
-        for ply in &plies {
-            match state.execute_ply(ply) {
-                Ok(next) => state = next,
-                Err(error) => panic!("Error calculating evaluation: {}", error),
-            }
-        }
-        state.evaluate() * -((plies.len() as i32 % 2) * 2 - 1)
-    };
-    println!("\nEvaluation: {}", eval);
-
-    println!("Time: {:.3}s", elapsed_time);
-}
-
-fn play(mut state: State, mut p1: Box<Player>, mut p2: Box<Player>) {
-    let mut p1_playtak = p1.as_any().is::<playtak_player::PlaytakPlayer>();
-    let mut p2_playtak = p2.as_any().is::<playtak_player::PlaytakPlayer>();
-    let using_playtak = p1_playtak || p2_playtak;
-
-    let (p1_game_sender, mut p1_game_receiver) = mpsc::channel();
-    let (mut game_p1_sender, game_p1_receiver) = mpsc::channel();
-
-    let (p2_game_sender, mut p2_game_receiver) = mpsc::channel();
-    let (mut game_p2_sender, game_p2_receiver) = mpsc::channel();
-
-    if let Err(error) = p1.initialize(p1_game_sender, game_p1_receiver, &*p2) {
-        println!("  Error: Failed to initialize player 1: {}", error);
-        return;
-    }
-
-    if let Err(error) = p2.initialize(p2_game_sender, game_p2_receiver, &*p1) {
-        println!("  Error: Failed to initialize player 2: {}", error);
-        return;
-    }
-
-    if using_playtak {
-        let color = if p1_playtak {
-            match p1.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
-                Some(player) => player.game_info.color.unwrap(),
-                None => panic!("Player 1 isn't Playtak!"),
-            }
-        } else {
-            match p2.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
-                Some(player) => player.game_info.color.unwrap(),
-                None => panic!("Player 2 isn't Playtak!"),
-            }
-        };
-
-        if (color == Color::White && p1_playtak) ||
-           (color == Color::Black && p2_playtak) {
-            mem::swap(&mut p1_playtak, &mut p2_playtak);
-            mem::swap(&mut p1, &mut p2);
-            mem::swap(&mut game_p1_sender, &mut game_p2_sender);
-            mem::swap(&mut p1_game_receiver, &mut p2_game_receiver);
-        }
-    }
-
-    let game = if !using_playtak {
-        match logger::check_tmp_file() {
-            logger::GameState::New(mut game) => {
-                logger::populate_game(&mut game, &*p1, &*p2);
-                game
-            },
-            logger::GameState::Resume(mut game) => {
-                println!("There is a game in progress.\n");
-                if !game.header.p1.is_empty() && !game.header.p2.is_empty() {
-                    print!("  {} vs {}", game.header.p1, game.header.p2);
-                }
-                if !game.header.date.is_empty() {
-                    print!("  {}", game.header.date);
-                }
-                println!("  {}x{}, turn {}\n", game.header.size, game.header.size, game.to_state().unwrap().ply_count / 2 + 1);
-
-                println!("Resume game? (y/n)");
-                loop {
-                    print!("Option: ");
-                    io::stdout().flush().ok();
-
-                    let mut input = String::new();
-                    match io::stdin().read_line(&mut input) {
-                        Ok(_) => {
-                            let response = input.trim().to_lowercase();
-                            if response == "y" {
-                                state = game.to_state().unwrap();
-                                break;
-                            } else if response == "n" {
-                                game = logger::Game::new();
-                                logger::populate_game(&mut game, &*p1, &*p2);
-                                break;
-                            }
-                        },
-                        Err(e) => panic!("Error: {}", e),
-                    }
-                }
-
-                game
-            },
-        }
+        game.play().ok();
     } else {
-        let mut game = logger::Game::new();
-        logger::populate_game(&mut game, &*p1, &*p2);
-        game.header.site = String::from("PlayTak.com");
-        if p1_playtak {
-            match p1.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
-                Some(player) => {
-                    game.header.size = player.game_info.size as u8;
-                    game.plies = if let Some(ref plies) = player.resume_plies {
-                        plies.clone()
-                    } else {
-                        Vec::new()
-                    };
-                },
-                None => panic!("Player 1 isn't Playtak!"),
-            }
-        } else {
-            match p2.as_any().downcast_ref::<playtak_player::PlaytakPlayer>() {
-                Some(player) => {
-                    game.header.size = player.game_info.size as u8;
-                    game.plies = if let Some(ref plies) = player.resume_plies {
-                        plies.clone()
-                    } else {
-                        Vec::new()
-                    };
-                },
-                None => panic!("Player 2 isn't Playtak!"),
-            }
-        };
-
-        state = game.to_state().unwrap();
-        game
-    };
-
-    let state = Arc::new(Mutex::new(state));
-    let game = Arc::new(Mutex::new(game));
-
-    let (game_sender, game_receiver) = mpsc::channel();
-
-    fn handle_player(state: Arc<Mutex<State>>, game: Arc<Mutex<logger::Game>>, own_sender: Sender<Message>, own_receiver: Receiver<Message>, opponent_sender: Sender<Message>, game_sender: Sender<Message>) {
-        thread::spawn(move || {
-            for message in own_receiver.iter() {
-                match message {
-                    Message::MoveResponse(ref ply) => {
-                        let mut state = state.lock().unwrap();
-                        match state.execute_ply(ply) {
-                            Ok(next) => {
-                                *state = next;
-
-                                game.lock().unwrap().plies.push(ply.clone());
-
-                                game_sender.send(message.clone()).ok();
-                            },
-                            Err(error) => {
-                                println!("  {}", error);
-                                own_sender.send(Message::MoveRequest(state.clone(), None)).ok();
-                            },
-                        }
-                    },
-                    Message::UndoRequest => {
-                        opponent_sender.send(Message::UndoRequest).ok();
-                    },
-                    Message::RemoveUndoRequest => {
-                        opponent_sender.send(Message::RemoveUndoRequest).ok();
-                    },
-                    Message::Undo => {
-                        let mut game = game.lock().unwrap();
-
-                        game.plies.pop();
-                        *state.lock().unwrap() = game.to_state().unwrap();
-
-                        game_sender.send(message).ok();
-                    },
-                    Message::Quit(_) | Message::EarlyEnd(_) => {
-                        opponent_sender.send(message.clone()).ok();
-                        game_sender.send(message).ok();
-                    },
-                    _ => (),
-                }
-            }
-        });
+        println!("  Error: Unrecognized option: \"{}\".", matches.free[0]);
     }
-
-    handle_player(state.clone(), game.clone(), game_p1_sender.clone(), p1_game_receiver, game_p2_sender.clone(), game_sender.clone());
-    handle_player(state.clone(), game.clone(), game_p2_sender.clone(), p2_game_receiver, game_p1_sender.clone(), game_sender.clone());
-
-    game_p1_sender.send(Message::GameStart(Color::White)).ok();
-    game_p2_sender.send(Message::GameStart(Color::Black)).ok();
-
-    game_sender.send(Message::GameStart(Color::White)).ok();
-    let mut first_ply = true;
-
-    'main: for message in game_receiver.iter() {
-        let state = state.lock().unwrap();
-        let mut game = game.lock().unwrap();
-
-        println!("\n--------------------------------------------------");
-        println!("{}", *state);
-
-        let ptn = if state.ply_count % 2 == 0 {
-            format!("{:<5} {}",
-                if game.plies.len() >= 2 {
-                    game.plies[game.plies.len() - 2].to_ptn()
-                } else {
-                    String::from("--")
-                },
-                match game.plies.last() {
-                    Some(ply) => ply.to_ptn(),
-                    None => String::new(),
-                },
-            )
-        } else if game.plies.len() >= 1 {
-            game.plies.last().unwrap().to_ptn()
-        } else {
-            String::from("--")
-        };
-
-        match state.check_win() {
-            Win::None => (),
-            _ => {
-                println!("Final state:     {}\n", ptn);
-
-                if let Message::MoveResponse(ply) = message {
-                    if state.ply_count % 2 == 0 {
-                        game_p1_sender.send(Message::FinalMove(state.clone(), ply)).ok();
-                    } else {
-                        game_p2_sender.send(Message::FinalMove(state.clone(), ply)).ok();
-                    }
-                }
-
-                break 'main;
-            },
-        }
-
-        if state.ply_count > 0 {
-            println!("Previous {}:   {}\n", if state.ply_count % 2 == 0 {
-                "turn"
-            } else {
-                "move"
-            }, ptn);
-        } else {
-            println!("\n");
-        }
-
-        if let Message::Quit(color) = message.clone() {
-            if color == Color::Black {
-                println!("Player 1 wins. (1-0)");
-                game.header.result = String::from("1-0");
-            } else {
-                println!("Player 2 wins. (0-1)");
-                game.header.result = String::from("0-1");
-            }
-            break 'main;
-        }
-
-        if let Message::EarlyEnd(string) = message.clone() {
-            if string == "1-0" {
-                println!("Player 1 wins. (1-0)");
-            } else if string == "0-1" {
-                println!("Player 2 wins. (0-1)");
-            }
-            game.header.result = string;
-            break 'main;
-        }
-
-        println!("Turn {} ({})", state.ply_count / 2 + 1, if state.ply_count % 2 == 0 {
-            "White"
-        } else {
-            "Black"
-        });
-
-        let ply = if let Message::MoveResponse(ply) = message {
-            Some(ply)
-        } else {
-            None
-        };
-
-        if state.ply_count % 2 == 0 {
-            game_p1_sender.send(Message::MoveRequest(state.clone(), ply)).ok();
-        } else {
-            game_p2_sender.send(Message::MoveRequest(state.clone(), ply)).ok();
-        }
-
-        if first_ply {
-            first_ply = false;
-        } else {
-            logger::write_tmp_file(&*game);
-        }
-    }
-
-    let state = state.lock().unwrap();
-    let mut game = game.lock().unwrap();
-
-    match state.check_win() {
-        Win::Road(color) => match color {
-            Color::White => { println!("Player 1 wins! (R-0)"); game.header.result = String::from("R-0"); },
-            Color::Black => { println!("Player 2 wins! (0-R)"); game.header.result = String::from("0-R"); },
-        },
-        Win::Flat(color) => match color {
-            Color::White => { println!("Player 1 wins! (F-0)"); game.header.result = String::from("F-0"); },
-            Color::Black => { println!("Player 2 wins! (0-F)"); game.header.result = String::from("0-F"); },
-        },
-        Win::Draw => { println!("Draw! (1/2-1/2)"); game.header.result = String::from("1/2-1/2"); },
-        _ => (),
-    }
-
-    logger::write_tmp_file(&*game);
-    logger::finalize_tmp_file();
-
-    thread::sleep(Duration::from_secs(1)); // Give things a bit of time to clear up.
 }
+
+mod arguments;
+mod game;
+mod player;

@@ -14,132 +14,21 @@
 // You should have received a copy of the GNU General Public License
 // along with Takkerus. If not, see <http://www.gnu.org/licenses/>.
 //
-// Copyright 2016 Chris Foster
+// Copyright 2016-2017 Chris Foster
 //
 
 use std::collections::HashMap;
-use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::iter::Peekable;
 use std::io::{Read, Write};
 use std::str::{Chars, FromStr};
 
-use time;
+use zero_sum::impls::tak::{Color, Ply, State};
 
-use tak::*;
+use super::{Game, Header};
 
 static GAMES_LOG: &'static str = "games.log";
 static GAMES_LOG_TMP: &'static str = "games.log.tmp";
-
-#[derive(Debug)]
-pub struct Game {
-    pub header: Header,
-    pub plies: Vec<Ply>,
-}
-
-impl Game {
-    pub fn new() -> Game {
-        Game {
-            header: Header {
-                event: String::from("Tak"),
-                site: String::from("Local"),
-                p1: String::new(),
-                p2: String::new(),
-                round: String::new(),
-                date: {
-                    let t = time::now();
-                    format!("{:4}.{:02}.{:02}", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday)
-                },
-                result: String::new(),
-                size: 5,
-                tps: String::new(),
-            },
-            plies: Vec::new(),
-        }
-    }
-
-    pub fn to_state(&self) -> Option<State> {
-        let mut state = if self.header.tps.is_empty() {
-            State::new(self.header.size as usize)
-        } else {
-            State::from_tps(&format!("[TPS \"{}\"]", self.header.tps)).unwrap()
-        };
-
-        for ply in &self.plies {
-            match state.execute_ply(ply) {
-                Ok(next) => state = next,
-                _ => return None,
-            }
-        }
-
-        Some(state)
-    }
-}
-
-impl fmt::Display for Game {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}\r\n", self.header).ok();
-
-        for turn in 0..(self.plies.len() + 1) / 2 {
-            write!(f, "{:2}. {:7} ", turn + 1, self.plies[turn * 2].to_ptn()).ok();
-
-            if turn * 2 + 1 < self.plies.len() {
-                write!(f, "{}", self.plies[turn * 2 + 1].to_ptn()).ok();
-            }
-
-            write!(f, "\r\n").ok();
-        }
-
-        write!(f, "\r\n")
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Header {
-    pub event: String,
-    pub site: String,
-    pub p1: String,
-    pub p2: String,
-    pub round: String,
-    pub date: String,
-    pub result: String,
-    pub size: u8,
-    pub tps: String,
-}
-
-impl fmt::Display for Header {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if !self.event.is_empty() {
-            write!(f, "[Event \"{}\"]\r\n", self.event).ok();
-        }
-        if !self.site.is_empty() {
-            write!(f, "[Site \"{}\"]\r\n", self.site).ok();
-        }
-        if !self.p1.is_empty() {
-            write!(f, "[Player1 \"{}\"]\r\n", self.p1).ok();
-        }
-        if !self.p2.is_empty() {
-            write!(f, "[Player2 \"{}\"]\r\n", self.p2).ok();
-        }
-        if !self.round.is_empty() {
-            write!(f, "[Round \"{}\"]\r\n", self.round).ok();
-        }
-        if !self.date.is_empty() {
-            write!(f, "[Date \"{}\"]\r\n", self.date).ok();
-        }
-        if !self.result.is_empty() {
-            write!(f, "[Result \"{}\"]\r\n", self.result).ok();
-        }
-
-        let result = write!(f, "[Size \"{}\"]", self.size);
-
-        if !self.tps.is_empty() {
-            write!(f, "\r\n[TPS \"{}\"]", self.tps).ok();
-        }
-
-        result
-    }
-}
 
 fn advance_whitespace(source: &mut Peekable<Chars>, include_newline: bool) {
     let mut peek_char = {
@@ -172,22 +61,6 @@ enum TagResult {
     NoTag,
     Ok(String, String),
     InvalidTag,
-}
-
-impl TagResult {
-    fn is_some(&self) -> bool {
-        match *self {
-            TagResult::Ok(_, _) => true,
-            _ => false,
-        }
-    }
-
-    fn unwrap(self) -> (String, String) {
-        match self {
-            TagResult::Ok(name, value) => (name, value),
-            _ => panic!("unwrap() called on an empty TagResult!"),
-        }
-    }
 }
 
 fn parse_tag(source: &mut Peekable<Chars>) -> TagResult {
@@ -295,9 +168,7 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
     advance_whitespace(source, true);
     let mut tag = parse_tag(source);
 
-    while tag.is_some() {
-        let (name, value) = tag.clone().unwrap();
-
+    while let TagResult::Ok(name, value) = tag {
         if name == "Event" {
             header.event = value;
         } else if name == "Site" {
@@ -313,7 +184,7 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
         } else if name == "Result" {
             header.result = value;
         } else if name == "Size" {
-            match u8::from_str(&value) {
+            match usize::from_str(&value) {
                 Ok(size) => header.size = size,
                 _ => return None,
             }
@@ -322,7 +193,6 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
         }
 
         advance_whitespace(source, true);
-
         tag = parse_tag(source);
     }
 
@@ -334,13 +204,11 @@ fn parse_header(source: &mut Peekable<Chars>) -> Option<Header> {
         return None;
     }
 
-    let state = State::from_tps(&format!("[TPS \"{}\"]", header.tps));
-
-    if state.is_none() && !header.tps.is_empty() {
-        return None;
-    }
-
-    if state.is_some() && state.clone().unwrap().board.len() != header.size as usize {
+    if let Some(state) = State::from_tps(&format!("[TPS \"{}\"]", header.tps)) {
+        if state.board.len() != header.size {
+            return None;
+        }
+    } else if !header.tps.is_empty() {
         return None;
     }
 
@@ -522,7 +390,7 @@ fn parse_plies(source: &mut Peekable<Chars>, turn_offset: usize) -> Option<Vec<P
     Some(plies)
 }
 
-fn parse_game(source: &mut Peekable<Chars>) -> Option<Game> {
+fn parse_game(source: &mut Peekable<Chars>) -> Option<(Header, Vec<Ply>)> {
     let header = match parse_header(source) {
         Some(header) => header,
         None => return None,
@@ -539,10 +407,7 @@ fn parse_game(source: &mut Peekable<Chars>) -> Option<Game> {
         None => return None,
     };
 
-    Some(Game {
-        header: header,
-        plies: plies,
-    })
+    Some((header, plies))
 }
 
 fn parse_adversary_dictionary() -> HashMap<String, HashMap<String, usize>> {
@@ -560,10 +425,7 @@ fn parse_adversary_dictionary() -> HashMap<String, HashMap<String, usize>> {
 
     let mut source = games_data.chars().peekable();
 
-    let mut game = parse_game(&mut source);
-    while game.is_some() {
-        let header = game.unwrap().header;
-
+    while let Some((header, _)) = parse_game(&mut source) {
         {
             let p1_entry = dictionary.entry(header.p1.clone()).or_insert_with(HashMap::new);
             let p2_entry = p1_entry.entry(header.p2.clone()).or_insert(0);
@@ -575,31 +437,21 @@ fn parse_adversary_dictionary() -> HashMap<String, HashMap<String, usize>> {
             let p1_entry = p2_entry.entry(header.p1.clone()).or_insert(0);
             *p1_entry += 1;
         }
-
-        game = parse_game(&mut source);
     }
 
     dictionary
 }
 
-pub fn populate_game(game: &mut Game, p1: &Player, p2: &Player) {
-    game.header.p1 = p1.get_name();
-    game.header.p2 = p2.get_name();
-
+pub fn get_round_number(game: &Game) -> usize {
     let dictionary = parse_adversary_dictionary();
 
-    let round = match dictionary.get(&game.header.p1) {
+    match dictionary.get(&game.header.p1) {
         Some(p2_dictionary) => *p2_dictionary.get(&game.header.p2).unwrap_or(&0) + 1,
         None => 1,
-    };
-
-    game.header.round = format!("{}", round);
+    }
 }
 
-#[derive(Debug)]
-pub struct PtnFileError(pub String);
-
-pub fn open_ptn_file(file_name: &str) -> Result<Game, PtnFileError> {
+pub fn open_ptn_file(file_name: &str) -> Result<(Header, Vec<Ply>), String> {
     match OpenOptions::new().read(true).open(file_name) {
         Ok(mut file) => {
             let mut data = String::new();
@@ -608,29 +460,27 @@ pub fn open_ptn_file(file_name: &str) -> Result<Game, PtnFileError> {
             let mut source = data.chars().peekable();
 
             match parse_game(&mut source) {
-                Some(game) => if game.to_state().is_some() {
-                    Ok(game)
-                } else {
-                    Err(PtnFileError(String::from("Invalid PTN")))
+                Some((header, plies)) => {
+                    let game = Game {
+                        header: header,
+                        plies: plies,
+                        p1: None, p2: None, p1_sender: None, p2_sender: None,
+                    };
+                    if game.to_state().is_ok() {
+                        Ok((game.header, game.plies))
+                    } else {
+                        Err(String::from("Invalid PTN"))
+                    }
                 },
-                None => Err(PtnFileError(String::from("Invalid PTN"))),
+                None => Err(String::from("Invalid PTN")),
             }
         },
-        _ => Err(PtnFileError(String::from("Cannot open PTN file"))),
+        _ => Err(String::from("Cannot open PTN file")),
     }
 }
 
-#[derive(Debug)]
-pub enum GameState {
-    New(Game),
-    Resume(Game),
-}
-
-pub fn check_tmp_file() -> GameState {
-    match open_ptn_file(GAMES_LOG_TMP) {
-        Ok(game) => GameState::Resume(game),
-        _ => GameState::New(Game::new()),
-    }
+pub fn read_tmp_file() -> Result<(Header, Vec<Ply>), String> {
+    open_ptn_file(GAMES_LOG_TMP)
 }
 
 pub fn write_tmp_file(game: &Game) {

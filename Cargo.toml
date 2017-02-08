@@ -2,10 +2,15 @@
 name = "takkerus"
 version = "0.2.0"
 authors = ["Chris Foster <cdbfoster@gmail.com>"]
+license = "GPL-3.0"
+description = "A playable tak board.  Supports play between any combination of humans and AIs, and can act as a PlayTak.com client."
+repository = "https://github.com/cdbfoster/takkerus"
+readme = "README.md"
+keywords = ["game", "tak", "strategy", "ai"]
 
 [dependencies]
-fnv = "1.0"
+getopts = "0.2"
 lazy_static = "0.2"
-rand = "0.3"
 regex = "0.1"
 time = "0.1"
+zero_sum = { version = "1.1", features = ["with_tak"] }
