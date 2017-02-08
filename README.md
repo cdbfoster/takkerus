@@ -23,7 +23,7 @@ to set the global default toolchain, or:
 
 from inside the root of the repository to set the toolchain locally.
 
-If not using `rustup`, you will need to install nightly Rust via a standalone installer.  Windows and Mac users can find the correct installer for their platform [here](https://www.rust-lang.org/en-US/other-installers.html#standalone) (probably the **x86_64-pc-windows-gnu .msi** for Windows and the **x86_64-apple-darwin .pkg** for Mac).  Linux users can use their distribution's package manager.
+If not using `rustup`, you will need to install nightly Rust via a standalone installer.  Windows and Mac users can find the correct installer for their platform [here](https://www.rust-lang.org/en-US/other-installers.html#standalone) (probably the **x86_64-pc-windows-gnu .msi** for Windows or the **x86_64-apple-darwin .pkg** for Mac).  Linux users can use their distribution's package manager.
 
 **Note**: Windows users that aren't using `rustup` will have to uninstall other versions of Rust in order for the nightly version to work.
 
@@ -63,4 +63,4 @@ To analyze the next best moves for a position given in a [PTN file](https://www.
 ## Contact
 Questions and comments can be sent to my email, cdbfoster@gmail.com
 
-© 2016 Chris Foster
+© 2016-2017 Chris Foster
