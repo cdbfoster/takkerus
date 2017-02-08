@@ -63,4 +63,4 @@ To analyze the next best moves for a position given in a [PTN file](https://www.
 ## Contact
 Questions and comments can be sent to my email, cdbfoster@gmail.com
 
-© 2016-2017 Chris Foster
+© 2016 - 2017 Chris Foster
