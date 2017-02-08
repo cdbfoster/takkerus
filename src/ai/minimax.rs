@@ -730,108 +730,51 @@ impl Evaluatable for State {
         p2_eval += evaluate_threats(&a.p2_road_groups);
 
         // Influence
-        let evaluate_influence = |pieces: Bitmap, own_stacks: &Vec<Bitmap>, own_flatstones: Bitmap, enemy_pieces: Bitmap| {
-            fn add_bitmap(mut bitmap: Bitmap, accumulator: &mut Vec<Bitmap>) {
-                let mut bit = 0;
-                if accumulator.is_empty() {
-                    accumulator.push(0);
-                }
+        let evaluate_influence = |pieces: Bitmap, own_flatstones: Bitmap, enemy_pieces: Bitmap| {
+            let calculate_influence = |pieces: Bitmap| {
+                let mut influence = [0; 3];
 
-                while bitmap != 0 {
-                    let carry = accumulator[bit] & bitmap;
-                    accumulator[bit] ^= bitmap;
-                    bitmap = carry;
-                    bit += 1;
-                    if accumulator.len() <= bit {
-                        accumulator.push(0);
-                    }
-                }
-            }
+                fn add_influence(mut piece_influence: Bitmap, influence: &mut [Bitmap; 3]) {
+                    let mut level = 0;
 
-            fn convert_accumulator(accumulator: &[Bitmap]) -> Vec<Bitmap> {
-                let mut result = vec![0; (1 << accumulator.len()) - 1];
-
-                for (bit, bitmap) in accumulator.iter().enumerate() {
-                    let mut bitmap = *bitmap;
-
-                    for level in 1..1 << bit {
-                        let advance = result[level - 1] & bitmap;
-                        bitmap &= !advance;
-                        result[level - 1] &= !advance;
-                        result[level + (1 << bit) - 1] |= advance;
+                    while piece_influence != 0 && level < 2 {
+                        let next = influence[level] & piece_influence;
+                        influence[level] ^= piece_influence;
+                        piece_influence = next;
+                        level += 1;
                     }
 
-                    result[(1 << bit) - 1] |= bitmap;
+                    influence[level] |= piece_influence;
                 }
 
-                result
-            }
-
-            let blocks = total_pieces & (a.standing_stones | a.capstones);
-            let own_blocks = blocks & pieces;
-
-            let stack_levels = {
-                let mut stack_counts = Vec::with_capacity(3);
-                add_bitmap(own_blocks, &mut stack_counts);
-                for level in own_stacks.iter() {
-                    add_bitmap(*level & pieces, &mut stack_counts);
-                }
-                convert_accumulator(&stack_counts)
-            };
-
-            let add_influence = |pieces: Bitmap, cast: usize, influence: &mut Vec<Bitmap>| {
                 use tak::Direction::*;
+                add_influence((pieces << 1) & !EDGE[a.board_size][East as usize], &mut influence);
+                add_influence((pieces >> 1) & !EDGE[a.board_size][West as usize], &mut influence);
+                add_influence(pieces << a.board_size, &mut influence);
+                add_influence(pieces >> a.board_size, &mut influence);
 
-                let mut cast_map = [pieces; 4];
-                for _ in 0..cast {
-                    cast_map[North as usize] <<= a.board_size;
-                    cast_map[East as usize] = (cast_map[East as usize] >> 1) & !EDGE[a.board_size][West as usize];
-                    cast_map[South as usize] >>= a.board_size;
-                    cast_map[West as usize] = (cast_map[West as usize] << 1) & !EDGE[a.board_size][East as usize];
-
-                    add_bitmap(cast_map[North as usize], influence);
-                    add_bitmap(cast_map[East as usize], influence);
-                    add_bitmap(cast_map[South as usize], influence);
-                    add_bitmap(cast_map[West as usize], influence);
-
-                    cast_map[North as usize] &= !blocks;
-                    cast_map[East as usize] &= !blocks;
-                    cast_map[South as usize] &= !blocks;
-                    cast_map[West as usize] &= !blocks;
-                }
+                influence
             };
 
-            let influence = {
-                let mut influence_accumulator = Vec::with_capacity(4);
-                for (cast, level) in stack_levels.iter().enumerate() {
-                    add_influence(*level, cast + 1, &mut influence_accumulator);
-                }
-                convert_accumulator(&influence_accumulator)
-            };
+            let mut eval = 0;
 
-            {
-                let mut eval = 0;
-                for (level, map) in influence.iter().enumerate() {
-                    eval += (map & own_flatstones).get_population() as i32 * (WEIGHT.influence.0 * (level as i32 + 1));
-                    eval += (map & !total_pieces).get_population() as i32 * (WEIGHT.influence.1 * (level as i32 + 1));
-                    eval += (map & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> level);
-                }
-                eval
+            let influence = calculate_influence(pieces);
+            for (level, map) in influence.iter().enumerate() {
+                eval += (map & own_flatstones).get_population() as i32 * (WEIGHT.influence.0 << level);
+                eval += (map & !total_pieces).get_population() as i32 * (WEIGHT.influence.1 << level);
             }
+
+            // Reduce the penalty of a neighboring enemy per surrounding piece
+            eval += (influence[0] & !influence[1] & enemy_pieces).get_population() as i32 * WEIGHT.influence.2;
+            eval += (!influence[0] & influence[1] & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> 1);
+            eval += (influence[0] & influence[1] & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> 2);
+            eval += (influence[2] & enemy_pieces).get_population() as i32 * (WEIGHT.influence.2 >> 3);
+
+            eval
         };
 
-        p1_eval += evaluate_influence(
-            a.p1_pieces,
-            &a.p1_flatstones,
-            p1_flatstones,
-            a.p2_pieces,
-        );
-        p2_eval += evaluate_influence(
-            a.p2_pieces,
-            &a.p2_flatstones,
-            p2_flatstones,
-            a.p1_pieces,
-        );
+        p1_eval += evaluate_influence(a.p1_pieces, p1_flatstones, a.p2_pieces);
+        p2_eval += evaluate_influence(a.p2_pieces, p2_flatstones, a.p1_pieces);
 
         match next_color {
             Color::White => p1_eval - p2_eval,
