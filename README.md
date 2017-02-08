@@ -3,6 +3,9 @@ Takkerus implements a playable [Tak](http://cheapass.com/node/215) board.  It su
 
 Takkerus can be found on crates.io [here](https://crates.io/crates/takkerus).
 
+## Binaries
+Windows users have the option either to build Takkerus from source by following the instructions below, or they can download precompiled binaries from the [releases page](https://github.com/cdbfoster/takkerus/releases).
+
 ## Source
 Check out the source by cloning the repository:
 
