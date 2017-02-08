@@ -1,5 +1,7 @@
 # Takkerus
-Takkerus implements a [Tak](http://cheapass.com/node/215) AI and a playable Tak board.  The name comes from a respelling of "tak-rs", after [Rust](https://www.rust-lang.org/)'s crate-naming conventions.
+Takkerus implements a playable [Tak](http://cheapass.com/node/215) board.  It supports play between any combination of humans and AIs, and can act as a PlayTak.com client.  The name comes from a respelling of "tak-rs", after [Rust](https://www.rust-lang.org/)'s crate-naming conventions.
+
+Takkerus can be found on crates.io [here](https://crates.io/crates/takkerus).
 
 ## Source
 Check out the source by cloning the repository:
