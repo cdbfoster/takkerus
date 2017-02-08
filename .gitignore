@@ -1,4 +1,6 @@
-target
 *.bak
-test*
+.cargo
 games*
+perf.data*
+target
+test*
