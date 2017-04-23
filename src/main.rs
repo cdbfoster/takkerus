@@ -31,6 +31,7 @@ use std::str::FromStr;
 
 use zero_sum::analysis::search::{PvSearch, Search};
 use zero_sum::impls::tak::*;
+use zero_sum::impls::tak::evaluator::StaticEvaluator;
 
 use arguments::{Options, parse_player};
 use game::{Game, logger};
@@ -122,7 +123,7 @@ fn main() {
             State::new(5)
         };
 
-        let mut search: Box<Search<Evaluation, State, Ply, Resolution>> = if let Some(search) = matches.opt_str("ai") {
+        let mut search: Box<Search<State>> = if let Some(search) = matches.opt_str("ai") {
             if search == "pvsearch" {
                 let mut pvsearch_options = Options::new();
                 pvsearch_options
@@ -143,27 +144,27 @@ fn main() {
 
                 if let Some(depth) = matches.opt_str("depth") {
                     if let Ok(depth) = u8::from_str(&depth) {
-                        Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_depth(depth))
+                        Box::new(PvSearch::with_depth(StaticEvaluator, depth))
                     } else {
                         println!("  Error: Invalid depth.");
                         return;
                     }
                 } else if let Some(goal) = matches.opt_str("goal") {
                     if let Ok(goal) = u16::from_str(&goal) {
-                        Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_goal(goal, 12.0))
+                        Box::new(PvSearch::with_goal(StaticEvaluator, goal, 12.0))
                     } else {
                         println!("  Error: Invalid goal.");
                         return;
                     }
                 } else {
-                    Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_goal(60, 12.0))
+                    Box::new(PvSearch::with_goal(StaticEvaluator, 60, 12.0))
                 }
             } else {
                 println!("  Error: Unrecognized AI type: {}.", search);
                 return;
             }
         } else {
-            Box::new(PvSearch::<Evaluation, State, Ply, Resolution>::with_goal(60, 12.0))
+            Box::new(PvSearch::with_goal(StaticEvaluator, 60, 12.0))
         };
 
         if !matches.free.is_empty() {

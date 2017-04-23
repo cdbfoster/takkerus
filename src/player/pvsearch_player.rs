@@ -23,14 +23,15 @@ use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Instant;
 
-use zero_sum::analysis::search::{PvSearch, Search};
-use zero_sum::impls::tak::{Color, Evaluation, Ply, Resolution, State};
+use zero_sum::analysis::search::{PvSearch, PvSearchAnalysis, Search};
+use zero_sum::impls::tak::{Color, State};
+use zero_sum::impls::tak::evaluator::StaticEvaluator;
 
 use game::Message;
 use player::{Player, PlayTakPlayer};
 
 pub struct PvSearchPlayer {
-    pvsearch: Arc<Mutex<PvSearch<Evaluation, State, Ply, Resolution>>>,
+    pvsearch: Arc<Mutex<PvSearch<State, StaticEvaluator>>>,
     depth: u8,
     goal: u16,
 }
@@ -38,7 +39,7 @@ pub struct PvSearchPlayer {
 impl PvSearchPlayer {
     pub fn with_depth(depth: u8) -> PvSearchPlayer {
         PvSearchPlayer {
-            pvsearch: Arc::new(Mutex::new(PvSearch::with_depth(depth))),
+            pvsearch: Arc::new(Mutex::new(PvSearch::with_depth(StaticEvaluator, depth))),
             depth: depth,
             goal: 0,
         }
@@ -46,7 +47,7 @@ impl PvSearchPlayer {
 
     pub fn with_goal(goal: u16) -> PvSearchPlayer {
         PvSearchPlayer {
-            pvsearch: Arc::new(Mutex::new(PvSearch::with_goal(goal, 12.0))),
+            pvsearch: Arc::new(Mutex::new(PvSearch::with_goal(StaticEvaluator, goal, 12.0))),
             depth: 0,
             goal: goal,
         }
@@ -77,6 +78,7 @@ impl Player for PvSearchPlayer {
                         thread::spawn(move || {
                             let start_search = Instant::now();
                             let analysis = pvsearch.lock().unwrap().search(&state, Some(interrupt_receiver));
+                            let pvsearch_analysis = analysis.as_any().downcast_ref::<PvSearchAnalysis<State, StaticEvaluator>>().unwrap();
                             let elapsed_search = start_search.elapsed();
 
                             let mut interrupt = interrupt.lock().unwrap();
@@ -86,12 +88,12 @@ impl Player for PvSearchPlayer {
                                 *interrupt = None;
                             }
 
-                            if let Some(ply) = analysis.principal_variation.first() {
+                            if let Some(ply) = pvsearch_analysis.principal_variation.first() {
                                 println!("[PVSearch] Decision time (depth {}): {:.3} seconds{}",
-                                    analysis.principal_variation.len(),
+                                    pvsearch_analysis.principal_variation.len(),
                                     elapsed_search.as_secs() as f32 + elapsed_search.subsec_nanos() as f32 / 1_000_000_000.0,
                                     if vs_playtak {
-                                        format!(", Evaluation: {}", analysis.evaluation)
+                                        format!(", Evaluation: {}", pvsearch_analysis.evaluation)
                                     } else {
                                         String::new()
                                     },

@@ -25,8 +25,9 @@ use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zero_sum::analysis::search::{PvSearch, Search};
+use zero_sum::analysis::search::{PvSearch, PvSearchAnalysis, Search};
 use zero_sum::impls::tak::*;
+use zero_sum::impls::tak::evaluator::StaticEvaluator;
 use zero_sum::State as StateTrait;
 
 use game::Message;
@@ -406,9 +407,7 @@ pub fn start_playtak_handler(stream: &Arc<Mutex<TcpStream>>, message_queue: Mess
 
                 if let Some(ply) = parse::ply(&string, next_color) {
                     let mut state = state.lock().unwrap();
-                    if let Ok(next) = state.execute_ply(&ply) {
-                        *state = next;
-                    }
+                    state.execute_ply(Some(&ply)).ok();
 
                     to_game.send((*color.lock().unwrap(), Message::MoveResponse(ply))).ok();
                 }
@@ -472,10 +471,11 @@ fn evaluate_state(stream: &Arc<Mutex<TcpStream>>, state: &State, invoker: Option
         }),
     ]).ok();
 
-    let mut search = PvSearch::<Evaluation, State, Ply, Resolution>::with_goal(10, 12.0);
+    let mut search = PvSearch::<State, StaticEvaluator>::with_goal(StaticEvaluator, 10, 12.0);
 
     let start_search = Instant::now();
     let analysis = search.search(&state, None);
+    let pvsearch_analysis = analysis.as_any().downcast_ref::<PvSearchAnalysis<State, StaticEvaluator>>().unwrap();
     let elapsed_search = start_search.elapsed();
     let elapsed_search = elapsed_search.as_secs() as f32 + elapsed_search.subsec_nanos() as f32 / 1_000_000_000.0;
 
@@ -492,9 +492,9 @@ fn evaluate_state(stream: &Arc<Mutex<TcpStream>>, state: &State, invoker: Option
                 "black"
             },
             state.ply_count / 2 + 1,
-            analysis.principal_variation.len(),
+            pvsearch_analysis.principal_variation.len(),
             elapsed_search,
-            analysis.evaluation,
+            pvsearch_analysis.evaluation,
         ),
     ]).ok();
 }

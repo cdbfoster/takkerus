@@ -59,7 +59,7 @@ impl Game {
     }
 
     pub fn to_state(&self) -> Result<State, String> {
-        let state = if self.header.tps.is_empty() {
+        let mut state = if self.header.tps.is_empty() {
             State::new(self.header.size)
         } else {
             if let Some(state) = State::from_tps(&format!("[TPS \"{}\"]", self.header.tps)) {
@@ -69,7 +69,11 @@ impl Game {
             }
         };
 
-        state.execute_plies(&self.plies)
+        if let Err(error) = state.execute_plies(&self.plies) {
+            Err(error)
+        } else {
+            Ok(state)
+        }
     }
 
     pub fn add_player(&mut self, player: Box<Player>) -> Result<(), String> {
@@ -242,30 +246,27 @@ impl Game {
                         }
                     }
 
-                    let state = self.to_state().unwrap();
+                    let mut state = self.to_state().unwrap();
 
-                    match state.execute_ply(&ply) {
-                        Ok(next) => {
-                            self.plies.push(ply.clone());
-                            print_game(self);
+                    if state.execute_ply(Some(&ply)).is_ok() {
+                        self.plies.push(ply.clone());
+                        print_game(self);
 
-                            logger::write_tmp_file(self);
+                        logger::write_tmp_file(self);
 
-                            self.send_message(color.flip(), Message::MoveResponse(ply));
+                        self.send_message(color.flip(), Message::MoveResponse(ply));
 
-                            if next.check_resolution().is_some() {
-                                self.send_message(color.flip(), Message::GameOver);
-                                self.send_message(color, Message::GameOver);
+                        if state.check_resolution().is_some() {
+                            self.send_message(color.flip(), Message::GameOver);
+                            self.send_message(color, Message::GameOver);
 
-                                logger::finalize_tmp_file();
-                            } else {
-                                self.send_message(color.flip(), Message::MoveRequest(next));
-                            }
-                        },
-                        _ => {
-                            println!("Bad move");
-                            self.send_message(color, Message::MoveRequest(state));
-                        },
+                            logger::finalize_tmp_file();
+                        } else {
+                            self.send_message(color.flip(), Message::MoveRequest(state));
+                        }
+                    } else {
+                        println!("Bad move");
+                        self.send_message(color, Message::MoveRequest(state));
                     }
                 },
                 Message::UndoRequest => if undo_requested.is_none() {

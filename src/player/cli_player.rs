@@ -301,6 +301,7 @@ fn parse_input(string: &String, data: &Arc<Mutex<Data>>, input_sender: &Sender<I
 }
 
 fn parse_ply(string: &str, state: &State) -> Option<Ply> {
+    let mut state = state.clone();
     let board_size = state.board.len();
 
     let player_color = if state.ply_count % 2 == 0 {
@@ -341,11 +342,10 @@ fn parse_ply(string: &str, state: &State) -> Option<Ply> {
         },
     };
 
-    match state.execute_ply(&ply) {
-        Ok(_) => Some(ply),
-        Err(error) => {
-            println!("  {}", error);
-            None
-        },
+    if let Err(error) = state.execute_ply(Some(&ply)) {
+        println!("  {}", error);
+        None
+    } else {
+        Some(ply)
     }
 }
