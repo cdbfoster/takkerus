@@ -1,6 +1,6 @@
 [package]
 name = "takkerus"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Chris Foster <cdbfoster@gmail.com>"]
 license = "GPL-3.0"
 description = "A playable tak board.  Supports play between any combination of humans and AIs, and can act as a PlayTak.com client."
