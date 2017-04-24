@@ -22,7 +22,7 @@ use std::io::{self, Write};
 use std::mem;
 use std::sync::mpsc::{self, Sender};
 
-use zero_sum::impls::tak::{Color, Ply, State};
+use zero_sum::impls::tak::{Color, Ply, Resolution, State};
 use zero_sum::State as StateTrait;
 
 use player::{self, Player};
@@ -256,11 +256,26 @@ impl Game {
 
                         self.send_message(color.flip(), Message::MoveResponse(ply));
 
-                        if state.check_resolution().is_some() {
+                        if let Some(resolution) = state.check_resolution() {
+                            self.header.result = String::from(match resolution {
+                                Resolution::Road(color) => if color == Color::White {
+                                    "R-0"
+                                } else {
+                                    "0-R"
+                                },
+                                Resolution::Flat(color) => if color == Color::White {
+                                    "F-0"
+                                } else {
+                                    "0-F"
+                                },
+                                Resolution::Draw => "1/2-1/2",
+                            });
+
+                            logger::write_tmp_file(self);
+                            logger::finalize_tmp_file();
+
                             self.send_message(color.flip(), Message::GameOver);
                             self.send_message(color, Message::GameOver);
-
-                            logger::finalize_tmp_file();
                         } else {
                             self.send_message(color.flip(), Message::MoveRequest(state));
                         }
@@ -300,6 +315,14 @@ impl Game {
                     }
                 },
                 Message::GameOver => {
+                    self.header.result = String::from(if color == Color::White {
+                        "0-1"
+                    } else {
+                        "1-0"
+                    });
+                    logger::write_tmp_file(self);
+                    logger::finalize_tmp_file();
+
                     self.send_message(color.flip(), Message::GameOver);
                     self.send_message(color, Message::GameOver);
                 },
