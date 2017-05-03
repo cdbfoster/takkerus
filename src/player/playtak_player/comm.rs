@@ -50,10 +50,11 @@ pub fn start_reader(stream: TcpStream, message_queue: &MessageQueue) {
         let reader = BufReader::new(stream);
 
         for line in reader.lines() {
-            //if let Ok(ref message) = line {
-            //    println!("Incoming: {}", message.trim());
-            //}
-            message_queue.push(line.unwrap().trim().to_string());
+            if let Ok(message) = line {
+                message_queue.push(message.trim().to_string());
+            } else {
+                break;
+            }
         }
 
         message_queue.disconnect();
