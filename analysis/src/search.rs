@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tracing::{debug, error, info, trace_span, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use tak::{Ply, State};
 
@@ -61,9 +61,8 @@ impl AddAssign<&Statistics> for Statistics {
     }
 }
 
+#[instrument(level = "trace")]
 pub fn analyze<const N: usize>(config: AnalysisConfig, state: &State<N>) -> Analysis<N> {
-    let _span = trace_span!("analyze", ?config).entered();
-
     info!(
         depth_limit = %if let Some(depth_limit) = config.depth_limit {
             depth_limit.to_string()
@@ -204,6 +203,7 @@ struct SearchState<'a, const N: usize> {
     interrupted: &'a AtomicBool,
 }
 
+#[instrument(level = "trace", skip(search, principal_variation), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &mut State<N>,
@@ -212,10 +212,6 @@ fn minimax<const N: usize>(
     mut alpha: Evaluation,
     beta: Evaluation,
 ) -> Evaluation {
-    let _span =
-        trace_span!("minimax", depth = depth, scout = alpha + 1 == beta, pv = ?principal_variation, ?state)
-            .entered();
-
     search.stats.visited += 1;
 
     if depth == 0 || state.resolution().is_some() {

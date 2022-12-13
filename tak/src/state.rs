@@ -1,7 +1,7 @@
 use std::cmp::Ordering::*;
 use std::fmt;
 
-use tracing::{trace, trace_span};
+use tracing::{instrument, trace};
 
 use crate::bitmap::{board_mask, edge_masks, Bitmap};
 use crate::metadata::Metadata;
@@ -28,9 +28,8 @@ pub struct State<const N: usize> {
 }
 
 impl<const N: usize> State<N> {
+    #[instrument(level = "trace", skip(self))]
     pub fn validate_ply(&self, mut ply: Ply<N>) -> Result<Ply<N>, StateError> {
-        let _span = trace_span!("State::validate_ply", ?ply).entered();
-
         use Color::*;
         use PieceType::*;
 
@@ -150,9 +149,8 @@ impl<const N: usize> State<N> {
         Ok(ply)
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn execute_ply(&mut self, mut ply: Ply<N>) -> Result<Ply<N>, StateError> {
-        let _span = trace_span!("State::execute_ply", ?ply).entered();
-
         ply = self.validate_ply(ply)?;
 
         use Color::*;
@@ -223,9 +221,8 @@ impl<const N: usize> State<N> {
         Ok(ply)
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn revert_ply(&mut self, ply: Ply<N>) -> Result<(), StateError> {
-        let _span = trace_span!("State::revert_ply", ?ply).entered();
-
         use Color::*;
         use PieceType::*;
 

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use tracing::{trace, trace_span};
+use tracing::{instrument, trace};
 
 use crate::piece::PieceType;
 use crate::ptn::PtnPly;
@@ -42,9 +42,8 @@ pub enum Ply<const N: usize> {
 }
 
 impl<const N: usize> Ply<N> {
+    #[instrument(level = "trace")]
     pub fn validate(self) -> Result<(), PlyError> {
-        let _span = trace_span!("Ply::validate").entered();
-
         match self {
             Ply::Place { x, y, .. } => {
                 if x as usize >= N || y as usize >= N {
