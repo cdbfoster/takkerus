@@ -32,8 +32,6 @@ fn main() {
         },
         Command::Analyze { .. } => (),
     }
-
-    std::thread::sleep(std::time::Duration::from_secs(10));
 }
 
 fn run_game<const N: usize>(args: Args) {
