@@ -53,7 +53,7 @@ pub fn initialize<const N: usize>(name: Option<String>, to_game: Sender<Message<
     };
 
     Player {
-        name: name.clone(),
+        name,
         to_player,
         task: task::spawn(message_handler::<N>(player_info, to_game, from_game)),
         color_select: None,
@@ -231,49 +231,47 @@ async fn message_handler<const N: usize>(
                         send!(UndoRequestWithdrawal);
                         println!("\nUndo request withdrawn.");
                     }
-                } else {
-                    if draw_status == Some(AwaitingInput)
-                        && (input == "accept" || input == "reject")
-                    {
-                        if input == "accept" {
-                            trace!("Sending draw accept.");
-                            draw_status = None;
-                            send!(DrawResponse { accept: true });
-                        } else if input == "reject" {
-                            trace!("Sending draw reject.");
-                            draw_status = None;
-                            send!(DrawResponse { accept: false });
+                } else if draw_status == Some(AwaitingInput)
+                    && (input == "accept" || input == "reject")
+                {
+                    if input == "accept" {
+                        trace!("Sending draw accept.");
+                        draw_status = None;
+                        send!(DrawResponse { accept: true });
+                    } else if input == "reject" {
+                        trace!("Sending draw reject.");
+                        draw_status = None;
+                        send!(DrawResponse { accept: false });
+                    }
+                } else if undo_status == Some(AwaitingInput)
+                    && (input == "accept" || input == "reject")
+                {
+                    if input == "accept" {
+                        trace!("Sending undo accept.");
+                        undo_status = None;
+                        send!(UndoResponse { accept: true });
+                    } else if input == "reject" {
+                        trace!("Sending undo reject.");
+                        undo_status = None;
+                        send!(UndoResponse { accept: false });
+                    }
+                } else if !input.is_empty() {
+                    if move_status == Some(AwaitingInput) {
+                        if let Ok(ply) = Ply::<N>::try_from(input) {
+                            trace!(?ply, "Sending move response.");
+                            send!(MoveResponse(ply));
+                            move_status = None;
                         }
-                    } else if undo_status == Some(AwaitingInput)
-                        && (input == "accept" || input == "reject")
-                    {
-                        if input == "accept" {
-                            trace!("Sending undo accept.");
-                            undo_status = None;
-                            send!(UndoResponse { accept: true });
-                        } else if input == "reject" {
-                            trace!("Sending undo reject.");
-                            undo_status = None;
-                            send!(UndoResponse { accept: false });
-                        }
-                    } else if !input.is_empty() {
-                        if move_status == Some(AwaitingInput) {
-                            if let Ok(ply) = Ply::<N>::try_from(input) {
-                                trace!(?ply, "Sending move response.");
-                                send!(MoveResponse(ply));
-                                move_status = None;
-                            }
-                        }
+                    }
 
-                        if input == "draw" && draw_status.is_none() {
-                            draw_status = Some(Requested);
-                            send!(DrawRequest);
-                        }
+                    if input == "draw" && draw_status.is_none() {
+                        draw_status = Some(Requested);
+                        send!(DrawRequest);
+                    }
 
-                        if input == "undo" && undo_status.is_none() {
-                            undo_status = Some(Requested);
-                            send!(UndoRequest);
-                        }
+                    if input == "undo" && undo_status.is_none() {
+                        undo_status = Some(Requested);
+                        send!(UndoRequest);
                     }
                 }
             }

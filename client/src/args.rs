@@ -177,7 +177,7 @@ impl FromStr for Game {
             })
             .transpose()?
             .unwrap_or(6);
-        if size < 3 || size > 8 {
+        if !(3..=8).contains(&size) {
             return Err(format!("invalid value for size (3 - 8): {size}"));
         }
 
@@ -191,7 +191,7 @@ impl FromStr for Game {
                     let half = match &f[period + 1..] {
                         "0" => 0,
                         "5" => 1,
-                        _ => return Err(format!("only half komi are supported (*.0 or *.5)")),
+                        _ => return Err("only half komi are supported (*.0 or *.5)".to_owned()),
                     };
                     let sign = if full >= 0 { 1 } else { -1 };
                     full + sign * half
@@ -204,7 +204,7 @@ impl FromStr for Game {
             })
             .transpose()?
             .unwrap_or(0);
-        if half_komi < -10 || half_komi > 10 {
+        if !(-10..=10).contains(&half_komi) {
             return Err("komi values must be between -5.0 and +5.0".to_owned());
         }
 

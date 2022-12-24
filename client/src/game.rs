@@ -64,7 +64,7 @@ async fn game_handler<const N: usize>(
     // Resolve colors, based on selections.
     let p1_color = p1
         .color_select
-        .or(p2.color_select.map(|c| c.other()))
+        .or_else(|| p2.color_select.map(|c| c.other()))
         .unwrap_or(Color::White);
     let p2_color = p1_color.other();
 
@@ -225,7 +225,7 @@ fn print_board<const N: usize>(state: &State<N>, ply_history: &[Ply<N>]) {
     let board: Vec<Vec<String>> = state
         .board
         .iter()
-        .map(|c| c.iter().map(|r| print_stack(r)).collect())
+        .map(|c| c.iter().map(print_stack).collect())
         .collect();
 
     let column_widths: Vec<usize> = board
