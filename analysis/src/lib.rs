@@ -1,6 +1,7 @@
-// XXX Fix visibility
+pub use evaluation::{evaluate, Evaluation};
+pub use search::{analyze, Analysis, AnalysisConfig, PersistentState, Statistics};
 
-pub mod evaluation;
-pub mod ply_generator;
-pub mod rng;
-pub mod search;
+mod evaluation;
+mod ply_generator;
+mod rng;
+mod search;

@@ -28,6 +28,14 @@ pub struct State<const N: usize> {
 }
 
 impl<const N: usize> State<N> {
+    pub fn to_move(&self) -> Color {
+        if self.ply_count % 2 == 0 {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
     #[instrument(level = "trace", skip(self))]
     pub fn validate_ply(&self, mut ply: Ply<N>) -> Result<Ply<N>, StateError> {
         use Color::*;
@@ -35,11 +43,7 @@ impl<const N: usize> State<N> {
 
         ply.validate()?;
 
-        let player_color = if self.ply_count % 2 == 0 {
-            White
-        } else {
-            Black
-        };
+        let player_color = self.to_move();
 
         match ply {
             Ply::Place { x, y, piece_type } => {
@@ -156,11 +160,7 @@ impl<const N: usize> State<N> {
         use Color::*;
         use PieceType::*;
 
-        let player_color = if self.ply_count % 2 == 0 {
-            White
-        } else {
-            Black
-        };
+        let player_color = self.to_move();
 
         match ply {
             Ply::Place { x, y, piece_type } => {
@@ -232,11 +232,7 @@ impl<const N: usize> State<N> {
             return Err(StateError::NoPreviousPlies);
         }
 
-        let player_color = if self.ply_count % 2 == 1 {
-            White
-        } else {
-            Black
-        };
+        let player_color = self.to_move().other();
 
         match ply {
             Ply::Place { x, y, piece_type } => {
@@ -350,6 +346,7 @@ impl<const N: usize> State<N> {
         fn spans_board<const M: usize>(bitmap: Bitmap<M>) -> bool {
             use Direction::*;
             let edge = edge_masks();
+            // XXX Get groups from only the edge pixels.
             for group in bitmap.groups() {
                 if (group & edge[North as usize] != 0.into()
                     && group & edge[South as usize] != 0.into())

@@ -137,7 +137,7 @@ impl fmt::Debug for Stack {
             write!(f, " ")?
         } else {
             for piece in self.iter().rev() {
-                write!(f, "{:?}", piece)?
+                write!(f, "{piece:?}")?;
             }
         }
         Ok(())

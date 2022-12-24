@@ -41,7 +41,7 @@ const WEIGHT: Weights = Weights {
     capstone: 300,
 };
 
-pub(crate) fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
+pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     let next_color = if state.ply_count % 2 == 0 {
         Color::White
     } else {
