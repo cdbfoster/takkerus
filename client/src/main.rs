@@ -28,7 +28,7 @@ fn main() {
             6 => run_game::<6>(args),
             7 => run_game::<7>(args),
             8 => run_game::<8>(args),
-            _ => panic!("invalide game size"),
+            _ => panic!("invalid game size"),
         },
         Command::Analyze { .. } => (),
     }
