@@ -20,8 +20,8 @@ fn main() {
         env::set_var("ASYNC_STD_THREAD_COUNT", "1");
     }
 
-    match args.command {
-        Command::Play { ref game, .. } => match game.size {
+    match &args.command {
+        Command::Play { game, .. } => match game.size {
             3 => run_game::<3>(args),
             4 => run_game::<4>(args),
             5 => run_game::<5>(args),
@@ -36,8 +36,8 @@ fn main() {
 
 fn run_game<const N: usize>(args: Args) {
     game::run(
-        human::initialize,
-        human::initialize,
+        |s| human::initialize(None, s),
+        |s| human::initialize(None, s),
         tak::State::<N>::default(),
     );
 }

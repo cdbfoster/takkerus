@@ -25,7 +25,7 @@ struct Setup {
     stdin_coordinator: Option<JoinHandle<()>>,
 }
 
-pub fn initialize<const N: usize>(to_game: Sender<Message<N>>) -> Player<N> {
+pub fn initialize<const N: usize>(name: Option<String>, to_game: Sender<Message<N>>) -> Player<N> {
     let mut setup = SETUP.lock().unwrap();
 
     setup.human_count += 1;
@@ -45,6 +45,7 @@ pub fn initialize<const N: usize>(to_game: Sender<Message<N>>) -> Player<N> {
     let (input_sender, input_receiver) = mpsc::unbounded();
 
     let player_info = PlayerSetup {
+        name: name.clone(),
         human_number: setup.human_count,
         input_sender,
         input_receiver,
@@ -52,6 +53,7 @@ pub fn initialize<const N: usize>(to_game: Sender<Message<N>>) -> Player<N> {
     };
 
     Player {
+        name: name.clone(),
         to_player,
         task: task::spawn(message_handler::<N>(player_info, to_game, from_game)),
         color_select: None,
@@ -67,6 +69,7 @@ enum ResponseState {
 }
 
 struct PlayerSetup {
+    name: Option<String>,
     human_number: usize,
     /// This will be given to the stdin coordinator to take input focus.
     input_sender: Sender<String>,
@@ -90,6 +93,7 @@ async fn message_handler<const N: usize>(
     let mut undo_status = None;
 
     let PlayerSetup {
+        name,
         human_number,
         input_sender,
         mut input_receiver,
@@ -282,7 +286,11 @@ async fn message_handler<const N: usize>(
             let requested = undo_status == Some(Requested) || draw_status == Some(Requested);
 
             if awaiting_input!() && !requested {
-                print!("\nPlayer {}: ", human_number);
+                if let Some(name) = &name {
+                    print!("\n{name} (Player {human_number}): ");
+                } else {
+                    print!("\nPlayer {human_number}: ");
+                }
             }
         }
         io::stdout().flush().ok();

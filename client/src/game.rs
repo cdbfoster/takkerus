@@ -11,6 +11,7 @@ use tak::{Color, Ply, PlyError, PtnPly, Resolution, Stack, State, StateError};
 use crate::message::{GameEnd as GameEndType, Message};
 
 pub struct Player<const N: usize> {
+    pub name: Option<String>,
     pub to_player: Sender<Message<N>>,
     pub task: JoinHandle<()>,
     pub color_select: Option<Color>,
