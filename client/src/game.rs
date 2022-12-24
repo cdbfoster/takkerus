@@ -17,9 +17,13 @@ pub struct Player<const N: usize> {
     pub color_select: Option<Color>,
 }
 
+pub trait PlayerInitializer<const N: usize>: Fn(Sender<Message<N>>) -> Player<N> {}
+
+impl<T, const N: usize> PlayerInitializer<N> for T where T: Fn(Sender<Message<N>>) -> Player<N> {}
+
 pub fn run<const N: usize>(
-    p1_initialize: impl Fn(Sender<Message<N>>) -> Player<N>,
-    p2_initialize: impl Fn(Sender<Message<N>>) -> Player<N>,
+    p1_initialize: impl PlayerInitializer<N>,
+    p2_initialize: impl PlayerInitializer<N>,
     state: State<N>,
 ) {
     let (to_game, from_p1) = mpsc::unbounded();
