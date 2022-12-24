@@ -11,15 +11,21 @@ use tak::{Ply, State};
 use crate::evaluation::{evaluate, Evaluation};
 use crate::ply_generator::PlyGenerator;
 
-#[derive(Clone, Debug)]
-pub struct AnalysisConfig {
+#[derive(Debug, Default)]
+pub struct AnalysisConfig<'a, const N: usize> {
     depth_limit: Option<u32>,
     time_limit: Option<Duration>,
     /// If this is set and the next search depth is predicted to take
     /// longer than the time limit, stop the search early.
     predict_time: bool,
     interrupted: Arc<AtomicBool>,
+    /// A place to put data gathered during the search that could be
+    /// useful to future searches. If none, this will be created internally.
+    persistent_state: Option<&'a mut PersistentState<N>>,
 }
+
+#[derive(Debug, Default)]
+pub struct PersistentState<const N: usize>;
 
 #[derive(Debug)]
 pub struct Analysis<const N: usize> {
@@ -62,7 +68,7 @@ impl AddAssign<&Statistics> for Statistics {
 }
 
 #[instrument(level = "trace")]
-pub fn analyze<const N: usize>(config: AnalysisConfig, state: &State<N>) -> Analysis<N> {
+pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> Analysis<N> {
     info!(
         depth_limit = %if let Some(depth_limit) = config.depth_limit {
             depth_limit.to_string()
@@ -80,13 +86,22 @@ pub fn analyze<const N: usize>(config: AnalysisConfig, state: &State<N>) -> Anal
     let total_start_time = Instant::now();
 
     let cancel_timer = if config.time_limit.is_some() {
-        let cancel = spawn_timing_interrupt_thread(config.clone(), total_start_time);
+        let cancel = spawn_timing_interrupt_thread(&config, total_start_time);
         Some(cancel)
     } else {
         None
     };
 
     let max_depth = config.depth_limit.unwrap_or(u32::MAX) as usize;
+
+    // Use the passed-in persistent state or create a local one for this analysis.
+    let mut local_persistent_state;
+    let persistent_state = if let Some(persistent_state) = config.persistent_state {
+        persistent_state
+    } else {
+        local_persistent_state = PersistentState::default();
+        &mut local_persistent_state
+    };
 
     let mut principal_variation = Vec::with_capacity(max_depth.min(15));
 
@@ -105,6 +120,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig, state: &State<N>) -> Anal
             search_depth: depth,
             stats: Default::default(),
             interrupted: &config.interrupted,
+            persistent_state,
         };
 
         evaluation = minimax(
@@ -201,12 +217,13 @@ struct SearchState<'a, const N: usize> {
     search_depth: usize,
     stats: Statistics,
     interrupted: &'a AtomicBool,
+    persistent_state: &'a mut PersistentState<N>,
 }
 
 #[instrument(level = "trace", skip(search, principal_variation), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
-    state: &mut State<N>,
+    state: &mut State<N>, // XXX This could probably be &RefCell<State<N>>, saving us a clone for PlyGenerator.
     principal_variation: &mut Vec<Ply<N>>,
     depth: usize,
     mut alpha: Evaluation,
@@ -299,28 +316,29 @@ fn minimax<const N: usize>(
     alpha
 }
 
-fn spawn_timing_interrupt_thread(config: AnalysisConfig, start_time: Instant) -> Arc<AtomicBool> {
+fn spawn_timing_interrupt_thread<const N: usize>(
+    config: &AnalysisConfig<N>,
+    start_time: Instant,
+) -> Arc<AtomicBool> {
     let cancel = Arc::new(AtomicBool::new(false));
 
     {
         let cancel = cancel.clone();
+        let time_limit = config.time_limit.unwrap();
+        let interrupted = config.interrupted.clone();
         thread::spawn(move || loop {
             if cancel.load(Ordering::Relaxed) {
                 break;
             }
 
-            let remaining_time = config
-                .time_limit
-                .unwrap()
-                .saturating_sub(start_time.elapsed());
-
+            let remaining_time = time_limit.saturating_sub(start_time.elapsed());
             if !remaining_time.is_zero() {
                 // Check for cancels at least every 10th of a second.
                 let sleep_time = remaining_time.div_f64(2.0).min(Duration::from_millis(100));
                 thread::sleep(sleep_time);
             } else {
                 info!("Time limit reached. Stopping.");
-                config.interrupted.store(true, Ordering::Relaxed);
+                interrupted.store(true, Ordering::Relaxed);
                 break;
             }
         });
@@ -353,9 +371,7 @@ mod tests {
 
         let config = AnalysisConfig {
             depth_limit: Some(7),
-            time_limit: None,
-            predict_time: false,
-            interrupted: Default::default(),
+            ..Default::default()
         };
         let state = State::<6>::default();
         let analysis = analyze(config, &state);
@@ -372,10 +388,8 @@ mod tests {
         let start_time = Instant::now();
 
         let config = AnalysisConfig {
-            depth_limit: None,
             time_limit: Some(time_limit),
-            predict_time: false,
-            interrupted: Default::default(),
+            ..Default::default()
         };
         let state = State::<6>::default();
         let analysis = analyze(config, &state);
@@ -397,10 +411,9 @@ mod tests {
         let start_time = Instant::now();
 
         let config = AnalysisConfig {
-            depth_limit: None,
             time_limit: Some(time_limit),
             predict_time: true,
-            interrupted: Default::default(),
+            ..Default::default()
         };
         let state = State::<6>::default();
         let _analysis = analyze(config, &state);
