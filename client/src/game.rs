@@ -133,6 +133,7 @@ async fn game_handler<const N: usize>(
                 if handle_ply(&mut state, ply, &mut ply_history).is_ok() {
                     print_board(&state, &ply_history);
                     if let Some(resolution) = state.resolution() {
+                        print_resolution(resolution);
                         send!(from, GameEnd(GameEndType::Resolution(resolution)));
                         send!(from.other(), GameEnd(GameEndType::Resolution(resolution)));
                         break;
@@ -304,5 +305,38 @@ fn print_stack(stack: &Stack) -> String {
             write!(buffer, "{piece:?}").unwrap();
         }
         buffer
+    }
+}
+
+fn print_resolution(resolution: Resolution) {
+    println!("\nGame over.");
+    match resolution {
+        Resolution::Road(color) => {
+            println!("\n{color:?} wins by road: {}",
+                match color {
+                    Color::White => "R-0",
+                    Color::Black => "0-R",
+                }
+            );
+        }
+        Resolution::Flats { color, spread, half_komi } => {
+            let komi = half_komi.abs() / 2;
+            let remainder = (half_komi.abs() % 2) * 5;
+            println!("\n{color:?} wins by flats: {}",
+                match color {
+                    Color::White => "F-0",
+                    Color::Black => "0-F",
+                },
+            );
+            println!("  Spread: {spread}{}{komi}.{remainder}",
+                match color {
+                    Color::White => "-",
+                    Color::Black => "+",
+                }
+            );
+        }
+        Resolution::Draw => {
+            println!("\nDraw: ½-½");
+        }
     }
 }
