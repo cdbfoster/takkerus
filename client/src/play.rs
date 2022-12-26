@@ -8,7 +8,9 @@ use tracing::{error, instrument, trace, warn};
 
 use tak::{Color, Ply, PlyError, PtnPly, Resolution, Stack, State, StateError};
 
+use crate::args::{Args, Command, Player as PlayerArgs};
 use crate::message::{GameEnd as GameEndType, Message};
+use crate::player::{ai, human};
 
 pub struct Player<const N: usize> {
     pub name: Option<String>,
@@ -20,6 +22,38 @@ pub struct Player<const N: usize> {
 pub trait PlayerInitializer<const N: usize>: Fn(Sender<Message<N>>) -> Player<N> {}
 
 impl<T, const N: usize> PlayerInitializer<N> for T where T: Fn(Sender<Message<N>>) -> Player<N> {}
+
+pub fn run_game<const N: usize>(args: Args) {
+    let (p1, p2, game) = match &args.command {
+        Command::Play { p1, p2, game } => (p1, p2, game),
+        _ => panic!("invalid command"),
+    };
+
+    let p1_initialize = initialize_player(p1);
+    let p2_initialize = initialize_player(p2);
+
+    let mut state = tak::State::<N>::default();
+    state.half_komi = game.half_komi;
+
+    run(p1_initialize, p2_initialize, state);
+}
+
+fn initialize_player<const N: usize>(player: &PlayerArgs) -> impl PlayerInitializer<N> + '_ {
+    match player {
+        PlayerArgs::Human(config) => {
+            Box::new(|to_game| human::initialize(Some(config.name.clone()), to_game))
+                as Box<dyn PlayerInitializer<N>>
+        }
+        PlayerArgs::Ai(config) => Box::new(|to_game| {
+            ai::initialize(
+                config.depth_limit,
+                config.time_limit,
+                config.predict_time.unwrap_or_default(),
+                to_game,
+            )
+        }) as Box<dyn PlayerInitializer<N>>,
+    }
+}
 
 pub fn run<const N: usize>(
     p1_initialize: impl PlayerInitializer<N>,
@@ -312,23 +346,30 @@ fn print_resolution(resolution: Resolution) {
     println!("\nGame over.");
     match resolution {
         Resolution::Road(color) => {
-            println!("\n{color:?} wins by road: {}",
+            println!(
+                "\n{color:?} wins by road: {}",
                 match color {
                     Color::White => "R-0",
                     Color::Black => "0-R",
                 }
             );
         }
-        Resolution::Flats { color, spread, half_komi } => {
+        Resolution::Flats {
+            color,
+            spread,
+            half_komi,
+        } => {
             let komi = half_komi.abs() / 2;
             let remainder = (half_komi.abs() % 2) * 5;
-            println!("\n{color:?} wins by flats: {}",
+            println!(
+                "\n{color:?} wins by flats: {}",
                 match color {
                     Color::White => "F-0",
                     Color::Black => "0-F",
                 },
             );
-            println!("  Spread: {spread}{}{komi}.{remainder}",
+            println!(
+                "  Spread: {spread}{}{komi}.{remainder}",
                 match color {
                     Color::White => "-",
                     Color::Black => "+",

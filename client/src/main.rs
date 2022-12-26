@@ -2,13 +2,12 @@ use std::env;
 
 use clap::Parser;
 
-use self::args::{Args, Command, Player};
-use self::game::PlayerInitializer;
-use self::player::{ai, human};
+use self::args::{Args, Command};
+use self::play::run_game;
 
 mod args;
-mod game;
 mod message;
+mod play;
 mod player;
 
 fn main() {
@@ -32,37 +31,5 @@ fn main() {
             _ => panic!("invalid game size"),
         },
         Command::Analyze { .. } => (),
-    }
-}
-
-fn run_game<const N: usize>(args: Args) {
-    let (p1, p2, game) = match &args.command {
-        Command::Play { p1, p2, game } => (p1, p2, game),
-        _ => panic!("invalid command"),
-    };
-
-    let p1_initialize = initialize_player(p1);
-    let p2_initialize = initialize_player(p2);
-
-    let mut state = tak::State::<N>::default();
-    state.half_komi = game.half_komi;
-
-    game::run(p1_initialize, p2_initialize, state);
-}
-
-fn initialize_player<const N: usize>(player: &Player) -> impl PlayerInitializer<N> + '_ {
-    match player {
-        Player::Human(config) => {
-            Box::new(|to_game| human::initialize(Some(config.name.clone()), to_game))
-                as Box<dyn PlayerInitializer<N>>
-        }
-        Player::Ai(config) => Box::new(|to_game| {
-            ai::initialize(
-                config.depth_limit,
-                config.time_limit,
-                config.predict_time.unwrap_or_default(),
-                to_game,
-            )
-        }) as Box<dyn PlayerInitializer<N>>,
     }
 }

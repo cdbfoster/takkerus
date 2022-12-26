@@ -10,8 +10,8 @@ use tracing::{error, trace, warn};
 
 use analysis::{self, analyze, AnalysisConfig, PersistentState};
 
-use crate::game::Player;
 use crate::message::Message;
+use crate::play::Player;
 
 pub fn initialize<const N: usize>(
     depth_limit: Option<u32>,
