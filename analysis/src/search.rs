@@ -173,6 +173,11 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             "Search:",
         );
 
+        if evaluation.is_win() {
+            info!("Tinuë found. Stopping.");
+            break;
+        }
+
         if config.predict_time {
             if let Some(time_limit) = config.time_limit {
                 let next_depth_prediction = depth_time * average_branching_factor.round() as u32;

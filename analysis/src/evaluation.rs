@@ -2,6 +2,9 @@ use std::fmt;
 
 use tak::{Color, Resolution, State};
 
+const WIN: EvalType = 100_000;
+const WIN_THRESHOLD: EvalType = 99_000;
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Evaluation(EvalType);
 
@@ -11,7 +14,7 @@ impl Evaluation {
     }
 
     pub fn win() -> Self {
-        100_000.into()
+        WIN.into()
     }
 
     pub fn lose() -> Self {
@@ -24,6 +27,10 @@ impl Evaluation {
 
     pub fn min() -> Self {
         Self(EvalType::MIN + 1)
+    }
+
+    pub fn is_win(self) -> bool {
+        self.0.abs() > WIN_THRESHOLD
     }
 }
 
