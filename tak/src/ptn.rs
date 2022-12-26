@@ -182,7 +182,9 @@ impl<const N: usize> From<Ply<N>> for PtnPly {
                 crush,
             } => {
                 let count = drops.into_iter().sum::<u8>() as u32;
-                buffer.push(char::from_digit(count, 10).unwrap());
+                if count > 1 {
+                    buffer.push(char::from_digit(count, 10).unwrap());
+                }
 
                 buffer.push(char::from_digit(x as u32 + 10, 10 + N as u32).unwrap());
                 buffer.push(char::from_digit(y as u32 + 1, 10).unwrap());
