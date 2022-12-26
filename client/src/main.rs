@@ -21,15 +21,7 @@ fn main() {
     }
 
     match &args.command {
-        Command::Play { game, .. } => match game.size {
-            3 => run_game::<3>(args),
-            4 => run_game::<4>(args),
-            5 => run_game::<5>(args),
-            6 => run_game::<6>(args),
-            7 => run_game::<7>(args),
-            8 => run_game::<8>(args),
-            _ => panic!("invalid game size"),
-        },
+        Command::Play { .. } => run_game(args),
         Command::Analyze { .. } => (),
     }
 }
