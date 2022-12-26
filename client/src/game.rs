@@ -62,6 +62,12 @@ async fn game_handler<const N: usize>(
     use PlayerToken::*;
 
     // Resolve colors, based on selections.
+    if p1.color_select.is_some() && p2.color_select.is_some() && p1.color_select == p2.color_select
+    {
+        error!(p1 = ?p1.color_select, p2 = ?p2.color_select, "Both players requested the same color.");
+        return;
+    }
+
     let p1_color = p1
         .color_select
         .or_else(|| p2.color_select.map(|c| c.other()))

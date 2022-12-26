@@ -13,15 +13,15 @@ use crate::ply_generator::PlyGenerator;
 
 #[derive(Debug, Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
-    depth_limit: Option<u32>,
-    time_limit: Option<Duration>,
+    pub depth_limit: Option<u32>,
+    pub time_limit: Option<Duration>,
     /// If this is set and the next search depth is predicted to take
     /// longer than the time limit, stop the search early.
-    predict_time: bool,
-    interrupted: Arc<AtomicBool>,
+    pub predict_time: bool,
+    pub interrupted: Arc<AtomicBool>,
     /// A place to put data gathered during the search that could be
     /// useful to future searches. If none, this will be created internally.
-    persistent_state: Option<&'a mut PersistentState<N>>,
+    pub persistent_state: Option<&'a mut PersistentState<N>>,
 }
 
 #[derive(Debug, Default)]

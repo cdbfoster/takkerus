@@ -277,21 +277,23 @@ async fn message_handler<const N: usize>(
             }
         }
 
-        let human_count = SETUP.lock().unwrap().human_count;
-        if human_count == 1 {
-            print!("\nEntry: ");
-        } else {
-            let requested = undo_status == Some(Requested) || draw_status == Some(Requested);
+        if awaiting_input!() {
+            let human_count = SETUP.lock().unwrap().human_count;
+            if human_count == 1 {
+                print!("\nEntry: ");
+            } else {
+                let requested = undo_status == Some(Requested) || draw_status == Some(Requested);
 
-            if awaiting_input!() && !requested {
-                if let Some(name) = &name {
-                    print!("\n{name} (Player {human_number}): ");
-                } else {
-                    print!("\nPlayer {human_number}: ");
+                if !requested {
+                    if let Some(name) = &name {
+                        print!("\n{name} (Player {human_number}): ");
+                    } else {
+                        print!("\nPlayer {human_number}: ");
+                    }
                 }
             }
+            io::stdout().flush().ok();
         }
-        io::stdout().flush().ok();
     }
 
     // Must drop this to remove another copy of the focus sender.

@@ -4,7 +4,7 @@ use clap::Parser;
 
 use self::args::{Args, Command, Player};
 use self::game::PlayerInitializer;
-use self::player::human;
+use self::player::{ai, human};
 
 mod args;
 mod game;
@@ -51,7 +51,17 @@ fn run_game<const N: usize>(args: Args) {
 
 fn initialize_player<const N: usize>(player: &Player) -> impl PlayerInitializer<N> + '_ {
     match player {
-        Player::Human(player) => |to_game| human::initialize(Some(player.name.clone()), to_game),
-        Player::Ai(_) => unimplemented!(),
+        Player::Human(config) => {
+            Box::new(|to_game| human::initialize(Some(config.name.clone()), to_game))
+                as Box<dyn PlayerInitializer<N>>
+        }
+        Player::Ai(config) => Box::new(|to_game| {
+            ai::initialize(
+                config.depth_limit,
+                config.time_limit,
+                config.predict_time.unwrap_or_default(),
+                to_game,
+            )
+        }) as Box<dyn PlayerInitializer<N>>,
     }
 }
