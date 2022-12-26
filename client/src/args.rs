@@ -13,6 +13,7 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Presents a playable interface for human and AI players.
     Play {
         /// Player 1 options.
         ///
@@ -47,6 +48,7 @@ pub enum Command {
         #[arg(short, long, default_value = "size=6", verbatim_doc_comment)]
         game: Game,
     },
+    /// Analyzes a given position.
     Analyze {
         /// Analysis options.
         ///
