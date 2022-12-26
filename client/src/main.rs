@@ -36,7 +36,7 @@ fn main() {
 }
 
 fn run_game<const N: usize>(args: Args) {
-    let (p1, p2, _game) = match &args.command {
+    let (p1, p2, game) = match &args.command {
         Command::Play { p1, p2, game } => (p1, p2, game),
         _ => panic!("invalid command"),
     };
@@ -44,7 +44,8 @@ fn run_game<const N: usize>(args: Args) {
     let p1_initialize = initialize_player(p1);
     let p2_initialize = initialize_player(p2);
 
-    let state = tak::State::<N>::default();
+    let mut state = tak::State::<N>::default();
+    state.half_komi = game.half_komi;
 
     game::run(p1_initialize, p2_initialize, state);
 }
