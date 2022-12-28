@@ -140,7 +140,7 @@ impl<const N: usize> FromStr for Ply<N> {
     type Err = PtnError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        PtnPly::new(value).parse()
+        PtnPly::new(value).try_into()
     }
 }
 
