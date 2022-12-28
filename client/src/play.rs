@@ -8,7 +8,7 @@ use tracing::{error, instrument, trace, warn};
 
 use tak::{Color, Ply, PlyError, PtnPly, Resolution, Stack, State, StateError};
 
-use crate::args::{Args, Command, Game, Player as PlayerArgs};
+use crate::args::{Args, Command, PlayConfig, Player as PlayerArgs};
 use crate::message::{GameEnd as GameEndType, Message};
 use crate::player::{ai, human};
 
@@ -23,29 +23,24 @@ pub trait PlayerInitializer<const N: usize>: Fn(Sender<Message<N>>) -> Player<N>
 
 impl<T, const N: usize> PlayerInitializer<N> for T where T: Fn(Sender<Message<N>>) -> Player<N> {}
 
-pub fn run_game(args: Args) {
-    let (p1, p2, game) = match &args.command {
-        Command::Play { p1, p2, game } => (p1, p2, game),
-        _ => panic!("invalid command"),
-    };
-
-    match game.size {
-        3 => run_game_sized::<3>(p1, p2, game),
-        4 => run_game_sized::<4>(p1, p2, game),
-        5 => run_game_sized::<5>(p1, p2, game),
-        6 => run_game_sized::<6>(p1, p2, game),
-        7 => run_game_sized::<7>(p1, p2, game),
-        8 => run_game_sized::<8>(p1, p2, game),
+pub fn run_game(config: PlayConfig) {
+    match config.game.size {
+        3 => run_game_sized::<3>(config),
+        4 => run_game_sized::<4>(config),
+        5 => run_game_sized::<5>(config),
+        6 => run_game_sized::<6>(config),
+        7 => run_game_sized::<7>(config),
+        8 => run_game_sized::<8>(config),
         _ => panic!("invalid game size"),
     }
 }
 
-fn run_game_sized<const N: usize>(p1: &PlayerArgs, p2: &PlayerArgs, game: &Game) {
-    let p1_initialize = initialize_player(p1);
-    let p2_initialize = initialize_player(p2);
+fn run_game_sized<const N: usize>(config: PlayConfig) {
+    let p1_initialize = initialize_player(&config.p1);
+    let p2_initialize = initialize_player(&config.p2);
 
     let state = State::<N> {
-        half_komi: game.half_komi,
+        half_komi: config.game.half_komi,
         ..Default::default()
     };
 

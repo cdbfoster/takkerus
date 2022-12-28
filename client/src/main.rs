@@ -20,8 +20,8 @@ fn main() {
         env::set_var("ASYNC_STD_THREAD_COUNT", "1");
     }
 
-    match &args.command {
-        Command::Play { .. } => run_game(args),
-        Command::Analyze { .. } => (),
+    match args.command {
+        Command::Play(config) => run_game(config),
+        Command::Analyze(_config) => (),
     }
 }

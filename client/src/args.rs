@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Args as ArgsTrait, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -14,56 +14,63 @@ pub struct Args {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Presents a playable interface for human and AI players.
-    Play {
-        /// Player 1 options.
-        ///
-        /// General parameters:
-        ///   type=string       - The type of the player. (human, ai, or playtak)
-        ///
-        /// Human parameters:
-        ///   name=string       - The player's name.
-        ///
-        /// AI parameters:
-        ///   depth=int         - The maximum depth of the move search.
-        ///   time=int          - The maximum number of seconds to spend considering a response.
-        ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
-        ///                       than the time limit. Time limit must be set. (false or true)
-        #[arg(long, default_value = "type=human", verbatim_doc_comment)]
-        p1: Player,
-
-        /// Player 2 options. These are the same as the options for Player 1.
-        #[arg(
-            long,
-            default_value = "type=ai,time=60,predict_time=true",
-            verbatim_doc_comment
-        )]
-        p2: Player,
-
-        /// Game options.
-        ///
-        /// Parameters:
-        ///   size=int     - The size of the board. (3 - 8)
-        ///   komi=decimal - A bonus to apply to black's flat count in games that go to flats.
-        ///                  (-5.0 - +5.0, in 0.5 increments)
-        #[arg(short, long, default_value = "size=6", verbatim_doc_comment)]
-        game: Game,
-    },
+    Play(PlayConfig),
     /// Analyzes a given position.
-    Analyze {
-        /// Analysis options.
-        ///
-        /// Parameters:
-        ///   depth=int         - The maximum depth of the move search.
-        ///   time=int          - The maximum number of seconds to spend considering a response.
-        ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
-        ///                       than the time limit. Time limit must be set. (false or true)
-        #[arg(
-            long,
-            default_value = "time=60,predict_time=true",
-            verbatim_doc_comment
-        )]
-        ai: Ai,
-    },
+    Analyze(AnalyzeConfig),
+}
+
+#[derive(ArgsTrait, Clone, Debug)]
+pub struct PlayConfig {
+    /// Player 1 options.
+    ///
+    /// General parameters:
+    ///   type=string       - The type of the player. (human, ai, or playtak)
+    ///
+    /// Human parameters:
+    ///   name=string       - The player's name.
+    ///
+    /// AI parameters:
+    ///   depth=int         - The maximum depth of the move search.
+    ///   time=int          - The maximum number of seconds to spend considering a response.
+    ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
+    ///                       than the time limit. Time limit must be set. (false or true)
+    #[arg(long, default_value = "type=human", verbatim_doc_comment)]
+    pub p1: Player,
+
+    /// Player 2 options. These are the same as the options for Player 1.
+    #[arg(
+        long,
+        default_value = "type=ai,time=60,predict_time=true",
+        verbatim_doc_comment
+    )]
+    pub p2: Player,
+
+    /// Game options.
+    ///
+    /// Parameters:
+    ///   size=int     - The size of the board. (3 - 8)
+    ///   komi=decimal - A bonus to apply to black's flat count in games that go to flats.
+    ///                  (-5.0 - +5.0, in 0.5 increments)
+    #[arg(short, long, default_value = "size=6", verbatim_doc_comment)]
+    pub game: Game,
+}
+
+#[derive(ArgsTrait, Clone, Debug)]
+#[command(group(ArgGroup::new("input").required(true).args(["file", "tps"])))]
+pub struct AnalyzeConfig {
+    /// Analysis options.
+    ///
+    /// Parameters:
+    ///   depth=int         - The maximum depth of the move search.
+    ///   time=int          - The maximum number of seconds to spend considering a response.
+    ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
+    ///                       than the time limit. Time limit must be set. (false or true)
+    #[arg(
+        long,
+        default_value = "time=60,predict_time=true",
+        verbatim_doc_comment
+    )]
+    pub ai: Ai,
 }
 
 #[derive(Clone, Debug)]
