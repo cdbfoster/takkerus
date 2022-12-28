@@ -89,11 +89,8 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
                 drop_amounts.push(amount as u8);
             } else if next == '*' {
                 crush = true;
-            } else if next == '?' || next == '!' {
-                // Ignore commentary markings.
-                continue;
-            } else if next == 'F' || next == 'S' || next == 'C' {
-                // Ignore stone type suffixes.
+            } else if next == '?' || next == '!' || next == 'F' || next == 'S' || next == 'C' {
+                // Ignore commentary markings and stone type suffixes.
                 continue;
             } else {
                 return Err(PtnError::InvalidValue("Invalid drop amount."));
