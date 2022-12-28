@@ -32,7 +32,7 @@ pub enum Ply<const N: usize> {
         y: u8,
         piece_type: PieceType,
     },
-    Slide {
+    Spread {
         x: u8,
         y: u8,
         direction: Direction,
@@ -51,7 +51,7 @@ impl<const N: usize> Ply<N> {
                     return Err(PlyError::OutOfBounds);
                 }
             }
-            Ply::Slide {
+            Ply::Spread {
                 x,
                 y,
                 direction,
@@ -93,14 +93,14 @@ impl<const N: usize> Ply<N> {
                     return Err(PlyError::InvalidCrush);
                 }
 
-                // The end of the slide must be in bounds.
+                // The end of the spread must be in bounds.
                 let (dx, dy) = direction.to_offset();
                 let (tx, ty) = (
                     x as i8 + dx * drop_count as i8,
                     y as i8 + dy * drop_count as i8,
                 );
                 if tx < 0 || tx as usize >= N || ty < 0 || ty as usize >= N {
-                    trace!("End of slide is out of bounds.");
+                    trace!("End of spread is out of bounds.");
                     return Err(PlyError::OutOfBounds);
                 }
             }

@@ -236,7 +236,7 @@ fn handle_ply<const N: usize>(
             StateError::PlyError(PlyError::InvalidDrops(message)) => message,
             StateError::PlyError(PlyError::OutOfBounds) => "Out of bounds.",
             StateError::InvalidPlace(message) => message,
-            StateError::InvalidSlide(message) => message,
+            StateError::InvalidSpread(message) => message,
             StateError::NoPreviousPlies => panic!("this can't happen here"),
         };
         println!("\nError: {message}");

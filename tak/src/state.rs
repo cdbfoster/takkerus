@@ -76,7 +76,7 @@ impl<const N: usize> State<N> {
                     ));
                 }
             }
-            Ply::Slide {
+            Ply::Spread {
                 x,
                 y,
                 direction,
@@ -86,13 +86,15 @@ impl<const N: usize> State<N> {
                 // Board space must not be empty.
                 let stack = &self.board[x as usize][y as usize];
                 if stack.is_empty() {
-                    return Err(StateError::InvalidSlide("Board space is empty."));
+                    return Err(StateError::InvalidSpread("Board space is empty."));
                 }
 
                 // Stack must be controlled by this player.
                 let top_piece = stack.last().unwrap();
                 if top_piece.color() != player_color {
-                    return Err(StateError::InvalidSlide("Cannot move an opponent's piece."));
+                    return Err(StateError::InvalidSpread(
+                        "Cannot move an opponent's piece.",
+                    ));
                 }
 
                 let drop_count = drops.into_iter().position(|d| d == 0).unwrap();
@@ -100,10 +102,10 @@ impl<const N: usize> State<N> {
                 // Must not carry more than the size of the size of the stack.
                 let carry_total = drops.iter().sum::<u8>() as usize;
                 if carry_total > stack.len() {
-                    return Err(StateError::InvalidSlide("Illegal carry amount."));
+                    return Err(StateError::InvalidSpread("Illegal carry amount."));
                 }
 
-                // Validate the slide stays in bounds, and doesn't go over a blocking piece
+                // Validate the spread stays in bounds, and doesn't go over a blocking piece
                 // unless we're crushing a standing stone.
                 let (dx, dy) = direction.to_offset();
                 let (mut tx, mut ty) = (x as i8, y as i8);
@@ -115,7 +117,9 @@ impl<const N: usize> State<N> {
                     match self.board[tx as usize][ty as usize].last_piece_type() {
                         Some(Flatstone) | None => (),
                         Some(Capstone) => {
-                            return Err(StateError::InvalidSlide("Cannot slide onto a capstone."));
+                            return Err(StateError::InvalidSpread(
+                                "Cannot spread onto a capstone.",
+                            ));
                         }
                         Some(StandingStone) => {
                             valid_crush = i == drop_count - 1
@@ -123,14 +127,14 @@ impl<const N: usize> State<N> {
                                 && drops[i] == 1;
 
                             if !valid_crush {
-                                return Err(StateError::InvalidSlide(
-                                    "Cannot slide onto a standing stone.",
+                                return Err(StateError::InvalidSpread(
+                                    "Cannot spread onto a standing stone.",
                                 ));
                             } else if !crush {
                                 trace!(
                                     "Ply describes a valid crush, but the crush flag was not set."
                                 );
-                                ply = Ply::Slide {
+                                ply = Ply::Spread {
                                     x,
                                     y,
                                     direction,
@@ -143,8 +147,8 @@ impl<const N: usize> State<N> {
                 }
 
                 if crush && !valid_crush {
-                    return Err(StateError::InvalidSlide(
-                        "Slide is not a crushing move, but the crush flag was set.",
+                    return Err(StateError::InvalidSpread(
+                        "Spread is not a crushing move, but the crush flag was set.",
                     ));
                 }
             }
@@ -186,7 +190,7 @@ impl<const N: usize> State<N> {
                 self.board[x as usize][y as usize].add_piece(piece);
                 self.metadata.place_piece(piece, x as usize, y as usize);
             }
-            Ply::Slide {
+            Ply::Spread {
                 x,
                 y,
                 direction,
@@ -271,7 +275,7 @@ impl<const N: usize> State<N> {
                 stack.take(1);
                 self.metadata.set_stack(stack, x as usize, y as usize);
             }
-            Ply::Slide {
+            Ply::Spread {
                 x,
                 y,
                 direction,
@@ -286,11 +290,11 @@ impl<const N: usize> State<N> {
                     let stack = &self.board[tx as usize][ty as usize];
 
                     if stack.len() < drops as usize {
-                        return Err(StateError::InvalidSlide("Not enough stones in stack."));
+                        return Err(StateError::InvalidSpread("Not enough stones in stack."));
                     }
 
                     if stack.last_piece_type().unwrap() != Flatstone {
-                        return Err(StateError::InvalidSlide("Non-Flatstone in drop path."));
+                        return Err(StateError::InvalidSpread("Non-Flatstone in drop path."));
                     }
 
                     tx += dx;
@@ -301,11 +305,11 @@ impl<const N: usize> State<N> {
                 let end_stack = &self.board[tx as usize][ty as usize];
 
                 if end_stack.len() < final_drop as usize {
-                    return Err(StateError::InvalidSlide("Not enough stones in stack."));
+                    return Err(StateError::InvalidSpread("Not enough stones in stack."));
                 }
 
                 if crush && end_stack.last_piece_type().unwrap() != Capstone {
-                    return Err(StateError::InvalidSlide("Only capstones can crush."));
+                    return Err(StateError::InvalidSpread("Only capstones can crush."));
                 }
 
                 // Gather the carry.
@@ -445,7 +449,7 @@ pub enum Resolution {
 pub enum StateError {
     PlyError(PlyError),
     InvalidPlace(&'static str),
-    InvalidSlide(&'static str),
+    InvalidSpread(&'static str),
     NoPreviousPlies,
 }
 
@@ -518,8 +522,8 @@ mod tests {
 
         assert_eq!(
             s.validate_ply(ply("2b4>")),
-            Err(StateError::InvalidSlide(
-                "Cannot slide onto a standing stone."
+            Err(StateError::InvalidSpread(
+                "Cannot spread onto a standing stone."
             )),
         );
     }

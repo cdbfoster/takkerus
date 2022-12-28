@@ -69,7 +69,7 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
             Some(_) => return Err(PtnError::InvalidValue("Expected a direction.")),
             None => {
                 if grab.is_some() {
-                    return Err(PtnError::InvalidSlide(
+                    return Err(PtnError::InvalidSpread(
                         "Carry amount specified without direction.",
                     ));
                 }
@@ -105,7 +105,7 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
         }
 
         if crush && *drop_amounts.last().unwrap() != 1 {
-            return Err(PtnError::InvalidSlide(
+            return Err(PtnError::InvalidSpread(
                 "Cannot crush with more than one stone.",
             ));
         }
@@ -117,7 +117,7 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
             Direction::South => drop_squares > row,
             Direction::West => drop_squares > column,
         } {
-            return Err(PtnError::InvalidSlide("Cannot slide out of bounds."));
+            return Err(PtnError::InvalidSpread("Cannot spread out of bounds."));
         }
 
         if drop_amounts.iter().sum::<u8>() != grab.unwrap_or(1) {
@@ -129,7 +129,7 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
         let mut drops = [0; N];
         drops[..drop_amounts.len()].copy_from_slice(&drop_amounts);
 
-        Ok(Ply::Slide {
+        Ok(Ply::Spread {
             x: column as u8,
             y: row as u8,
             direction: direction.unwrap(),
@@ -160,7 +160,7 @@ pub enum PtnError {
     InputTooShort,
     InputTooLong,
     InvalidValue(&'static str),
-    InvalidSlide(&'static str),
+    InvalidSpread(&'static str),
 }
 
 impl<const N: usize> From<Ply<N>> for PtnPly {
@@ -178,7 +178,7 @@ impl<const N: usize> From<Ply<N>> for PtnPly {
                 buffer.push(char::from_digit(x as u32 + 10, 10 + N as u32).unwrap());
                 buffer.push(char::from_digit(y as u32 + 1, 10).unwrap());
             }
-            Ply::Slide {
+            Ply::Spread {
                 x,
                 y,
                 direction,
@@ -299,10 +299,10 @@ mod tests {
     }
 
     #[test]
-    fn slide_directions() {
+    fn spread_directions() {
         assert_eq!(
             "c3+".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 2,
                 y: 2,
                 direction: Direction::North,
@@ -313,7 +313,7 @@ mod tests {
 
         assert_eq!(
             "c3>".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 2,
                 y: 2,
                 direction: Direction::East,
@@ -324,7 +324,7 @@ mod tests {
 
         assert_eq!(
             "c3-".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 2,
                 y: 2,
                 direction: Direction::South,
@@ -335,7 +335,7 @@ mod tests {
 
         assert_eq!(
             "c3<".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 2,
                 y: 2,
                 direction: Direction::West,
@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn slide_amounts() {
+    fn spread_amounts() {
         assert_eq!(
             "a3*".parse::<Ply<5>>(),
             Err(PtnError::InvalidValue("Expected a direction.")),
@@ -359,7 +359,7 @@ mod tests {
 
         assert_eq!(
             "a3>".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
@@ -370,7 +370,7 @@ mod tests {
 
         assert_eq!(
             "a3>1".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
@@ -381,7 +381,7 @@ mod tests {
 
         assert_eq!(
             "3a3>12".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
@@ -399,25 +399,25 @@ mod tests {
     }
 
     #[test]
-    fn slide_bounds() {
+    fn spread_bounds() {
         assert_eq!(
             "a3+".parse::<Ply<3>>(),
-            Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
+            Err(PtnError::InvalidSpread("Cannot spread out of bounds.")),
         );
 
         assert_eq!(
             "3a1>111".parse::<Ply<3>>(),
-            Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
+            Err(PtnError::InvalidSpread("Cannot spread out of bounds.")),
         );
 
         assert_eq!(
             "a1-".parse::<Ply<3>>(),
-            Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
+            Err(PtnError::InvalidSpread("Cannot spread out of bounds.")),
         );
 
         assert_eq!(
             "2b1<11".parse::<Ply<3>>(),
-            Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
+            Err(PtnError::InvalidSpread("Cannot spread out of bounds.")),
         );
     }
 
@@ -425,7 +425,7 @@ mod tests {
     fn crushes() {
         assert_eq!(
             "3a3>21*".parse(),
-            Ok(Ply::<5>::Slide {
+            Ok(Ply::<5>::Spread {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
@@ -436,7 +436,7 @@ mod tests {
 
         assert_eq!(
             "3a3>12*".parse::<Ply<5>>(),
-            Err(PtnError::InvalidSlide(
+            Err(PtnError::InvalidSpread(
                 "Cannot crush with more than one stone."
             )),
         );

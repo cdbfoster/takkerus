@@ -217,7 +217,7 @@ fn generate_plies<const N: usize>(state: &State<N>, ply_buffer: &mut Vec<Ply<N>>
                                 let mut drops = [0; N];
                                 drops[..drop_combo.len()].copy_from_slice(drop_combo);
 
-                                ply_buffer.push(Ply::Slide {
+                                ply_buffer.push(Ply::Spread {
                                     x: x as u8,
                                     y: y as u8,
                                     direction,
