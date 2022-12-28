@@ -27,6 +27,31 @@ pub struct State<const N: usize> {
     pub metadata: Metadata<N>,
 }
 
+impl<const N: usize> Default for State<N> {
+    fn default() -> Self {
+        let (flatstones, capstones) = match N {
+            3 => (10, 0),
+            4 => (15, 0),
+            5 => (21, 1),
+            6 => (30, 1),
+            7 => (40, 2),
+            8 => (50, 2),
+            _ => panic!("invalid board size"),
+        };
+
+        Self {
+            p1_flatstones: flatstones,
+            p1_capstones: capstones,
+            p2_flatstones: flatstones,
+            p2_capstones: capstones,
+            board: [[Stack::default(); N]; N],
+            ply_count: 0,
+            half_komi: 0,
+            metadata: Default::default(),
+        }
+    }
+}
+
 impl<const N: usize> State<N> {
     pub fn to_move(&self) -> Color {
         if self.ply_count % 2 == 0 {
@@ -456,31 +481,6 @@ pub enum StateError {
 impl From<PlyError> for StateError {
     fn from(error: PlyError) -> Self {
         Self::PlyError(error)
-    }
-}
-
-impl<const N: usize> Default for State<N> {
-    fn default() -> Self {
-        let (flatstones, capstones) = match N {
-            3 => (10, 0),
-            4 => (15, 0),
-            5 => (21, 1),
-            6 => (30, 1),
-            7 => (40, 2),
-            8 => (50, 2),
-            _ => panic!("invalid board size"),
-        };
-
-        Self {
-            p1_flatstones: flatstones,
-            p1_capstones: capstones,
-            p2_flatstones: flatstones,
-            p2_capstones: capstones,
-            board: [[Stack::default(); N]; N],
-            ply_count: 0,
-            half_komi: 0,
-            metadata: Default::default(),
-        }
     }
 }
 
