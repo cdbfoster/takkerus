@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::ops::Deref;
+use std::str::FromStr;
 
 use crate::piece::PieceType;
 use crate::ply::{Direction, Ply};
@@ -135,11 +136,11 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
     }
 }
 
-impl<const N: usize> TryFrom<&str> for Ply<N> {
-    type Error = PtnError;
+impl<const N: usize> FromStr for Ply<N> {
+    type Err = PtnError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        PtnPly::new(value).try_into()
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        PtnPly::new(value).parse()
     }
 }
 
@@ -221,14 +222,13 @@ impl<const N: usize> From<&Ply<N>> for PtnPly {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryInto;
 
     use PieceType::*;
 
     #[test]
     fn coordinates_are_in_bounds() {
         assert_eq!(
-            "a1".try_into(),
+            "a1".parse(),
             Ok(Ply::<3>::Place {
                 x: 0,
                 y: 0,
@@ -237,7 +237,7 @@ mod tests {
         );
 
         assert_eq!(
-            "c3".try_into(),
+            "c3".parse(),
             Ok(Ply::<3>::Place {
                 x: 2,
                 y: 2,
@@ -246,12 +246,12 @@ mod tests {
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<3>>>::try_into("d1"),
+            "d1".parse::<Ply<3>>(),
             Err(PtnError::InvalidValue("Invalid file letter.")),
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<3>>>::try_into("a4"),
+            "a4".parse::<Ply<3>>(),
             Err(PtnError::InvalidValue("Invalid rank number.")),
         );
     }
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn place_piece_types() {
         assert_eq!(
-            "a1".try_into(),
+            "a1".parse(),
             Ok(Ply::<3>::Place {
                 x: 0,
                 y: 0,
@@ -268,7 +268,7 @@ mod tests {
         );
 
         assert_eq!(
-            "Fa1".try_into(),
+            "Fa1".parse(),
             Ok(Ply::<3>::Place {
                 x: 0,
                 y: 0,
@@ -277,7 +277,7 @@ mod tests {
         );
 
         assert_eq!(
-            "Sa1".try_into(),
+            "Sa1".parse(),
             Ok(Ply::<3>::Place {
                 x: 0,
                 y: 0,
@@ -286,7 +286,7 @@ mod tests {
         );
 
         assert_eq!(
-            "Ca1".try_into(),
+            "Ca1".parse(),
             Ok(Ply::<3>::Place {
                 x: 0,
                 y: 0,
@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn slide_directions() {
         assert_eq!(
-            "c3+".try_into(),
+            "c3+".parse(),
             Ok(Ply::<5>::Slide {
                 x: 2,
                 y: 2,
@@ -309,7 +309,7 @@ mod tests {
         );
 
         assert_eq!(
-            "c3>".try_into(),
+            "c3>".parse(),
             Ok(Ply::<5>::Slide {
                 x: 2,
                 y: 2,
@@ -320,7 +320,7 @@ mod tests {
         );
 
         assert_eq!(
-            "c3-".try_into(),
+            "c3-".parse(),
             Ok(Ply::<5>::Slide {
                 x: 2,
                 y: 2,
@@ -331,7 +331,7 @@ mod tests {
         );
 
         assert_eq!(
-            "c3<".try_into(),
+            "c3<".parse(),
             Ok(Ply::<5>::Slide {
                 x: 2,
                 y: 2,
@@ -345,17 +345,17 @@ mod tests {
     #[test]
     fn slide_amounts() {
         assert_eq!(
-            <&str as TryInto<Ply<5>>>::try_into("a3*"),
+            "a3*".parse::<Ply<5>>(),
             Err(PtnError::InvalidValue("Expected a direction.")),
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<3>>>::try_into("4a1+"),
+            "4a1+".parse::<Ply<3>>(),
             Err(PtnError::InvalidValue("Invalid carry amount.")),
         );
 
         assert_eq!(
-            "a3>".try_into(),
+            "a3>".parse(),
             Ok(Ply::<5>::Slide {
                 x: 0,
                 y: 2,
@@ -366,7 +366,7 @@ mod tests {
         );
 
         assert_eq!(
-            "a3>1".try_into(),
+            "a3>1".parse(),
             Ok(Ply::<5>::Slide {
                 x: 0,
                 y: 2,
@@ -377,7 +377,7 @@ mod tests {
         );
 
         assert_eq!(
-            "3a3>12".try_into(),
+            "3a3>12".parse(),
             Ok(Ply::<5>::Slide {
                 x: 0,
                 y: 2,
@@ -388,7 +388,7 @@ mod tests {
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<5>>>::try_into("3a3>22"),
+            "3a3>22".parse::<Ply<5>>(),
             Err(PtnError::InvalidValue(
                 "Carry and drop amounts don't match."
             )),
@@ -398,22 +398,22 @@ mod tests {
     #[test]
     fn slide_bounds() {
         assert_eq!(
-            <&str as TryInto<Ply<3>>>::try_into("a3+"),
+            "a3+".parse::<Ply<3>>(),
             Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<3>>>::try_into("3a1>111"),
+            "3a1>111".parse::<Ply<3>>(),
             Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<3>>>::try_into("a1-"),
+            "a1-".parse::<Ply<3>>(),
             Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<3>>>::try_into("2b1<11"),
+            "2b1<11".parse::<Ply<3>>(),
             Err(PtnError::InvalidSlide("Cannot slide out of bounds.")),
         );
     }
@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn crushes() {
         assert_eq!(
-            "3a3>21*".try_into(),
+            "3a3>21*".parse(),
             Ok(Ply::<5>::Slide {
                 x: 0,
                 y: 2,
@@ -432,7 +432,7 @@ mod tests {
         );
 
         assert_eq!(
-            <&str as TryInto<Ply<5>>>::try_into("3a3>12*"),
+            "3a3>12*".parse::<Ply<5>>(),
             Err(PtnError::InvalidSlide(
                 "Cannot crush with more than one stone."
             )),

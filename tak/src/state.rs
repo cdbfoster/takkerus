@@ -483,14 +483,13 @@ impl<const N: usize> Default for State<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryInto;
 
     fn state<const N: usize>(tps: &str) -> State<N> {
-        tps.try_into().unwrap()
+        tps.parse().unwrap()
     }
 
     fn ply<const N: usize>(ptn: &str) -> Ply<N> {
-        ptn.try_into().unwrap()
+        ptn.parse().unwrap()
     }
 
     #[test]

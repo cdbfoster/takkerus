@@ -1,5 +1,6 @@
 use std::cmp::Ordering::*;
 use std::convert::TryFrom;
+use std::str::FromStr;
 
 use crate::piece::{Color, Piece, PieceType};
 use crate::stack::Stack;
@@ -165,10 +166,10 @@ impl<const N: usize> TryFrom<Tps> for State<N> {
     }
 }
 
-impl<const N: usize> TryFrom<&str> for State<N> {
-    type Error = TpsError;
+impl<const N: usize> FromStr for State<N> {
+    type Err = TpsError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         Tps::new(value).try_into()
     }
 }
@@ -185,7 +186,6 @@ pub enum TpsError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryInto;
 
     use Color::*;
     use PieceType::*;
@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn correct_state() {
         assert_eq!(
-            r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#.try_into(),
+            r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#.parse(),
             Ok(test_state()),
         )
     }
@@ -257,87 +257,76 @@ mod tests {
     #[test]
     fn incorrect_state() {
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPF "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPF "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Tag),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,22S,22C,11,21/x6/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "x,22S,22C,11,21/x6/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Board("Too many columns in row.")),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,22S,22C,11,21/x4/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "x,22S,22C,11,21/x4/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Board("Not enough columns in row.")),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Board("Not enough rows in board.")),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Board("Not enough columns in row.")),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "x,S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Value(
                 "A player number must be specified before an S."
             )),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,22S,C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "x,22S,C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Value(
                 "A player number must be specified before a C."
             )),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,22S,22C1,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "x,22S,22C1,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Value(
                 "Stack must end after a standing stone or capstone."
             )),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,22S,22CS,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-            ),
+            r#"[TPS "x,22S,22CS,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Value(
                 "Stack must end after a standing stone or capstone."
             )),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 26"]"#
-            ),
+            r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 26"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Player),
         );
 
         assert_eq!(
-            <&str as TryInto<State<5>>>::try_into(
-                r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 0"]"#
-            ),
+            r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 0"]"#
+                .parse::<State<5>>(),
             Err(TpsError::Value("Turn number must be greater than zero.")),
         );
     }

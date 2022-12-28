@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::io::{self, Write};
 use std::mem;
 use std::sync::Mutex;
@@ -257,7 +256,7 @@ async fn message_handler<const N: usize>(
                     }
                 } else if !input.is_empty() {
                     if move_status == Some(AwaitingInput) {
-                        if let Ok(ply) = Ply::<N>::try_from(input) {
+                        if let Ok(ply) = input.parse::<Ply<N>>() {
                             trace!(?ply, "Sending move response.");
                             send!(MoveResponse(ply));
                             move_status = None;
