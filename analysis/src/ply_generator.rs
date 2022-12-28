@@ -261,7 +261,7 @@ mod tests {
             assert_eq!(Ok(ply), validated_ply);
         }
 
-        let state: State<5> = r#"[TPS "x5/x,1S,x2,1C/x4,1/x,2,2C,x,2/x5 1 4"]"#.try_into().unwrap();
+        let state: State<5> = r#"[TPS "x5/x,1S,x2,1C/x4,1/x,2,2C,x,2/x5 1 4"]"#.parse().unwrap();
 
         let mut plies = Vec::new();
         generate_plies(&state, &mut plies);
