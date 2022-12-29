@@ -112,8 +112,8 @@ impl<const N: usize> Ply<N> {
 
 impl<const N: usize> fmt::Debug for Ply<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ptn: PtnPly = self.into();
-        write!(f, "{}", &*ptn)
+        let ptn = PtnPly::from(*self);
+        write!(f, "{ptn}")
     }
 }
 

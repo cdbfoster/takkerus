@@ -313,13 +313,13 @@ fn print_board<const N: usize>(state: &State<N>, ply_history: &[Ply<N>]) {
         write!(
             turn,
             "\n {turn_number:<3}  {:<width$}",
-            &*PtnPly::from(&last_turn[0]),
+            PtnPly::from(last_turn[0]),
             width = N + 4,
         )
         .unwrap();
 
         if last_turn.len() == 2 {
-            write!(turn, "{}", &*PtnPly::from(&last_turn[1]),).unwrap();
+            write!(turn, "{}", PtnPly::from(last_turn[1])).unwrap();
         } else {
             write!(turn, "--").unwrap();
         }
