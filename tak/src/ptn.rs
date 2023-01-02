@@ -511,12 +511,7 @@ impl fmt::Display for PtnPly {
 
 #[derive(Debug)]
 pub enum PtnError {
-    InputTooShort,
-    InputTooLong,
-    InvalidValue(&'static str),
-    InvalidSpread(&'static str),
     IoError(String),
-    MissingHeaders,
     InvalidHeader(String),
     InvalidPly(String),
     OutOfBounds(String),
