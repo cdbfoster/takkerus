@@ -4,7 +4,7 @@ pub use self::piece::{Color, Piece, PieceType};
 pub use self::ply::{Direction, Ply, PlyError};
 pub use self::ptn::{PtnError, PtnGame, PtnHeader, PtnMove, PtnPly, PtnTurn};
 pub use self::stack::{Stack, StackIter};
-pub use self::state::{Resolution, State, StateError};
+pub use self::state::{HalfKomi, Resolution, State, StateError};
 
 mod bitmap;
 mod metadata;

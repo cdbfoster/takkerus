@@ -10,10 +10,10 @@ use regex::Regex;
 
 use crate::piece::{Color, PieceType};
 use crate::ply::{Direction, Ply};
-use crate::state::{State, StateError};
+use crate::state::{HalfKomi, State, StateError};
 use crate::tps::TpsError;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PtnGame {
     pub headers: Vec<PtnHeader>,
     pub opening_comments: Vec<String>,
@@ -180,11 +180,7 @@ impl<const N: usize> TryFrom<PtnGame> for State<N> {
     fn try_from(ptn: PtnGame) -> Result<Self, Self::Error> {
         let size_header = ptn
             .get_header("Size")
-            .map(|h| {
-                h.value
-                    .parse::<usize>()
-                    .map_err(|_| PtnError::InvalidHeader(h.to_string()))
-            })
+            .map(PtnHeader::parse_value)
             .transpose()?
             .unwrap_or(N);
 
@@ -199,6 +195,15 @@ impl<const N: usize> TryFrom<PtnGame> for State<N> {
             .map(|h| h.value.parse::<Self>())
             .transpose()?
             .unwrap_or_default();
+
+        let komi_header = ptn
+            .get_header("Komi")
+            .map(PtnHeader::parse_value::<HalfKomi>)
+            .transpose()?;
+
+        if let Some(half_komi) = komi_header {
+            state.half_komi = half_komi;
+        }
 
         let plies = ptn.turns.iter().cloned().flat_map(|t| {
             [
@@ -300,6 +305,14 @@ impl fmt::Display for PtnGame {
 pub struct PtnHeader {
     pub key: String,
     pub value: String,
+}
+
+impl PtnHeader {
+    pub fn parse_value<T: FromStr>(&self) -> Result<T, PtnError> {
+        self.value
+            .parse()
+            .map_err(|_| PtnError::InvalidHeader(self.to_string()))
+    }
 }
 
 impl FromStr for PtnHeader {

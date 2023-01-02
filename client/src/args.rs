@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use clap::{ArgGroup, Args as ArgsTrait, Parser, Subcommand};
 
+use tak::HalfKomi;
+
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
@@ -53,6 +55,10 @@ pub struct PlayConfig {
     ///                  (-5.0 - +5.0, in 0.5 increments)
     #[arg(short, long, default_value = "size=6", verbatim_doc_comment)]
     pub game: Game,
+
+    /// A PTN file to load and play from. Overrides `game` option.
+    #[arg(short, long, verbatim_doc_comment)]
+    pub load: Option<String>,
 }
 
 #[derive(ArgsTrait, Clone, Debug)]
@@ -169,7 +175,7 @@ impl FromStr for Ai {
 #[derive(Clone, Debug)]
 pub struct Game {
     pub size: usize,
-    pub half_komi: i8,
+    pub half_komi: HalfKomi,
 }
 
 impl FromStr for Game {
@@ -192,28 +198,10 @@ impl FromStr for Game {
 
         let half_komi = fields
             .get("komi")
-            .map(|&f| {
-                let half_komi = if let Some(period) = f.find('.') {
-                    let full = 2 * f[..period]
-                        .parse::<i8>()
-                        .map_err(|_| format!("invalid value for komi: {f}"))?;
-                    let half = match &f[period + 1..] {
-                        "0" => 0,
-                        "5" => 1,
-                        _ => return Err("only half komi are supported (*.0 or *.5)".to_owned()),
-                    };
-                    let sign = if full >= 0 { 1 } else { -1 };
-                    full + sign * half
-                } else {
-                    2 * f
-                        .parse::<i8>()
-                        .map_err(|_| format!("invalid value for komi: {f}"))?
-                };
-                Ok(half_komi)
-            })
+            .map(|&f| f.parse::<HalfKomi>())
             .transpose()?
-            .unwrap_or(0);
-        if !(-10..=10).contains(&half_komi) {
+            .unwrap_or(HalfKomi(0));
+        if !(-10..=10).contains(&*half_komi) {
             return Err("komi values must be between -5.0 and +5.0".to_owned());
         }
 

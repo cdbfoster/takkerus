@@ -6,9 +6,9 @@ use futures::channel::mpsc::{self, UnboundedReceiver as Receiver, UnboundedSende
 use futures::{select, FutureExt, SinkExt};
 use tracing::{error, instrument, trace, warn};
 
-use tak::{Color, Ply, PlyError, PtnPly, Resolution, Stack, State, StateError};
+use tak::{Color, Ply, PlyError, PtnGame, PtnPly, Resolution, Stack, State, StateError};
 
-use crate::args::{Args, Command, PlayConfig, Player as PlayerArgs};
+use crate::args::{Game, PlayConfig, Player as PlayerArgs};
 use crate::message::{GameEnd as GameEndType, Message};
 use crate::player::{ai, human};
 
@@ -23,26 +23,67 @@ pub trait PlayerInitializer<const N: usize>: Fn(Sender<Message<N>>) -> Player<N>
 
 impl<T, const N: usize> PlayerInitializer<N> for T where T: Fn(Sender<Message<N>>) -> Player<N> {}
 
-pub fn run_game(config: PlayConfig) {
+pub fn run_game(mut config: PlayConfig) {
+    let game = if let Some(load) = &config.load {
+        match PtnGame::from_file(load) {
+            Ok(game) => {
+                if let Some(size_config) =
+                    game.get_header("Size").map(|h| format!("size={}", h.value))
+                {
+                    match size_config.parse::<Game>() {
+                        Ok(new_game) => config.game.size = new_game.size,
+                        Err(err) => {
+                            error!(error=%err, "Could not read PTN file.");
+                            return;
+                        }
+                    }
+                }
+
+                if let Some(komi_config) =
+                    game.get_header("Komi").map(|h| format!("komi={}", h.value))
+                {
+                    match komi_config.parse::<Game>() {
+                        Ok(new_game) => config.game.half_komi = new_game.half_komi,
+                        Err(err) => {
+                            error!(error=%err, "Could not read PTN file.");
+                            return;
+                        }
+                    }
+                }
+
+                game
+            }
+            Err(err) => {
+                error!(error=?err, "Could not load PTN file.");
+                return;
+            }
+        }
+    } else {
+        PtnGame::default()
+    };
+
     match config.game.size {
-        3 => run_game_sized::<3>(config),
-        4 => run_game_sized::<4>(config),
-        5 => run_game_sized::<5>(config),
-        6 => run_game_sized::<6>(config),
-        7 => run_game_sized::<7>(config),
-        8 => run_game_sized::<8>(config),
-        _ => panic!("invalid game size"),
+        3 => run_game_sized::<3>(config, game),
+        4 => run_game_sized::<4>(config, game),
+        5 => run_game_sized::<5>(config, game),
+        6 => run_game_sized::<6>(config, game),
+        7 => run_game_sized::<7>(config, game),
+        8 => run_game_sized::<8>(config, game),
+        _ => unreachable!(),
     }
 }
 
-fn run_game_sized<const N: usize>(config: PlayConfig) {
+fn run_game_sized<const N: usize>(config: PlayConfig, game: PtnGame) {
+    let state: State<N> = match game.try_into() {
+        Ok(state) => state,
+        Err(err) => {
+            error!(error=?err, "Could not create state.");
+            return;
+        }
+    };
+
     let p1_initialize = initialize_player(&config.p1);
     let p2_initialize = initialize_player(&config.p2);
-
-    let state = State::<N> {
-        half_komi: config.game.half_komi,
-        ..Default::default()
-    };
 
     let (to_game, from_p1) = mpsc::unbounded();
     let p1 = p1_initialize(to_game);
