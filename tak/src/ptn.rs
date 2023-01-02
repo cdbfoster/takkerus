@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
 use std::fmt::{self, Write};
-use std::io::Error as IoError;
+use std::fs::File;
+use std::io::{Error as IoError, Read};
+use std::path::Path;
 use std::str::FromStr;
 
 use once_cell::sync::Lazy;
@@ -8,6 +10,241 @@ use regex::Regex;
 
 use crate::piece::PieceType;
 use crate::ply::{Direction, Ply};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PtnGame {
+    pub headers: Vec<PtnHeader>,
+    pub opening_comments: Vec<String>,
+    pub turns: Vec<PtnTurn>,
+    pub result: Option<String>,
+    pub closing_comments: Vec<String>,
+}
+
+impl PtnGame {
+    pub fn from_file(filename: impl AsRef<Path>) -> Result<Self, PtnError> {
+        let mut contents = String::new();
+        File::open(filename.as_ref())?.read_to_string(&mut contents)?;
+
+        contents.parse()
+    }
+}
+
+impl FromStr for PtnGame {
+    type Err = PtnError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut text = s.trim();
+
+        // Parse headers.
+        let mut headers = Vec::new();
+        if let Some(header_section) = HEADER_SECTION.find(text) {
+            for line in header_section.as_str().lines() {
+                headers.push(line.trim().parse()?);
+            }
+            text = &text[header_section.end()..];
+        }
+
+        // Parse opening comments.
+        let mut opening_comments = Vec::new();
+        while let Some(comment) = BODY_COMMENT.captures(text) {
+            opening_comments.push(comment.name("comment").unwrap().as_str().to_owned());
+            text = &text[comment.get(0).unwrap().end()..];
+        }
+
+        // Parse turns.
+        let mut turns = Vec::new();
+        while let Some(turn) = TURN.find(text) {
+            turns.push(turn.as_str().parse()?);
+            text = &text[turn.end()..];
+        }
+
+        // Parse result.
+        let mut result = None;
+        if let Some(r) = RESULT.find(text) {
+            result = Some(r.as_str().to_owned());
+            text = &text[r.end()..];
+        }
+
+        // Parse closing comments.
+        let mut closing_comments = Vec::new();
+        while let Some(comment) = BODY_COMMENT.captures(text) {
+            closing_comments.push(comment.name("comment").unwrap().as_str().to_owned());
+            text = &text[comment.get(0).unwrap().end()..];
+        }
+
+        Ok(Self {
+            headers,
+            opening_comments,
+            turns,
+            result,
+            closing_comments,
+        })
+    }
+}
+
+impl fmt::Display for PtnGame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut buffer = String::new();
+
+        if !self.headers.is_empty() {
+            for header in &self.headers {
+                writeln!(buffer, "{header}")?;
+            }
+            writeln!(buffer)?;
+        }
+
+        if !self.opening_comments.is_empty() {
+            for comment in &self.opening_comments {
+                writeln!(buffer, "{{{comment}}}")?;
+            }
+            writeln!(buffer)?;
+        }
+
+        if !self.turns.is_empty() {
+            for turn in &self.turns {
+                writeln!(buffer, "{turn}")?;
+            }
+
+            if let Some(result) = &self.result {
+                writeln!(buffer, "{result}")?;
+            }
+
+            writeln!(buffer)?;
+        }
+
+        for comment in &self.closing_comments {
+            writeln!(buffer, "{{{comment}}}")?;
+        }
+
+        write!(f, "{}", buffer.trim())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PtnHeader {
+    pub key: String,
+    pub value: String,
+}
+
+impl FromStr for PtnHeader {
+    type Err = PtnError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let invalid = || PtnError::InvalidHeader(s.to_owned());
+
+        let c = HEADER.captures(s).ok_or_else(invalid)?;
+
+        Ok(Self {
+            key: c.name("key").unwrap().as_str().to_owned(),
+            value: c.name("value").unwrap().as_str().to_owned(),
+        })
+    }
+}
+
+impl fmt::Display for PtnHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { key, value } = self;
+        write!(f, "[{key} \"{value}\"]")
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PtnTurn {
+    pub number: u32,
+    pub p1_move: PtnMove,
+    pub p2_move: PtnMove,
+}
+
+impl FromStr for PtnTurn {
+    type Err = PtnError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let invalid = || PtnError::InvalidHeader(s.to_owned());
+
+        let c = TURN.captures(s).ok_or_else(invalid)?;
+
+        // p1's move can have comments without a ply.
+        let p1_move = {
+            let ply = c.name("p1_move").map(|m| m.as_str().parse()).transpose()?;
+            let comments = c
+                .name("p1_move_comments")
+                .map(|m| COMMENT.captures_iter(m.as_str()))
+                .map(|i| {
+                    i.map(|x| x.name("comment").unwrap().as_str().to_owned())
+                        .collect()
+                })
+                .unwrap_or_else(|| Vec::new());
+            PtnMove { ply, comments }
+        };
+
+        // p2's move must have a ply to have comments.
+        let p2_move = if let Some(m) = c.name("p2_move") {
+            PtnMove {
+                ply: Some(m.as_str().parse()?),
+                comments: c
+                    .name("p2_move_comments")
+                    .map(|m| COMMENT.captures_iter(m.as_str()))
+                    .map(|i| {
+                        i.map(|x| x.name("comment").unwrap().as_str().to_owned())
+                            .collect()
+                    })
+                    .unwrap_or_else(|| Vec::new()),
+            }
+        } else {
+            PtnMove::default()
+        };
+
+        Ok(Self {
+            number: c
+                .name("turn_number")
+                .ok_or_else(invalid)?
+                .as_str()
+                .parse()
+                .unwrap(),
+            p1_move,
+            p2_move,
+        })
+    }
+}
+
+impl fmt::Display for PtnTurn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            number,
+            p1_move,
+            p2_move,
+        } = self;
+        write!(f, "{number}. {p1_move}")?;
+
+        if p2_move.ply.is_some() {
+            write!(f, " {p2_move}")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PtnMove {
+    pub ply: Option<PtnPly>,
+    pub comments: Vec<String>,
+}
+
+impl fmt::Display for PtnMove {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ply) = &self.ply {
+            write!(f, "{ply}")?;
+        } else {
+            write!(f, "--")?;
+        }
+
+        for comment in &self.comments {
+            write!(f, " {{{comment}}}")?;
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PtnPly {
@@ -292,6 +529,34 @@ impl From<IoError> for PtnError {
     }
 }
 
+static HEADER_SECTION: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?:\[[^\]\n]+\]\n)+").unwrap());
+
+static HEADER: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"^\[(?P<key>[^\s]+) "(?P<value>.+)"\]$"#).unwrap());
+
+static COMMENT_PATTERN: &str = r"\s*\{(?P<comment>[^}]*)\}";
+static COMMENTS_PATTERN: &str = r"(?:\s*\{[^}]*\})+";
+
+static BODY_COMMENT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!(r"^{COMMENT_PATTERN}")).unwrap());
+
+static COMMENT: Lazy<Regex> = Lazy::new(|| Regex::new(COMMENT_PATTERN).unwrap());
+
+static TURN: Lazy<Regex> = Lazy::new(|| {
+    let turn_number = r"^\s*(?P<turn_number>\d+)\.";
+    // p1's move can have comments even if there is no ply.
+    let p1_move = format!(
+        r"(?:\.\.|\s+--|\s+(?P<p1_move>[FSCa-h1-8<>+\-?!*]+))(?P<p1_move_comments>{COMMENTS_PATTERN})?"
+    );
+    // p2's move must have a ply in order for there to be comments.
+    let p2_move = format!(
+        r"(?:\s+(?:--|(?P<p2_move>[FSCa-h1-8<>+\-?!*]+))(?P<p2_move_comments>{COMMENTS_PATTERN})?)?"
+    );
+    let end = r"\s+";
+
+    Regex::new(&format!(r"{turn_number}{p1_move}{p2_move}{end}")).unwrap()
+});
+
 static PLY: Lazy<Regex> = Lazy::new(|| {
     let place = r"(?P<place_type>[FSC])?(?P<place_file>[a-h])(?P<place_rank>[1-8])";
     let spread = r"(?P<carry>\d)?(?P<spread_file>[a-h])(?P<spread_rank>[1-8])(?P<direction>[><+-])(?P<drops>\d+)?(?P<spread_type>[FSC])?";
@@ -299,6 +564,9 @@ static PLY: Lazy<Regex> = Lazy::new(|| {
 
     Regex::new(&format!("^(?:{place}|{spread}){annotations}$")).unwrap()
 });
+
+static RESULT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(?:R-0|0-R|F-0|0-F|1-0|0-1|1/2-1/2)").unwrap());
 
 #[cfg(test)]
 mod tests {
