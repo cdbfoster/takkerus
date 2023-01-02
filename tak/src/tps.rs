@@ -1,142 +1,123 @@
-use std::cmp::Ordering::*;
 use std::convert::TryFrom;
 use std::str::FromStr;
+use std::vec;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 use crate::piece::{Color, Piece, PieceType};
 use crate::stack::Stack;
 use crate::state::State;
 
-pub struct Tps(String);
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Tps {
+    pub board: Vec<Vec<Stack>>,
+    pub to_move: Color,
+    pub turn: u32,
+}
 
-impl Tps {
-    pub fn new(value: &str) -> Self {
-        Self(value.to_owned())
+impl FromStr for Tps {
+    type Err = TpsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut segments = s.split(' ');
+
+        let mut board_segment = segments.next().ok_or(TpsError::ExpectedBoard)?;
+        let mut board = vec![vec![]];
+
+        while let Some(c) = BOARD_ELEMENT.captures(board_segment) {
+            if c.name("space").is_some() {
+                let count = c
+                    .name("repeat")
+                    .map(|s| s.as_str().parse::<usize>().unwrap())
+                    .unwrap_or(1);
+                board
+                    .last_mut()
+                    .unwrap()
+                    .extend(std::iter::repeat(Stack::default()).take(count));
+            } else if let Some(s) = c.name("stack") {
+                let mut stack = Stack::default();
+                let mut stones = s.as_str().chars().peekable();
+
+                while let Some(stone) = stones.next() {
+                    let color = match stone {
+                        '1' => Color::White,
+                        '2' => Color::Black,
+                        _ => break,
+                    };
+
+                    match stones.peek() {
+                        Some('S') => stack.add_piece(Piece::new(PieceType::StandingStone, color)),
+                        Some('C') => stack.add_piece(Piece::new(PieceType::Capstone, color)),
+                        _ => stack.add_piece(Piece::new(PieceType::Flatstone, color)),
+                    }
+                }
+
+                board.last_mut().unwrap().push(stack);
+            }
+
+            match c.name("end").map(|s| s.as_str()) {
+                Some(",") => (),
+                Some("/") => board.push(Vec::new()),
+                _ => break,
+            }
+
+            board_segment = &board_segment[c.get(0).unwrap().end()..];
+        }
+
+        if !board.iter().all(|row| row.len() == board.len()) {
+            return Err(TpsError::Dimensions(format!(
+                "Column count does not equal row count: {}",
+                board.len()
+            )));
+        }
+
+        let player_segment = segments.next().ok_or(TpsError::ExpectedPlayer)?;
+        let to_move = match player_segment {
+            "1" => Color::White,
+            "2" => Color::Black,
+            _ => return Err(TpsError::InvalidPlayer(player_segment.to_owned())),
+        };
+
+        let turn_segment = segments.next().ok_or(TpsError::ExpectedTurn)?;
+        let turn = turn_segment
+            .parse()
+            .map_err(|_| TpsError::InvalidTurn(turn_segment.to_owned()))?;
+        if turn == 0 {
+            return Err(TpsError::InvalidTurn(turn_segment.to_owned()));
+        }
+
+        Ok(Tps {
+            board,
+            to_move,
+            turn,
+        })
     }
 }
 
 impl<const N: usize> TryFrom<Tps> for State<N> {
     type Error = TpsError;
 
-    fn try_from(value: Tps) -> Result<Self, Self::Error> {
-        if !value.0.starts_with("[TPS \"") || !value.0.ends_with("\"]") {
-            return Err(TpsError::Tag);
-        }
-
-        let body = &value.0[6..value.0.len() - 2];
-        let mut segments = body.split(' ');
-        let board = segments.next().ok_or(TpsError::Body)?;
-        let next_player = segments.next().ok_or(TpsError::Body)?;
-        let turn = segments.next().ok_or(TpsError::Body)?;
-
+    fn try_from(tps: Tps) -> Result<Self, Self::Error> {
         let mut state = Self::default();
 
-        let mut rows = board.split('/');
-        for y in (0..N).rev() {
-            let row = rows
-                .next()
-                .ok_or(TpsError::Board("Not enough rows in board."))?;
+        if tps.board.len() != N {
+            return Err(TpsError::Dimensions(format!(
+                "TPS board size doesn't match state board size: {} != {N}",
+                tps.board.len()
+            )));
+        }
 
-            let mut x = 0;
-            for next_columns in row.split(',') {
-                if x >= N {
-                    return Err(TpsError::Board("Too many columns in board."));
-                }
-
-                if let Some(space_count) = next_columns.strip_prefix('x') {
-                    if space_count.is_empty() {
-                        x += 1;
-                    } else if let Ok(spaces) = space_count.parse::<usize>() {
-                        x += spaces;
-                    } else {
-                        return Err(TpsError::Value("Expected space count."));
-                    }
-                } else {
-                    let mut stack = Stack::default();
-                    let mut next_color = None;
-
-                    for character in next_columns.chars() {
-                        if matches!(
-                            stack.last_piece_type(),
-                            Some(PieceType::StandingStone | PieceType::Capstone)
-                        ) {
-                            return Err(TpsError::Value(
-                                "Stack must end after a standing stone or capstone.",
-                            ));
-                        }
-
-                        match character {
-                            '1' => {
-                                if let Some(color) = next_color {
-                                    stack.add_piece(Piece::new(PieceType::Flatstone, color));
-                                }
-                                next_color = Some(Color::White);
-                            }
-                            '2' => {
-                                if let Some(color) = next_color {
-                                    stack.add_piece(Piece::new(PieceType::Flatstone, color));
-                                }
-                                next_color = Some(Color::Black);
-                            }
-                            'S' => {
-                                if next_color.is_none() {
-                                    return Err(TpsError::Value(
-                                        "A player number must be specified before an S.",
-                                    ));
-                                }
-                                stack.add_piece(Piece::new(
-                                    PieceType::StandingStone,
-                                    next_color.unwrap(),
-                                ));
-                                next_color = None;
-                            }
-                            'C' => {
-                                if next_color.is_none() {
-                                    return Err(TpsError::Value(
-                                        "A player number must be specified before a C.",
-                                    ));
-                                }
-                                stack.add_piece(Piece::new(
-                                    PieceType::Capstone,
-                                    next_color.unwrap(),
-                                ));
-                                next_color = None;
-                            }
-                            _ => return Err(TpsError::Value("Unexpected character.")),
-                        }
-                    }
-
-                    if let Some(color) = next_color {
-                        stack.add_piece(Piece::new(PieceType::Flatstone, color));
-                    }
-
-                    state.board[x][y] = stack;
-                    x += 1;
-                }
-            }
-
-            match x.cmp(&N) {
-                Greater => return Err(TpsError::Board("Too many columns in row.")),
-                Less => return Err(TpsError::Board("Not enough columns in row.")),
-                _ => (),
+        for x in 0..N {
+            for y in 0..N {
+                state.board[x][y] = tps.board[N - y - 1][x];
             }
         }
 
-        if rows.next().is_some() {
-            return Err(TpsError::Board("Too many rows in board."));
-        }
-
-        let turn_number = turn
-            .parse::<u16>()
-            .map_err(|_| TpsError::Value("Turn number must be a valid number."))?;
-        if turn_number == 0 {
-            return Err(TpsError::Value("Turn number must be greater than zero."));
-        }
-
-        state.ply_count = match next_player {
-            "1" => (turn_number - 1) * 2,
-            "2" => (turn_number - 1) * 2 + 1,
-            _ => return Err(TpsError::Player),
-        };
+        state.ply_count = match tps.to_move {
+            Color::White => (tps.turn - 1) * 2,
+            Color::Black => (tps.turn - 1) * 2 + 1,
+        } as u16;
 
         for x in 0..N {
             for y in 0..N {
@@ -152,7 +133,10 @@ impl<const N: usize> TryFrom<Tps> for State<N> {
                     };
 
                     if *count == 0 {
-                        return Err(TpsError::Board("Too many pieces for player."));
+                        return Err(TpsError::InvalidBoard(format!(
+                            "{:?} has too many pieces.",
+                            piece.color()
+                        )));
                     }
 
                     *count -= 1;
@@ -169,19 +153,44 @@ impl<const N: usize> TryFrom<Tps> for State<N> {
 impl<const N: usize> FromStr for State<N> {
     type Err = TpsError;
 
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        Tps::new(value).try_into()
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<Tps>()?.try_into()
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum TpsError {
-    Tag,
-    Body,
-    Board(&'static str),
-    Value(&'static str),
-    Player,
+impl<const N: usize> From<State<N>> for Tps {
+    fn from(state: State<N>) -> Self {
+        let mut board = Vec::new();
+        for y in 0..N {
+            board.push(Vec::new());
+            for x in 0..N {
+                board[y].push(state.board[x][N - y - 1]);
+            }
+        }
+
+        Self {
+            board,
+            to_move: state.to_move(),
+            turn: state.ply_count as u32 / 2 + 1,
+        }
+    }
 }
+
+#[derive(Debug)]
+pub enum TpsError {
+    ExpectedBoard,
+    ExpectedPlayer,
+    ExpectedTurn,
+    Dimensions(String),
+    InvalidBoard(String),
+    InvalidPlayer(String),
+    InvalidTurn(String),
+}
+
+static BOARD_ELEMENT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(?:(?P<space>x(?P<repeat>\d)?)|(?P<stack>[12]+[SC]?))(?:(?P<end>[,/])|$)")
+        .unwrap()
+});
 
 #[cfg(test)]
 mod tests {
@@ -249,85 +258,83 @@ mod tests {
     #[test]
     fn correct_state() {
         assert_eq!(
-            r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#.parse(),
-            Ok(test_state()),
+            "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .unwrap(),
+            test_state(),
         )
     }
 
     #[test]
     fn incorrect_state() {
-        assert_eq!(
-            r#"[TPF "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Tag),
+        // Too many columns in a row.
+        assert!(
+            "x,22S,22C,11,21/x6/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x,22S,22C,11,21/x6/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Board("Too many columns in row.")),
+        // Not enough columns in a row.
+        assert!(
+            "x,22S,22C,11,21/x4/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x,22S,22C,11,21/x4/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Board("Not enough columns in row.")),
+        // Not enough rows.
+        assert!(
+            "x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Board("Not enough rows in board.")),
+        // Invalid element.
+        assert!(
+            "/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Board("Not enough columns in row.")),
+        // Invalid element.
+        assert!(
+            "x,S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x,S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Value(
-                "A player number must be specified before an S."
-            )),
+        // Invalid element.
+        assert!(
+            "x,22S,C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x,22S,C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Value(
-                "A player number must be specified before a C."
-            )),
+        // Invalid stack.
+        assert!(
+            "x,22S,22C1,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x,22S,22C1,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Value(
-                "Stack must end after a standing stone or capstone."
-            )),
+        // Invalid stack.
+        assert!(
+            "x,22S,22CS,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x,22S,22CS,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Value(
-                "Stack must end after a standing stone or capstone."
-            )),
+        // Invalid player.
+        assert!(
+            "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 26"
+                .parse::<State<5>>()
+                .is_err()
         );
 
-        assert_eq!(
-            r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 26"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Player),
-        );
-
-        assert_eq!(
-            r#"[TPS "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 0"]"#
-                .parse::<State<5>>(),
-            Err(TpsError::Value("Turn number must be greater than zero.")),
+        // Invalid turn.
+        assert!(
+            "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 3 0"
+                .parse::<State<5>>()
+                .is_err()
         );
     }
 }
