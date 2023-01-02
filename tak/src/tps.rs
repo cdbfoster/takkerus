@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::fmt;
 use std::str::FromStr;
 use std::vec;
 
@@ -176,6 +177,67 @@ impl<const N: usize> From<State<N>> for Tps {
     }
 }
 
+impl fmt::Display for Tps {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for y in 0..self.board.len() {
+            if y != 0 {
+                write!(f, "/")?;
+            }
+
+            let mut first_write = true;
+            let mut empty_count = 0;
+            for x in 0..self.board[y].len() {
+                if self.board[y][x].is_empty() {
+                    empty_count += 1;
+                } else {
+                    if !first_write {
+                        write!(f, ",")?;
+                    }
+
+                    if empty_count > 0 {
+                        write!(f, "x")?;
+                        if empty_count > 1 {
+                            write!(f, "{empty_count}")?;
+                        }
+                        write!(f, ",")?;
+                        empty_count = 0;
+                    }
+
+                    for piece in self.board[y][x].iter().rev() {
+                        match piece.color() {
+                            Color::White => write!(f, "1")?,
+                            Color::Black => write!(f, "2")?,
+                        }
+                        match piece.piece_type() {
+                            PieceType::StandingStone => write!(f, "S")?,
+                            PieceType::Capstone => write!(f, "C")?,
+                            _ => (),
+                        }
+                    }
+
+                    first_write = false;
+                }
+            }
+
+            if empty_count > 0 {
+                if !first_write {
+                    write!(f, ",")?;
+                }
+
+                write!(f, "x")?;
+                if empty_count > 1 {
+                    write!(f, "{empty_count}")?;
+                }
+            }
+        }
+
+        match self.to_move {
+            Color::White => write!(f, " 1 {}", self.turn),
+            Color::Black => write!(f, " 2 {}", self.turn),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum TpsError {
     ExpectedBoard,
@@ -336,5 +398,15 @@ mod tests {
                 .parse::<State<5>>()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn correct_tps() {
+        let tps: Tps = test_state().into();
+
+        assert_eq!(
+            tps.to_string(),
+            "x,22S,22C,11,21/x5/121,212,12,1121C,1212S/21S,1,21,211S,12S/x,21S,2,x2 1 26",
+        )
     }
 }
