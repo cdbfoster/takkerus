@@ -1,15 +1,17 @@
 use std::convert::TryFrom;
 use std::fmt::{self, Write};
 use std::fs::File;
-use std::io::{Error as IoError, Read};
+use std::io::{Error as IoError, Read, Write as IoWrite};
 use std::path::Path;
 use std::str::FromStr;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::piece::PieceType;
+use crate::piece::{Color, PieceType};
 use crate::ply::{Direction, Ply};
+use crate::state::{State, StateError};
+use crate::tps::TpsError;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PtnGame {
@@ -25,6 +27,97 @@ impl PtnGame {
         let mut contents = String::new();
         File::open(filename.as_ref())?.read_to_string(&mut contents)?;
         contents.parse()
+    }
+
+    pub fn to_file(&self, filename: impl AsRef<Path>) -> Result<(), IoError> {
+        let mut f = File::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(filename)?;
+
+        write!(f, "{self}")
+    }
+
+    pub fn get_header(&self, key: &str) -> Option<&PtnHeader> {
+        self.headers.iter().find(|h| h.key == key)
+    }
+
+    pub fn add_header(&mut self, key: &str, value: impl fmt::Display) {
+        let value = format!("{value}");
+
+        if let Some(header) = self.headers.iter_mut().find(|h| h.key == key) {
+            header.value = value;
+        } else {
+            self.headers.push(PtnHeader {
+                key: key.to_owned(),
+                value,
+            });
+        }
+    }
+
+    pub fn add_ply<const N: usize>(&mut self, ply: Ply<N>) -> Result<(), PtnError> {
+        let state: State<N> = self.clone().try_into()?;
+        state.validate_ply(ply)?;
+
+        let ptn_ply: PtnPly = ply.into();
+
+        if let Some(turn) = self.turns.last_mut() {
+            let number = turn.number;
+            if turn.p2_move.ply.is_none() {
+                turn.p2_move.ply = Some(ptn_ply);
+            } else {
+                self.turns.push(PtnTurn {
+                    number: number + 1,
+                    p1_move: PtnMove {
+                        ply: Some(ptn_ply),
+                        ..Default::default()
+                    },
+                    p2_move: PtnMove::default(),
+                });
+            }
+        } else {
+            let number = state.ply_count as u32 / 2 + 1;
+            let ptn_move = PtnMove {
+                ply: Some(ptn_ply),
+                ..Default::default()
+            };
+            let ptn_turn = match state.to_move() {
+                Color::White => PtnTurn {
+                    number,
+                    p1_move: ptn_move,
+                    p2_move: Default::default(),
+                },
+                Color::Black => PtnTurn {
+                    number,
+                    p2_move: ptn_move,
+                    p1_move: Default::default(),
+                },
+            };
+
+            self.turns.push(ptn_turn);
+        }
+
+        Ok(())
+    }
+
+    pub fn remove_last_ply(&mut self) {
+        if let Some(turn) = self.turns.last_mut() {
+            if turn.p2_move.ply.is_some() {
+                turn.p2_move.ply = None;
+            } else if turn.p1_move.ply.is_some() {
+                turn.p1_move.ply = None;
+            } else {
+                // Somehow there was a blank turn on the end, so remove it and try again.
+                self.turns.pop();
+                self.remove_last_ply();
+                return;
+            }
+
+            if turn.p1_move.ply.is_none() && turn.p2_move.ply.is_none() {
+                self.turns.pop();
+            }
+        }
     }
 }
 
@@ -78,6 +171,90 @@ impl FromStr for PtnGame {
             result,
             closing_comments,
         })
+    }
+}
+
+impl<const N: usize> TryFrom<PtnGame> for State<N> {
+    type Error = PtnError;
+
+    fn try_from(ptn: PtnGame) -> Result<Self, Self::Error> {
+        let size_header = ptn
+            .get_header("Size")
+            .map(|h| {
+                h.value
+                    .parse::<usize>()
+                    .map_err(|_| PtnError::InvalidHeader(h.to_string()))
+            })
+            .transpose()?
+            .unwrap_or(N);
+
+        if size_header != N {
+            return Err(PtnError::IncorrectSize(format!(
+                "Size header is {size_header} but requested size is {N}."
+            )));
+        }
+
+        let mut state = ptn
+            .get_header("TPS")
+            .map(|h| h.value.parse::<Self>())
+            .transpose()?
+            .unwrap_or_default();
+
+        let plies = ptn.turns.iter().cloned().flat_map(|t| {
+            [
+                (t.number, Color::White, t.p1_move),
+                (t.number, Color::Black, t.p2_move),
+            ]
+        });
+
+        for (turn, color, PtnMove { ply, .. }) in plies {
+            let current_turn = state.ply_count as u32 / 2 + 1;
+
+            if turn != current_turn {
+                return Err(PtnError::IncorrectTurn(format!(
+                    "Stated turn is {turn} but should be {current_turn}."
+                )));
+            }
+
+            if let Some(ptn_ply) = ply {
+                if state.to_move() == color {
+                    let ply: Ply<N> = ptn_ply.try_into()?;
+                    state.execute_ply(ply)?;
+                } else {
+                    return Err(PtnError::InvalidPly("Incorrect player to move.".to_owned()));
+                }
+            }
+        }
+
+        fn validate_result(r: &str) -> Result<&str, PtnError> {
+            match r {
+                "R-0" | "0-R" | "F-0" | "0-F" | "1-0" | "0-1" | "1/2-1/2" => Ok(r),
+                _ => Err(PtnError::InvalidResult(r.to_owned())),
+            }
+        }
+
+        let result_header = ptn
+            .get_header("Result")
+            .map(|h| validate_result(&h.value))
+            .transpose()?;
+
+        let result_stated = ptn.result.as_deref().map(validate_result).transpose()?;
+
+        let result_resolution = state.resolution().map(|r| r.to_string());
+
+        let correct = match (result_header, result_stated, result_resolution) {
+            (Some(a), Some(b), Some(c)) => a == b && b == c,
+            (Some(a), Some(b), _) => a == b,
+            (Some(a), _, Some(c)) => a == c,
+            (_, Some(b), Some(c)) => b == c,
+            _ => true,
+        };
+
+        if !correct {
+            return Err(PtnError::IncorrectResult("Results disagree.".to_owned()));
+        }
+
+        Ok(state)
     }
 }
 
@@ -439,7 +616,7 @@ impl<const N: usize> From<Ply<N>> for PtnPly {
                 x,
                 y,
                 direction,
-                drops: drops.into_iter().collect(),
+                drops: drops.into_iter().filter(|d| *d != 0).collect(),
                 annotations: crush.then(|| "*".to_owned()),
             },
         }
@@ -513,8 +690,14 @@ pub enum PtnError {
     IoError(String),
     InvalidHeader(String),
     InvalidPly(String),
+    InvalidResult(String),
     OutOfBounds(String),
     IllegalCarry(String),
+    IncorrectSize(String),
+    IncorrectTurn(String),
+    IncorrectResult(String),
+    TpsError(TpsError),
+    StateError(StateError),
 }
 
 impl From<IoError> for PtnError {
@@ -523,7 +706,20 @@ impl From<IoError> for PtnError {
     }
 }
 
-static HEADER_SECTION: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?:\[[^\]\n]+\]\n)+").unwrap());
+impl From<TpsError> for PtnError {
+    fn from(error: TpsError) -> Self {
+        PtnError::TpsError(error)
+    }
+}
+
+impl From<StateError> for PtnError {
+    fn from(error: StateError) -> Self {
+        PtnError::StateError(error)
+    }
+}
+
+static HEADER_SECTION: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(?:\[[^\]\n]+\](?:\n|$))+").unwrap());
 
 static HEADER: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^\[(?P<key>[^\s]+) "(?P<value>.+)"\]$"#).unwrap());
@@ -546,7 +742,7 @@ static TURN: Lazy<Regex> = Lazy::new(|| {
     let p2_move = format!(
         r"(?:\s+(?:--|(?P<p2_move>[FSCa-h1-8<>+\-?!*]+))(?P<p2_move_comments>{COMMENTS_PATTERN})?)?"
     );
-    let end = r"\s+";
+    let end = r"(?:\s+|$)";
 
     Regex::new(&format!(r"{turn_number}{p1_move}{p2_move}{end}")).unwrap()
 });
@@ -565,6 +761,8 @@ static RESULT: Lazy<Regex> =
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::tps::Tps;
 
     use PieceType::*;
 
@@ -744,5 +942,82 @@ mod tests {
         );
 
         assert!("3a3>12*".parse::<Ply<5>>().is_err());
+    }
+
+    #[test]
+    fn ptn_with_tps_to_state() {
+        let ptn = r#"[Size "3"]
+[TPS "2,1,x/1,x2/x3 2 2"]"#;
+
+        let game: PtnGame = ptn.parse().unwrap();
+        let state: State<3> = game.try_into().unwrap();
+        let tps: Tps = state.into();
+
+        assert_eq!(tps.to_string(), "2,1,x/1,x2/x3 2 2");
+    }
+
+    #[test]
+    fn ptn_with_tps_and_moves_to_state() {
+        let ptn = r#"[Size "3"]
+[TPS "2,1,x/1,x2/x3 2 2"]
+2. -- b2 3. a2+ b2+ 4. 2a3>"#;
+
+        let game: PtnGame = ptn.parse().unwrap();
+        let state: State<3> = game.try_into().unwrap();
+        let tps: Tps = state.into();
+
+        assert_eq!(tps.to_string(), "x,1221,x/x3/x3 2 4");
+    }
+
+    #[test]
+    fn add_plies_to_ptn() {
+        let ptn = r#"[Size "3"]
+[TPS "2,1,x/1,x2/x3 2 2"]"#;
+
+        let mut game: PtnGame = ptn.parse().unwrap();
+        game.add_ply("b2".parse::<Ply<3>>().unwrap()).unwrap();
+        game.add_ply("a2+".parse::<Ply<3>>().unwrap()).unwrap();
+        game.add_ply("b2+".parse::<Ply<3>>().unwrap()).unwrap();
+        game.add_ply("2a3>".parse::<Ply<3>>().unwrap()).unwrap();
+
+        assert_eq!(
+            game.to_string(),
+            r#"[Size "3"]
+[TPS "2,1,x/1,x2/x3 2 2"]
+
+2. -- b2
+3. a2+ b2+
+4. 2a3>"#,
+        );
+    }
+
+    #[test]
+    fn remove_last_ply_from_ptn() {
+        let ptn = r#"[Size "3"]
+[TPS "2,1,x/1,x2/x3 2 2"]
+2. -- b2 3. a2+ b2+ 4. 2a3>"#;
+
+        let mut game: PtnGame = ptn.parse().unwrap();
+        game.remove_last_ply();
+
+        assert_eq!(
+            game.to_string(),
+            r#"[Size "3"]
+[TPS "2,1,x/1,x2/x3 2 2"]
+
+2. -- b2
+3. a2+ b2+"#,
+        );
+
+        game.remove_last_ply();
+
+        assert_eq!(
+            game.to_string(),
+            r#"[Size "3"]
+[TPS "2,1,x/1,x2/x3 2 2"]
+
+2. -- b2
+3. a2+"#,
+        );
     }
 }

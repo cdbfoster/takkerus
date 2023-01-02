@@ -470,6 +470,31 @@ pub enum Resolution {
     Draw,
 }
 
+impl Resolution {
+    pub fn color(self) -> Option<Color> {
+        match self {
+            Resolution::Road(color) => Some(color),
+            Resolution::Flats { color, .. } => Some(color),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Resolution {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (token, color) = match self {
+            Resolution::Road(color) => ("R", color),
+            Resolution::Flats { color, .. } => ("F", color),
+            Resolution::Draw => return write!(f, "1/2-1/2"),
+        };
+
+        match color {
+            Color::White => write!(f, "{token}-0"),
+            Color::Black => write!(f, "0-{token}"),
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum StateError {
     PlyError(PlyError),
