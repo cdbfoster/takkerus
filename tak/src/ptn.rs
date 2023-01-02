@@ -24,7 +24,6 @@ impl PtnGame {
     pub fn from_file(filename: impl AsRef<Path>) -> Result<Self, PtnError> {
         let mut contents = String::new();
         File::open(filename.as_ref())?.read_to_string(&mut contents)?;
-
         contents.parse()
     }
 }
@@ -173,7 +172,7 @@ impl FromStr for PtnTurn {
                     i.map(|x| x.name("comment").unwrap().as_str().to_owned())
                         .collect()
                 })
-                .unwrap_or_else(|| Vec::new());
+                .unwrap_or_else(Vec::new);
             PtnMove { ply, comments }
         };
 
@@ -188,7 +187,7 @@ impl FromStr for PtnTurn {
                         i.map(|x| x.name("comment").unwrap().as_str().to_owned())
                             .collect()
                     })
-                    .unwrap_or_else(|| Vec::new()),
+                    .unwrap_or_else(Vec::new),
             }
         } else {
             PtnMove::default()
@@ -343,9 +342,9 @@ impl FromStr for PtnPly {
 impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
     type Error = PtnError;
 
-    fn try_from(value: PtnPly) -> Result<Self, Self::Error> {
+    fn try_from(ply: PtnPly) -> Result<Self, Self::Error> {
         // Validate x and y.
-        let (x, y) = match &value {
+        let (x, y) = match &ply {
             PtnPly::Place { x, y, .. } => (x, y),
             PtnPly::Spread { x, y, .. } => (x, y),
         };
@@ -357,7 +356,7 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
             )));
         }
 
-        match value {
+        match ply {
             PtnPly::Place {
                 x, y, piece_type, ..
             } => Ok(Self::Place { x, y, piece_type }),
@@ -416,8 +415,8 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
 impl<const N: usize> FromStr for Ply<N> {
     type Err = PtnError;
 
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse::<PtnPly>().and_then(|p| p.try_into())
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<PtnPly>().and_then(|p| p.try_into())
     }
 }
 
