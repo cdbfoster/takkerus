@@ -638,6 +638,8 @@ impl<const N: usize> From<Ply<N>> for PtnPly {
 
 impl fmt::Display for PtnPly {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut b = String::new();
+
         match self {
             Self::Place {
                 x,
@@ -647,18 +649,16 @@ impl fmt::Display for PtnPly {
             } => {
                 match piece_type {
                     PieceType::Flatstone => (),
-                    PieceType::StandingStone => f.write_char('S')?,
-                    PieceType::Capstone => f.write_char('C')?,
+                    PieceType::StandingStone => b.write_char('S')?,
+                    PieceType::Capstone => b.write_char('C')?,
                 }
 
-                f.write_char(char::from_digit(*x as u32 + 10, 18).unwrap())?;
-                f.write_char(char::from_digit(*y as u32 + 1, 10).unwrap())?;
+                b.write_char(char::from_digit(*x as u32 + 10, 18).unwrap())?;
+                b.write_char(char::from_digit(*y as u32 + 1, 10).unwrap())?;
 
                 if let Some(annotations) = annotations {
-                    f.write_str(annotations)?;
+                    b.write_str(annotations)?;
                 }
-
-                Ok(())
             }
             Self::Spread {
                 x,
@@ -669,13 +669,13 @@ impl fmt::Display for PtnPly {
             } => {
                 let count = drops.iter().sum::<u8>() as u32;
                 if count > 1 {
-                    f.write_char(char::from_digit(count, 10).unwrap())?;
+                    b.write_char(char::from_digit(count, 10).unwrap())?;
                 }
 
-                f.write_char(char::from_digit(*x as u32 + 10, 18).unwrap())?;
-                f.write_char(char::from_digit(*y as u32 + 1, 10).unwrap())?;
+                b.write_char(char::from_digit(*x as u32 + 10, 18).unwrap())?;
+                b.write_char(char::from_digit(*y as u32 + 1, 10).unwrap())?;
 
-                f.write_char(match direction {
+                b.write_char(match direction {
                     Direction::North => '+',
                     Direction::East => '>',
                     Direction::South => '-',
@@ -684,17 +684,17 @@ impl fmt::Display for PtnPly {
 
                 if drops.len() > 1 {
                     for &drop in drops {
-                        f.write_char(char::from_digit(drop as u32, 10).unwrap())?;
+                        b.write_char(char::from_digit(drop as u32, 10).unwrap())?;
                     }
                 }
 
                 if let Some(annotations) = annotations {
-                    f.write_str(annotations)?;
+                    b.write_str(annotations)?;
                 }
-
-                Ok(())
             }
         }
+
+        f.pad(&b)
     }
 }
 
