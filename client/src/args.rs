@@ -56,9 +56,13 @@ pub struct PlayConfig {
     #[arg(short, long, default_value = "size=6", verbatim_doc_comment)]
     pub game: Game,
 
-    /// A PTN file to load and play from. Overrides `game` option.
+    /// A PTN file to load and play from. Headers in this file override `game` options.
     #[arg(short, long, verbatim_doc_comment)]
     pub load: Option<String>,
+
+    /// A file to save the game to, in PTN format.
+    #[arg(short, long, verbatim_doc_comment)]
+    pub file: Option<String>,
 }
 
 #[derive(ArgsTrait, Clone, Debug)]

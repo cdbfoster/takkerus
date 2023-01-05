@@ -56,6 +56,20 @@ impl PtnGame {
         }
     }
 
+    pub fn remove_header(&mut self, key: &str) {
+        if let Some(i) = self.headers.iter().position(|h| h.key == key) {
+            self.headers.remove(i);
+        }
+    }
+
+    pub fn get_plies<const N: usize>(&self) -> Result<Vec<Ply<N>>, PtnError> {
+        self.turns
+            .iter()
+            .flat_map(|t| [t.p1_move.ply.clone(), t.p2_move.ply.clone()])
+            .filter_map(|p| p.map(|p| p.try_into()))
+            .collect()
+    }
+
     pub fn add_ply<const N: usize>(&mut self, ply: Ply<N>) -> Result<(), PtnError> {
         let state: State<N> = self.clone().try_into()?;
         state.validate_ply(ply)?;
@@ -78,30 +92,29 @@ impl PtnGame {
             }
         } else {
             let number = state.ply_count as u32 / 2 + 1;
+
             let ptn_move = PtnMove {
                 ply: Some(ptn_ply),
                 ..Default::default()
             };
-            let ptn_turn = match state.to_move() {
-                Color::White => PtnTurn {
-                    number,
-                    p1_move: ptn_move,
-                    p2_move: Default::default(),
-                },
-                Color::Black => PtnTurn {
-                    number,
-                    p2_move: ptn_move,
-                    p1_move: Default::default(),
-                },
+
+            let mut ptn_turn = PtnTurn {
+                number,
+                ..Default::default()
+            };
+
+            match state.to_move() {
+                Color::White => ptn_turn.p1_move = ptn_move,
+                Color::Black => ptn_turn.p2_move = ptn_move,
             };
 
             self.turns.push(ptn_turn);
         }
 
-        Ok(())
+        self.update_result::<N>()
     }
 
-    pub fn remove_last_ply(&mut self) {
+    pub fn remove_last_ply<const N: usize>(&mut self) -> Result<(), PtnError> {
         if let Some(turn) = self.turns.last_mut() {
             if turn.p2_move.ply.is_some() {
                 turn.p2_move.ply = None;
@@ -110,14 +123,36 @@ impl PtnGame {
             } else {
                 // Somehow there was a blank turn on the end, so remove it and try again.
                 self.turns.pop();
-                self.remove_last_ply();
-                return;
+                return self.remove_last_ply::<N>();
             }
 
             if turn.p1_move.ply.is_none() && turn.p2_move.ply.is_none() {
                 self.turns.pop();
             }
         }
+
+        self.update_result::<N>()
+    }
+
+    pub fn validate<const N: usize>(&self) -> Result<(), PtnError> {
+        let _state: State<N> = self.clone().try_into()?;
+        Ok(())
+    }
+}
+
+impl PtnGame {
+    fn update_result<const N: usize>(&mut self) -> Result<(), PtnError> {
+        let state: State<N> = self.clone().try_into()?;
+
+        if let Some(resolution) = state.resolution() {
+            self.add_header("Result", resolution);
+            self.result = Some(resolution.to_string());
+        } else {
+            self.remove_header("Result");
+            self.result = None;
+        }
+
+        Ok(())
     }
 }
 
@@ -308,6 +343,13 @@ pub struct PtnHeader {
 }
 
 impl PtnHeader {
+    pub fn new(key: &str, value: &str) -> Self {
+        Self {
+            key: key.to_owned(),
+            value: value.to_owned(),
+        }
+    }
+
     pub fn parse_value<T: FromStr>(&self) -> Result<T, PtnError> {
         self.value
             .parse()
@@ -337,7 +379,7 @@ impl fmt::Display for PtnHeader {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PtnTurn {
     pub number: u32,
     pub p1_move: PtnMove,
@@ -1011,7 +1053,7 @@ mod tests {
 2. -- b2 3. a2+ b2+ 4. 2a3>"#;
 
         let mut game: PtnGame = ptn.parse().unwrap();
-        game.remove_last_ply();
+        game.remove_last_ply::<3>().unwrap();
 
         assert_eq!(
             game.to_string(),
@@ -1022,7 +1064,7 @@ mod tests {
 3. a2+ b2+"#,
         );
 
-        game.remove_last_ply();
+        game.remove_last_ply::<3>().unwrap();
 
         assert_eq!(
             game.to_string(),

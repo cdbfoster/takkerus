@@ -1,12 +1,16 @@
 use std::fmt::Write;
+use std::mem;
 
 use async_std::prelude::*;
 use async_std::task::{self, JoinHandle};
 use futures::channel::mpsc::{self, UnboundedReceiver as Receiver, UnboundedSender as Sender};
 use futures::{select, FutureExt, SinkExt};
-use tracing::{error, instrument, trace, warn};
+use tracing::{debug, error, instrument, trace, warn};
 
-use tak::{Color, Ply, PlyError, PtnGame, PtnPly, Resolution, Stack, State, StateError};
+use tak::{
+    Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, PtnPly, Resolution, Stack, State,
+    StateError,
+};
 
 use crate::args::{Game, PlayConfig, Player as PlayerArgs};
 use crate::message::{GameEnd as GameEndType, Message};
@@ -33,7 +37,7 @@ pub fn run_game(mut config: PlayConfig) {
                     match size_config.parse::<Game>() {
                         Ok(new_game) => config.game.size = new_game.size,
                         Err(err) => {
-                            error!(error=%err, "Could not read PTN file.");
+                            error!(error = %err, "Could not read PTN file.");
                             return;
                         }
                     }
@@ -45,21 +49,21 @@ pub fn run_game(mut config: PlayConfig) {
                     match komi_config.parse::<Game>() {
                         Ok(new_game) => config.game.half_komi = new_game.half_komi,
                         Err(err) => {
-                            error!(error=%err, "Could not read PTN file.");
+                            error!(error = %err, "Could not read PTN file.");
                             return;
                         }
                     }
                 }
 
-                game
+                Some(game)
             }
             Err(err) => {
-                error!(error=?err, "Could not load PTN file.");
+                error!(error = ?err, "Could not load PTN file.");
                 return;
             }
         }
     } else {
-        PtnGame::default()
+        None
     };
 
     match config.game.size {
@@ -73,17 +77,17 @@ pub fn run_game(mut config: PlayConfig) {
     }
 }
 
-fn run_game_sized<const N: usize>(config: PlayConfig, game: PtnGame) {
-    let state: State<N> = match game.try_into() {
-        Ok(state) => state,
-        Err(err) => {
-            error!(error=?err, "Could not create state.");
+fn run_game_sized<const N: usize>(config: PlayConfig, game: Option<PtnGame>) {
+    // Make sure any state we load from a file is valid.
+    if let Some(game) = &game {
+        if let Err(err) = game.validate::<N>() {
+            error!(error = ?err, "Game state is invalid.");
             return;
         }
-    };
+    }
 
-    let p1_initialize = initialize_player(&config.p1);
-    let p2_initialize = initialize_player(&config.p2);
+    let p1_initialize = initialize_player::<N>(&config.p1);
+    let p2_initialize = initialize_player::<N>(&config.p2);
 
     let (to_game, from_p1) = mpsc::unbounded();
     let p1 = p1_initialize(to_game);
@@ -91,7 +95,23 @@ fn run_game_sized<const N: usize>(config: PlayConfig, game: PtnGame) {
     let (to_game, from_p2) = mpsc::unbounded();
     let p2 = p2_initialize(to_game);
 
-    task::block_on(game_handler(p1, from_p1, p2, from_p2, state));
+    mem::drop(p1_initialize);
+    mem::drop(p2_initialize);
+
+    let mut game = game.unwrap_or_else(|| PtnGame {
+        headers: vec![
+            PtnHeader::new("Site", "Local"),
+            PtnHeader::new("Player1", p1.name.as_deref().unwrap_or("Anonymous")),
+            PtnHeader::new("Player2", p2.name.as_deref().unwrap_or("Anonymous")),
+        ],
+        ..Default::default()
+    });
+
+    // Ensure that all games have valid Size and Komi headers.
+    game.add_header("Size", N);
+    game.add_header("Komi", config.game.half_komi);
+
+    task::block_on(game_handler(p1, from_p1, p2, from_p2, config, game));
 }
 
 fn initialize_player<const N: usize>(player: &PlayerArgs) -> impl PlayerInitializer<N> + '_ {
@@ -126,13 +146,28 @@ impl PlayerToken {
     }
 }
 
+macro_rules! state {
+    ($game:expr) => {{
+        let state: State<N> = $game.clone().try_into().expect("cannot retrieve state");
+        state
+    }};
+}
+
+macro_rules! plies {
+    ($game:expr) => {{
+        let plies: Vec<Ply<N>> = $game.get_plies().expect("cannot retrieve state");
+        plies
+    }};
+}
+
 #[instrument(level = "trace", skip_all)]
 async fn game_handler<const N: usize>(
     mut p1: Player<N>,
     from_p1: Receiver<Message<N>>,
     mut p2: Player<N>,
     from_p2: Receiver<Message<N>>,
-    mut state: State<N>,
+    config: PlayConfig,
+    mut game: PtnGame,
 ) {
     use Message::*;
     use PlayerToken::*;
@@ -150,7 +185,18 @@ async fn game_handler<const N: usize>(
         .unwrap_or(Color::White);
     let p2_color = p1_color.other();
 
-    let mut ply_history: Vec<Ply<N>> = Vec::new();
+    macro_rules! save_game {
+        () => {{
+            if let Some(filename) = &config.file {
+                if let Err(err) = game.to_file(filename) {
+                    error!(error = ?err, "Could not save PTN file.");
+                } else {
+                    debug!(?filename, "PTN file saved.");
+                }
+            }
+        }};
+    }
+    save_game!();
 
     let mut from_p1 = from_p1.fuse();
     let mut from_p2 = from_p2.fuse();
@@ -162,7 +208,7 @@ async fn game_handler<const N: usize>(
                 Player2 => p2.to_player.send($message).await,
             };
             if let Err(err) = result {
-                error!(?err, player=?$p, "Could not send message to player.");
+                error!(?err, player = ?$p, "Could not send message to player.");
             }
         }};
     }
@@ -170,11 +216,11 @@ async fn game_handler<const N: usize>(
     send!(Player1, GameStart(p1_color));
     send!(Player2, GameStart(p2_color));
 
-    print_board(&state, &ply_history);
+    print_board::<N>(&game);
 
     macro_rules! player_to_move {
-        () => {{
-            if p1_color == state.to_move() {
+        ($state:expr) => {{
+            if p1_color == $state.to_move() {
                 Player1
             } else {
                 Player2
@@ -182,7 +228,25 @@ async fn game_handler<const N: usize>(
         }};
     }
 
-    send!(player_to_move!(), MoveRequest(state.clone()));
+    macro_rules! game_resolution {
+        ($resolution:ident) => {{
+            print_resolution($resolution);
+            send!(Player1, GameEnd(GameEndType::Resolution($resolution)));
+            send!(Player2, GameEnd(GameEndType::Resolution($resolution)));
+        }};
+    }
+
+    {
+        let state = state!(game);
+
+        if let Some(resolution) = state.resolution() {
+            game_resolution!(resolution);
+            return;
+        }
+
+        let player_to_move = player_to_move!(state);
+        send!(player_to_move, MoveRequest(state));
+    }
 
     loop {
         let (from, message) = select! {
@@ -201,26 +265,26 @@ async fn game_handler<const N: usize>(
 
         match message {
             MoveResponse(ply) => {
-                if from != player_to_move!() {
+                if from != player_to_move!(state!(game)) {
                     warn!("Received a move response from the wrong player.");
                     continue;
                 }
 
-                if handle_ply(&mut state, ply, &mut ply_history).is_ok() {
-                    print_board(&state, &ply_history);
+                if handle_ply(&mut game, ply).is_ok() {
+                    save_game!();
+                    print_board::<N>(&game);
+                    let state = state!(game);
                     if let Some(resolution) = state.resolution() {
-                        print_resolution(resolution);
-                        send!(from, GameEnd(GameEndType::Resolution(resolution)));
-                        send!(from.other(), GameEnd(GameEndType::Resolution(resolution)));
+                        game_resolution!(resolution);
                         break;
                     }
-                    send!(from.other(), MoveRequest(state.clone()));
+                    send!(from.other(), MoveRequest(state));
                 } else {
-                    send!(from, MoveRequest(state.clone()));
+                    send!(from, MoveRequest(state!(game)));
                 }
             }
             UndoRequest => {
-                if ply_history.is_empty() {
+                if plies!(game).is_empty() {
                     // No history to undo, so reject the request.
                     send!(from, UndoResponse { accept: false });
                 } else {
@@ -230,16 +294,16 @@ async fn game_handler<const N: usize>(
             UndoRequestWithdrawal => send!(from.other(), UndoRequestWithdrawal),
             UndoResponse { accept } => {
                 if accept {
-                    if ply_history.is_empty() {
+                    if plies!(game).is_empty() {
                         error!("Undo request was accepted, but there is no more history.");
                     } else {
-                        let ply = ply_history.pop().unwrap();
-                        if let Err(err) = state.revert_ply(ply) {
-                            error!(?err, "Error undoing ply.");
-                        } else {
-                            send!(from.other(), message);
-                            send!(player_to_move!(), MoveRequest(state.clone()));
-                        }
+                        game.remove_last_ply::<N>()
+                            .expect("could not remove last ply");
+                        save_game!();
+                        let state = state!(game);
+                        let player_to_move = player_to_move!(state);
+                        send!(from.other(), message);
+                        send!(player_to_move, MoveRequest(state));
                     }
                 } else {
                     send!(from.other(), message);
@@ -264,30 +328,35 @@ async fn game_handler<const N: usize>(
             _ => error!(?message, "Game received an unexpected message."),
         }
     }
+
+    save_game!();
 }
 
-fn handle_ply<const N: usize>(
-    state: &mut State<N>,
-    ply: Ply<N>,
-    ply_history: &mut Vec<Ply<N>>,
-) -> Result<(), StateError> {
-    if let Err(err) = state.execute_ply(ply) {
-        let message = match err {
-            StateError::PlyError(PlyError::InvalidCrush) => "Invalid crush.",
-            StateError::PlyError(PlyError::InvalidDrops(message)) => message,
-            StateError::PlyError(PlyError::OutOfBounds) => "Out of bounds.",
-            StateError::InvalidPlace(message) => message,
-            StateError::InvalidSpread(message) => message,
-            StateError::NoPreviousPlies => panic!("this can't happen here"),
-        };
-        println!("\nError: {message}");
-        return Err(err);
+fn handle_ply<const N: usize>(game: &mut PtnGame, ply: Ply<N>) -> Result<(), StateError> {
+    if let Err(err) = game.add_ply(ply) {
+        match err {
+            PtnError::StateError(err) => {
+                let message = match err {
+                    StateError::PlyError(PlyError::InvalidCrush) => "Invalid crush.",
+                    StateError::PlyError(PlyError::InvalidDrops(message)) => message,
+                    StateError::PlyError(PlyError::OutOfBounds) => "Out of bounds.",
+                    StateError::InvalidPlace(message) => message,
+                    StateError::InvalidSpread(message) => message,
+                    StateError::NoPreviousPlies => unreachable!(),
+                };
+                println!("\nError: {message}");
+                return Err(err);
+            }
+            _ => panic!("cannot add ply"),
+        }
     }
-    ply_history.push(ply);
     Ok(())
 }
 
-fn print_board<const N: usize>(state: &State<N>, ply_history: &[Ply<N>]) {
+fn print_board<const N: usize>(game: &PtnGame) {
+    let state = state!(game);
+    let ply_history = plies!(game);
+
     println!("\n--------------------------------------------------");
 
     println!(
