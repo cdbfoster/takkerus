@@ -278,19 +278,38 @@ async fn message_handler<const N: usize>(
 
         if awaiting_input!() {
             let human_count = SETUP.lock().unwrap().human_count;
-            if human_count == 1 {
-                print!("\nEntry: ");
+
+            let prompt = if human_count == 1 {
+                print!("\nEntry");
+                true
             } else {
                 let requested = undo_status == Some(Requested) || draw_status == Some(Requested);
 
                 if !requested {
                     if let Some(name) = &name {
-                        print!("\n{name} (Player {human_number}): ");
+                        print!("\n{name} (Player {human_number})");
                     } else {
-                        print!("\nPlayer {human_number}: ");
+                        print!("\nPlayer {human_number}");
                     }
                 }
+
+                !requested
+            };
+
+            if prompt {
+                if draw_status == Some(Requested) {
+                    print!(" (\"cancel\" to withdraw your draw request): ");
+                } else if undo_status == Some(Requested) {
+                    print!(" (\"cancel\" to withdraw your undo request): ");
+                } else if draw_status == Some(AwaitingInput) {
+                    print!(" (\"accept\" or \"reject\" the draw request): ");
+                } else if undo_status == Some(AwaitingInput) {
+                    print!(" (\"accept\" or \"reject\" the undo request): ");
+                } else {
+                    print!(": ");
+                }
             }
+
             io::stdout().flush().ok();
         }
     }
