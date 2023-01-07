@@ -101,6 +101,9 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
     for turn in game.turns {
         println!("  {turn:<7}");
     }
+    if let Some(result) = game.result {
+        println!("  {result}");
+    }
 
     println!("\nStatistics:");
     println!("  Depth: {} plies", analysis.depth);
