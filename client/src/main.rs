@@ -2,9 +2,11 @@ use std::env;
 
 use clap::Parser;
 
+use self::analyze::run_analysis;
 use self::args::{Args, Command};
 use self::play::run_game;
 
+mod analyze;
 mod args;
 mod message;
 mod play;
@@ -22,6 +24,6 @@ fn main() {
 
     match args.command {
         Command::Play(config) => run_game(config),
-        Command::Analyze(_config) => (),
+        Command::Analyze(config) => run_analysis(config),
     }
 }

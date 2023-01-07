@@ -466,7 +466,7 @@ impl<const N: usize> fmt::Display for State<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "Player 1: {:>2} flatstone{}, {} capstone{}",
+            "  White: {:>2} flatstone{}, {} capstone{}",
             self.p1_flatstones,
             if self.p1_flatstones != 1 { "s" } else { "" },
             self.p1_capstones,
@@ -474,7 +474,7 @@ impl<const N: usize> fmt::Display for State<N> {
         )?;
         writeln!(
             f,
-            " Player 2: {:>2} flatstone{}, {} capstone{}\n",
+            "  Black: {:>2} flatstone{}, {} capstone{}\n",
             self.p2_flatstones,
             if self.p2_flatstones != 1 { "s" } else { "" },
             self.p2_capstones,
@@ -497,14 +497,14 @@ impl<const N: usize> fmt::Display for State<N> {
             .enumerate()
             .rev()
         {
-            write!(f, " {}   ", rank + 1)?;
+            write!(f, "  {}   ", rank + 1)?;
             for (stack, width) in row {
                 write!(f, "{stack:<width$}", width = width)?;
             }
             writeln!(f)?;
         }
 
-        write!(f, "\n     ")?;
+        write!(f, "\n      ")?;
         for (file, width) in (0..N)
             .map(|c| char::from_digit(c as u32 + 10, 10 + N as u32).unwrap())
             .zip(&column_widths)

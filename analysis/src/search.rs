@@ -34,6 +34,7 @@ pub struct Analysis<const N: usize> {
     pub evaluation: Evaluation,
     pub principal_variation: Vec<Ply<N>>,
     pub stats: Statistics,
+    pub time: Duration,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -215,6 +216,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         evaluation,
         principal_variation,
         stats: total_stats,
+        time: total_start_time.elapsed(),
     }
 }
 

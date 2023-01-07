@@ -123,7 +123,7 @@ fn initialize_player<const N: usize>(player: &PlayerArgs) -> impl PlayerInitiali
             ai::initialize(
                 config.depth_limit,
                 config.time_limit,
-                config.predict_time.unwrap_or_default(),
+                config.predict_time,
                 to_game,
             )
         }) as Box<dyn PlayerInitializer<N>>,

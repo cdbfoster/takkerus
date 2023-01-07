@@ -11,7 +11,7 @@ use regex::Regex;
 use crate::piece::{Color, PieceType};
 use crate::ply::{Direction, Ply};
 use crate::state::{HalfKomi, State, StateError};
-use crate::tps::TpsError;
+use crate::tps::{Tps, TpsError};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PtnGame {
@@ -39,12 +39,24 @@ impl PtnGame {
         write!(f, "{self}")
     }
 
+    /// Attempts to estimate the size of the game from the Size header,
+    /// or from the TPS header if it exists and there is no Size header.
+    pub fn get_size(&self) -> Option<usize> {
+        self.get_header("Size")
+            .and_then(|s| s.parse_value::<usize>().ok())
+            .or_else(|| {
+                self.get_header("TPS")
+                    .and_then(|tps| tps.parse_value::<Tps>().ok())
+                    .map(|tps| tps.board.len())
+            })
+    }
+
     pub fn get_header(&self, key: &str) -> Option<&PtnHeader> {
         self.headers.iter().find(|h| h.key == key)
     }
 
     pub fn add_header(&mut self, key: &str, value: impl fmt::Display) {
-        let value = format!("{value}");
+        let value = value.to_string();
 
         if let Some(header) = self.headers.iter_mut().find(|h| h.key == key) {
             header.value = value;
@@ -343,10 +355,10 @@ pub struct PtnHeader {
 }
 
 impl PtnHeader {
-    pub fn new(key: &str, value: &str) -> Self {
+    pub fn new(key: &str, value: impl fmt::Display) -> Self {
         Self {
             key: key.to_owned(),
-            value: value.to_owned(),
+            value: value.to_string(),
         }
     }
 
@@ -445,10 +457,16 @@ impl fmt::Display for PtnTurn {
             p1_move,
             p2_move,
         } = self;
-        write!(f, "{number}. {p1_move}")?;
+
+        write!(f, "{number}. ")?;
+
+        let p1_move = format!("{p1_move}");
+        f.pad(&p1_move)?;
 
         if p2_move.ply.is_some() {
-            write!(f, " {p2_move}")?;
+            write!(f, " ")?;
+            let p2_move = format!("{p2_move}");
+            f.pad(&p2_move)?;
         }
 
         Ok(())
@@ -463,17 +481,19 @@ pub struct PtnMove {
 
 impl fmt::Display for PtnMove {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut b = String::new();
+
         if let Some(ply) = &self.ply {
-            write!(f, "{ply}")?;
+            write!(b, "{ply}")?;
         } else {
-            write!(f, "--")?;
+            write!(b, "--")?;
         }
 
         for comment in &self.comments {
-            write!(f, " {{{comment}}}")?;
+            write!(b, " {{{comment}}}")?;
         }
 
-        Ok(())
+        f.pad(&b)
     }
 }
 

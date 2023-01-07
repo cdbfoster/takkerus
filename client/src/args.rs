@@ -81,6 +81,14 @@ pub struct AnalyzeConfig {
         verbatim_doc_comment
     )]
     pub ai: Ai,
+
+    /// The name of a file in PTN format to analyze.
+    #[arg(short, long, verbatim_doc_comment)]
+    pub file: Option<String>,
+
+    /// A position in TPS format to analyze. Must include the TPS tag in the form "[TPS \"...\"]".
+    #[arg(short, long, verbatim_doc_comment)]
+    pub tps: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -130,7 +138,7 @@ impl FromStr for Human {
 pub struct Ai {
     pub depth_limit: Option<u32>,
     pub time_limit: Option<Duration>,
-    pub predict_time: Option<bool>,
+    pub predict_time: bool,
 }
 
 impl FromStr for Ai {
@@ -162,9 +170,10 @@ impl FromStr for Ai {
                 f.parse::<bool>()
                     .map_err(|_| format!("invalid value for predict_time: {f}"))
             })
-            .transpose()?;
+            .transpose()?
+            .unwrap_or_default();
 
-        if predict_time == Some(true) && time_limit.is_none() {
+        if predict_time && time_limit.is_none() {
             return Err("time limit must be set to use predict_time".to_owned());
         }
 
