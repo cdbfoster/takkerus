@@ -129,13 +129,13 @@ fn format_time(time: Duration) -> String {
     let hours = total_secs / 3600;
     total_secs %= 3600;
     if hours > 0 {
-        write!(buffer, "{hours} hours, ").unwrap();
+        write!(buffer, "{hours} hour{}, ", if hours > 1 { "s" } else { "" }).unwrap();
     }
 
     let minutes = total_secs / 60;
     total_secs %= 60;
     if hours > 0 || minutes > 0 {
-        write!(buffer, "{minutes} minutes, ").unwrap();
+        write!(buffer, "{minutes} minute{}, ", if minutes > 1 { "s" } else { "" }).unwrap();
     }
 
     let secs = total_secs as f64 + time.subsec_millis() as f64 / 1000.0;
