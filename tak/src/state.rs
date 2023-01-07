@@ -462,6 +462,59 @@ impl<const N: usize> fmt::Debug for State<N> {
     }
 }
 
+impl<const N: usize> fmt::Display for State<N> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Player 1: {:>2} flatstone{}, {} capstone{}",
+            self.p1_flatstones,
+            if self.p1_flatstones != 1 { "s" } else { "" },
+            self.p1_capstones,
+            if self.p1_capstones != 1 { "s" } else { "" },
+        )?;
+        writeln!(
+            f,
+            " Player 2: {:>2} flatstone{}, {} capstone{}\n",
+            self.p2_flatstones,
+            if self.p2_flatstones != 1 { "s" } else { "" },
+            self.p2_capstones,
+            if self.p2_capstones != 1 { "s" } else { "" },
+        )?;
+
+        let board: Vec<Vec<String>> = self
+            .board
+            .iter()
+            .map(|c| c.iter().map(|r| format!("[{r}]")).collect())
+            .collect();
+
+        let column_widths: Vec<usize> = board
+            .iter()
+            .map(|c| c.iter().map(|r| r.len() + 1).max().unwrap())
+            .collect();
+
+        for (rank, row) in (0..N)
+            .map(|r| board.iter().map(move |c| &c[r]).zip(&column_widths))
+            .enumerate()
+            .rev()
+        {
+            write!(f, " {}   ", rank + 1)?;
+            for (stack, width) in row {
+                write!(f, "{stack:<width$}", width = width)?;
+            }
+            writeln!(f)?;
+        }
+
+        write!(f, "\n     ")?;
+        for (file, width) in (0..N)
+            .map(|c| char::from_digit(c as u32 + 10, 10 + N as u32).unwrap())
+            .zip(&column_widths)
+        {
+            write!(f, "{:<width$}", format!(" {file}"), width = width)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Resolution {
     Road(Color),

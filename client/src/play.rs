@@ -8,8 +8,7 @@ use futures::{select, FutureExt, SinkExt};
 use tracing::{debug, error, instrument, trace, warn};
 
 use tak::{
-    Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, PtnPly, Resolution, Stack, State,
-    StateError,
+    Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, PtnPly, Resolution, State, StateError,
 };
 
 use crate::args::{Game, PlayConfig, Player as PlayerArgs};
@@ -359,55 +358,7 @@ fn print_board<const N: usize>(game: &PtnGame) {
 
     println!("\n--------------------------------------------------");
 
-    println!(
-        "\n Player 1: {:>2} flatstone{}, {} capstone{}",
-        state.p1_flatstones,
-        if state.p1_flatstones != 1 { "s" } else { "" },
-        state.p1_capstones,
-        if state.p1_capstones != 1 { "s" } else { "" },
-    );
-    println!(
-        " Player 2: {:>2} flatstone{}, {} capstone{}\n",
-        state.p2_flatstones,
-        if state.p2_flatstones != 1 { "s" } else { "" },
-        state.p2_capstones,
-        if state.p2_capstones != 1 { "s" } else { "" },
-    );
-
-    let board: Vec<Vec<String>> = state
-        .board
-        .iter()
-        .map(|c| c.iter().map(print_stack).collect())
-        .collect();
-
-    let column_widths: Vec<usize> = board
-        .iter()
-        .map(|c| c.iter().map(|r| r.len() + 3).max().unwrap())
-        .collect();
-
-    for (i, row) in (0..N)
-        .map(|r| board.iter().map(move |c| &c[r]).zip(&column_widths))
-        .enumerate()
-        .rev()
-    {
-        let mut line = String::new();
-        write!(line, " {}   ", i + 1).unwrap();
-        for (stack, width) in row {
-            let column = format!("[{stack}]");
-            write!(line, "{column:<width$}", width = width).unwrap();
-        }
-        println!("{line}");
-    }
-
-    let mut file_letters = String::new();
-    write!(file_letters, "\n     ").unwrap();
-    for (f, width) in (0..N)
-        .map(|c| char::from_digit(c as u32 + 10, 10 + N as u32).unwrap())
-        .zip(&column_widths)
-    {
-        write!(file_letters, "{:<width$}", format!(" {f}"), width = width).unwrap();
-    }
-    println!("{file_letters}");
+    println!("\n{state}");
 
     let turn_number = format!("{}.", state.ply_count / 2 + 1);
     if ply_history.is_empty() {
@@ -435,21 +386,6 @@ fn print_board<const N: usize>(game: &PtnGame) {
         }
 
         println!("{turn}");
-    }
-}
-
-fn print_stack(stack: &Stack) -> String {
-    if stack.is_empty() {
-        " ".to_owned()
-    } else {
-        let mut buffer = String::new();
-        for (i, piece) in stack.iter().rev().enumerate() {
-            if i > 0 {
-                write!(buffer, " ").unwrap();
-            }
-            write!(buffer, "{piece:?}").unwrap();
-        }
-        buffer
     }
 }
 

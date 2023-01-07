@@ -136,11 +136,20 @@ impl fmt::Debug for Stack {
         if self.is_empty() {
             write!(f, " ")?
         } else {
-            for piece in self.iter().rev() {
+            for (i, piece) in self.iter().rev().enumerate() {
+                if i > 0 {
+                    write!(f, " ")?;
+                }
                 write!(f, "{piece:?}")?;
             }
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for Stack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
     }
 }
 
