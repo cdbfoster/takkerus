@@ -8,7 +8,6 @@ use self::play::run_game;
 
 mod analyze;
 mod args;
-mod message;
 mod play;
 mod player;
 

@@ -12,8 +12,7 @@ use tracing::{debug, error, instrument, trace};
 
 use tak::Ply;
 
-use crate::message::Message;
-use crate::play::Player;
+use crate::play::{Message, Player};
 
 static SETUP: Lazy<Mutex<Setup>> = Lazy::new(|| Mutex::new(Setup::default()));
 

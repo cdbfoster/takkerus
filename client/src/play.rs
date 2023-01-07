@@ -12,7 +12,7 @@ use tak::{
 };
 
 use crate::args::{Game, PlayConfig, Player as PlayerArgs};
-use crate::message::{GameEnd as GameEndType, Message};
+
 use crate::player::{ai, human};
 
 pub struct Player<const N: usize> {
@@ -25,6 +25,28 @@ pub struct Player<const N: usize> {
 pub trait PlayerInitializer<const N: usize>: Fn(Sender<Message<N>>) -> Player<N> {}
 
 impl<T, const N: usize> PlayerInitializer<N> for T where T: Fn(Sender<Message<N>>) -> Player<N> {}
+
+#[derive(Debug)]
+pub enum Message<const N: usize> {
+    GameStart(Color),
+    GameEnd(GameEnd),
+    MoveRequest(State<N>),
+    MoveResponse(Ply<N>),
+    UndoRequest,
+    UndoRequestWithdrawal,
+    UndoResponse { accept: bool },
+    DrawRequest,
+    DrawRequestWithdrawal,
+    DrawResponse { accept: bool },
+}
+
+use self::GameEnd as GameEndType;
+
+#[derive(Debug)]
+pub enum GameEnd {
+    Resolution(Resolution),
+    Resignation(Color),
+}
 
 pub fn run_game(mut config: PlayConfig) {
     let game = if let Some(load) = &config.load {
