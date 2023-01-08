@@ -84,7 +84,7 @@ impl PtnGame {
 
     pub fn add_ply<const N: usize>(&mut self, ply: Ply<N>) -> Result<(), PtnError> {
         let state: State<N> = self.clone().try_into()?;
-        state.validate_ply(ply)?;
+        let ply = state.validate_ply(ply)?;
 
         let ptn_ply: PtnPly = ply.into();
 
