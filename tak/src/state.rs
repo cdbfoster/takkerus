@@ -644,27 +644,27 @@ mod tests {
 
     #[test]
     fn execute_valid_plies() {
-        let mut s = state::<5>(r#"[TPS "x5/x,212121C,212,2S,x/x5/x5/x5 1 2"]"#);
+        let mut s = state::<5>("x5/x,212121C,212,2S,x/x5/x5/x5 1 2");
 
         s.execute_ply(ply("b2")).unwrap();
         assert_eq!(
             s,
-            state(r#"[TPS "x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"]"#),
+            state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"),
         );
 
         s.execute_ply(ply("d4>")).unwrap();
         assert_eq!(
             s,
-            state(r#"[TPS "x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"]"#),
+            state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"),
         );
 
         s.execute_ply(ply("4b4>211*")).unwrap();
-        assert_eq!(s, state(r#"[TPS "x5/x,21,21221,2,21C/x5/x,1,x3/x5 2 3"]"#));
+        assert_eq!(s, state("x5/x,21,21221,2,21C/x5/x,1,x3/x5 2 3"));
     }
 
     #[test]
     fn execute_bad_crush() {
-        let s = state::<5>(r#"[TPS "x5/x,21C,2S,x2/x5/x5/x5 1 2"]"#);
+        let s = state::<5>("x5/x,21C,2S,x2/x5/x5/x5 1 2");
 
         assert_eq!(
             s.validate_ply(ply("2b4>")),
@@ -676,22 +676,22 @@ mod tests {
 
     #[test]
     fn revert_valid_plies() {
-        let mut s = state::<5>(r#"[TPS "x5/x,21,21221,2,21C/x5/x,1,x3/x5 2 3"]"#);
+        let mut s = state::<5>("x5/x,21,21221,2,21C/x5/x,1,x3/x5 2 3");
 
         s.revert_ply(ply("4b4>211*")).unwrap();
         assert_eq!(
             s,
-            state(r#"[TPS "x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"]"#),
+            state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"),
         );
 
         s.revert_ply(ply("d4>")).unwrap();
         assert_eq!(
             s,
-            state(r#"[TPS "x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"]"#),
+            state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"),
         );
 
         s.revert_ply(ply("b2")).unwrap();
-        assert_eq!(s, state(r#"[TPS "x5/x,212121C,212,2S,x/x5/x5/x5 1 2"]"#));
+        assert_eq!(s, state("x5/x,212121C,212,2S,x/x5/x5/x5 1 2"));
     }
 
     #[test]
@@ -699,16 +699,16 @@ mod tests {
         let s = State::<5>::default();
         assert_eq!(s.resolution(), None);
 
-        let s = state::<5>(r#"[TPS "x5/21,1,1C,x2/2,12,2121,x2/x,2,1,221,1/x,2,1,x2 1 1"]"#);
+        let s = state::<5>("x5/21,1,1C,x2/2,12,2121,x2/x,2,1,221,1/x,2,1,x2 1 1");
         assert_eq!(s.resolution(), Some(Resolution::Road(Color::White)));
 
-        let s = state::<5>(r#"[TPS "x5/21,1,1C,x2/2,12,2121,x2/x,2,1,221,1/x,2,2,2,2 1 2"]"#);
+        let s = state::<5>("x5/21,1,1C,x2/2,12,2121,x2/x,2,1,221,1/x,2,2,2,2 1 2");
         assert_eq!(s.resolution(), Some(Resolution::Road(Color::Black)));
 
-        let s = state::<5>(r#"[TPS "x5/21,1,1C,x2/2,12,2121,x2/x,2,1,221,1/x,2,2,2,2 2 2"]"#);
+        let s = state::<5>("x5/21,1,1C,x2/2,12,2121,x2/x,2,1,221,1/x,2,2,2,2 2 2");
         assert_eq!(s.resolution(), Some(Resolution::Road(Color::White)));
 
-        let mut s = state::<5>(r#"[TPS "1,1,2,2,1/2,2,1,1,2/1,1,2,2,1/2,2,1,1,2/1,1,2,2,1 1 3"]"#);
+        let mut s = state::<5>("1,1,2,2,1/2,2,1,1,2/1,1,2,2,1/2,2,1,1,2/1,1,2,2,1 1 3");
         assert_eq!(
             s.resolution(),
             Some(Resolution::Flats {
@@ -729,7 +729,7 @@ mod tests {
             })
         );
 
-        let s = state::<5>(r#"[TPS "1111,1111,1111,1111,2/1111,11C,x,x,2/x5/x5/x5 2 3"]"#);
+        let s = state::<5>("1111,1111,1111,1111,2/1111,11C,x,x,2/x5/x5/x5 2 3");
         assert_eq!(
             s.resolution(),
             Some(Resolution::Flats {
