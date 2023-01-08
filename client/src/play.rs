@@ -68,7 +68,7 @@ pub fn run_game(mut config: PlayConfig) {
                     game.get_header("Komi").map(|h| format!("komi={}", h.value))
                 {
                     match komi_config.parse::<Game>() {
-                        Ok(new_game) => config.game.half_komi = new_game.half_komi,
+                        Ok(new_game) => config.game.komi = new_game.komi,
                         Err(err) => {
                             error!(error = %err, "Could not read PTN file.");
                             return;
@@ -130,7 +130,7 @@ fn run_game_sized<const N: usize>(config: PlayConfig, game: Option<PtnGame>) {
 
     // Ensure that all games have valid Size and Komi headers.
     game.add_header("Size", N);
-    game.add_header("Komi", config.game.half_komi);
+    game.add_header("Komi", config.game.komi);
 
     task::block_on(game_handler(p1, from_p1, p2, from_p2, config, game));
 }
@@ -426,10 +426,10 @@ fn print_resolution(resolution: Resolution) {
         Resolution::Flats {
             color,
             spread,
-            half_komi,
+            komi,
         } => {
-            let komi = half_komi.abs() / 2;
-            let remainder = (half_komi.abs() % 2) * 5;
+            let full_komi = komi.as_half_komi().abs() / 2;
+            let remainder = (komi.as_half_komi().abs() % 2) * 5;
             println!(
                 "\n{color:?} wins by flats: {}",
                 match color {
@@ -438,7 +438,7 @@ fn print_resolution(resolution: Resolution) {
                 },
             );
             println!(
-                "  Spread: {spread}{}{komi}.{remainder}",
+                "  Spread: {spread}{}{full_komi}.{remainder}",
                 match color {
                     Color::White => "-",
                     Color::Black => "+",

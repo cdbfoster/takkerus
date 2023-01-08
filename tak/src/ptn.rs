@@ -10,7 +10,7 @@ use regex::Regex;
 
 use crate::piece::{Color, PieceType};
 use crate::ply::{Direction, Ply};
-use crate::state::{HalfKomi, State, StateError};
+use crate::state::{Komi, State, StateError};
 use crate::tps::{Tps, TpsError};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -245,11 +245,11 @@ impl<const N: usize> TryFrom<PtnGame> for State<N> {
 
         let komi_header = ptn
             .get_header("Komi")
-            .map(PtnHeader::parse_value::<HalfKomi>)
+            .map(PtnHeader::parse_value::<Komi>)
             .transpose()?;
 
-        if let Some(half_komi) = komi_header {
-            state.half_komi = half_komi;
+        if let Some(komi) = komi_header {
+            state.komi = komi;
         }
 
         let plies = ptn.turns.iter().cloned().flat_map(|t| {

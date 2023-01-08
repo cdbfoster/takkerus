@@ -1,6 +1,6 @@
 use std::cmp::Ordering::*;
 use std::fmt;
-use std::ops::Deref;
+use std::ops::{Deref, Neg};
 use std::str::FromStr;
 
 use tracing::{instrument, trace};
@@ -24,7 +24,7 @@ pub struct State<const N: usize> {
 
     pub ply_count: u16,
 
-    pub half_komi: HalfKomi,
+    pub komi: Komi,
 
     pub metadata: Metadata<N>,
 }
@@ -48,7 +48,7 @@ impl<const N: usize> Default for State<N> {
             p2_capstones: capstones,
             board: [[Stack::default(); N]; N],
             ply_count: 0,
-            half_komi: HalfKomi(0),
+            komi: Komi::default(),
             metadata: Default::default(),
         }
     }
@@ -416,18 +416,18 @@ impl<const N: usize> State<N> {
             let p2_flatstone_count = (m.p2_pieces & m.flatstones).count_ones() as i8;
 
             let p1_score = 2 * p1_flatstone_count;
-            let p2_score = 2 * p2_flatstone_count + *self.half_komi;
+            let p2_score = 2 * p2_flatstone_count + self.komi.as_half_komi();
 
             let resolution = match p1_score.cmp(&p2_score) {
                 Greater => Resolution::Flats {
                     color: Color::White,
                     spread: p1_flatstone_count - p2_flatstone_count,
-                    half_komi: HalfKomi(-*self.half_komi),
+                    komi: -self.komi,
                 },
                 Less => Resolution::Flats {
                     color: Color::Black,
                     spread: p2_flatstone_count - p1_flatstone_count,
-                    half_komi: self.half_komi,
+                    komi: self.komi,
                 },
                 Equal => Resolution::Draw,
             };
@@ -453,7 +453,7 @@ impl<const N: usize> State<N> {
 impl<const N: usize> fmt::Debug for State<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("State")
-            .field("komi", &self.half_komi)
+            .field("komi", &self.komi)
             .field("ply", &self.ply_count)
             .field("flats", &(self.p1_flatstones, self.p2_flatstones))
             .field("caps", &(self.p1_capstones, self.p2_capstones))
@@ -521,7 +521,7 @@ pub enum Resolution {
     Flats {
         color: Color,
         spread: i8,
-        half_komi: HalfKomi,
+        komi: Komi,
     },
     Draw,
 }
@@ -567,9 +567,19 @@ impl From<PlyError> for StateError {
 
 #[derive(Copy, Clone, Default, Eq, Hash, PartialEq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct HalfKomi(pub i8);
+pub struct Komi(i8);
 
-impl FromStr for HalfKomi {
+impl Komi {
+    pub fn from_half_komi(value: i8) -> Self {
+        Self(value)
+    }
+
+    pub fn as_half_komi(&self) -> i8 {
+        self.0
+    }
+}
+
+impl FromStr for Komi {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -589,11 +599,11 @@ impl FromStr for HalfKomi {
                 .parse::<i8>()
                 .map_err(|_| format!("invalid value for komi: {s}"))?
         };
-        Ok(Self(half_komi))
+        Ok(Self::from_half_komi(half_komi))
     }
 }
 
-impl fmt::Debug for HalfKomi {
+impl fmt::Debug for Komi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let komi = self.0 / 2;
         let half = self.0 % 2 * 5;
@@ -606,17 +616,17 @@ impl fmt::Debug for HalfKomi {
     }
 }
 
-impl fmt::Display for HalfKomi {
+impl fmt::Display for Komi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
     }
 }
 
-impl Deref for HalfKomi {
-    type Target = i8;
+impl Neg for Komi {
+    type Output = Self;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    fn neg(self) -> Self::Output {
+        Self::from_half_komi(-self.0)
     }
 }
 
@@ -704,18 +714,18 @@ mod tests {
             Some(Resolution::Flats {
                 color: Color::White,
                 spread: 1,
-                half_komi: HalfKomi(0),
+                komi: Komi::default(),
             })
         );
-        s.half_komi = HalfKomi(2);
+        s.komi = Komi::from_half_komi(2);
         assert_eq!(s.resolution(), Some(Resolution::Draw));
-        s.half_komi = HalfKomi(4);
+        s.komi = Komi::from_half_komi(4);
         assert_eq!(
             s.resolution(),
             Some(Resolution::Flats {
                 color: Color::Black,
                 spread: -1,
-                half_komi: HalfKomi(4),
+                komi: Komi::from_half_komi(4),
             })
         );
 
@@ -725,7 +735,7 @@ mod tests {
             Some(Resolution::Flats {
                 color: Color::White,
                 spread: 3,
-                half_komi: HalfKomi(0),
+                komi: Komi::default(),
             })
         );
     }

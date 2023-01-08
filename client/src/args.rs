@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use clap::{ArgGroup, Args as ArgsTrait, Parser, Subcommand};
 
-use tak::HalfKomi;
+use tak::Komi;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -188,7 +188,7 @@ impl FromStr for Ai {
 #[derive(Clone, Debug)]
 pub struct Game {
     pub size: usize,
-    pub half_komi: HalfKomi,
+    pub komi: Komi,
 }
 
 impl FromStr for Game {
@@ -209,16 +209,16 @@ impl FromStr for Game {
             return Err(format!("invalid value for size (3 - 8): {size}"));
         }
 
-        let half_komi = fields
+        let komi = fields
             .get("komi")
-            .map(|&f| f.parse::<HalfKomi>())
+            .map(|&f| f.parse::<Komi>())
             .transpose()?
-            .unwrap_or(HalfKomi(0));
-        if !(-10..=10).contains(&*half_komi) {
+            .unwrap_or_default();
+        if !(-10..=10).contains(&komi.as_half_komi()) {
             return Err("komi values must be between -5.0 and +5.0".to_owned());
         }
 
-        Ok(Game { size, half_komi })
+        Ok(Game { size, komi })
     }
 }
 
