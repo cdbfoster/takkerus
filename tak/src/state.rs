@@ -1,6 +1,6 @@
 use std::cmp::Ordering::*;
 use std::fmt;
-use std::ops::{Deref, Neg};
+use std::ops::Neg;
 use std::str::FromStr;
 
 use tracing::{instrument, trace};
