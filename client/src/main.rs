@@ -5,11 +5,13 @@ use clap::Parser;
 use self::analyze::run_analysis;
 use self::args::{Args, Command};
 use self::play::run_game;
+use self::tei::run_tei;
 
 mod analyze;
 mod args;
 mod play;
 mod player;
+mod tei;
 
 fn main() {
     let args = Args::parse();
@@ -24,5 +26,6 @@ fn main() {
     match args.command {
         Command::Play(config) => run_game(config),
         Command::Analyze(config) => run_analysis(config),
+        Command::Tei(config) => run_tei(config),
     }
 }

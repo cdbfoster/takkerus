@@ -1,0 +1,204 @@
+//! A limited TEI implementation, suitable for running analysis via (RaceTrack)[https://github.com/MortenLohne/racetrack].
+
+use std::fmt::Write;
+use std::sync::Mutex;
+
+use async_std::io::{prelude::BufReadExt, stdin, BufReader};
+use async_std::prelude::*;
+use async_std::task;
+use once_cell::sync::Lazy;
+use tracing::error;
+
+use analysis::{analyze, version, AnalysisConfig, PersistentState};
+use tak::{Komi, PtnGame, PtnPly, State, Tps};
+
+use crate::args::{Ai, TeiConfig};
+
+pub fn run_tei(config: TeiConfig) {
+    let ai = config.ai;
+
+    task::block_on(listen_spawner(ai));
+}
+
+async fn listen_spawner(ai: Ai) {
+    let mut size = 6;
+    let mut komi = Komi::default();
+
+    let mut game;
+    macro_rules! new_game {
+        () => {{
+            game = PtnGame::default();
+            game.add_header("Komi", komi);
+        }};
+    }
+    new_game!();
+
+    let mut input = BufReader::new(stdin()).lines();
+
+    while let Some(message) = input.next().await {
+        let message = message.expect("could not read from stdin");
+
+        let mut parts = message.split_whitespace();
+
+        match parts.next().expect("no input") {
+            "tei" => {
+                println!("id name Takkerus {}", version());
+                println!("id author Christopher Foster");
+                println!("option name HalfKomi type spin default 0 min -10 max 10");
+                println!("teiok")
+            }
+            "isready" => println!("readyok"),
+            "setoption" => {
+                assert_eq!(parts.next().unwrap(), "name");
+
+                match parts.next().expect("no option name") {
+                    "HalfKomi" => {
+                        assert_eq!(parts.next().unwrap(), "value");
+
+                        let half_komi = parts
+                            .next()
+                            .expect("no half-komi value")
+                            .parse::<i8>()
+                            .expect("invalid half-komi value");
+
+                        komi = Komi::from_half_komi(half_komi);
+                    }
+                    x => error!(option = ?x, "Unknown option."),
+                }
+            }
+            "teinewgame" => {
+                size = parts
+                    .next()
+                    .expect("no size parameter")
+                    .parse::<usize>()
+                    .expect("invalid size parameter");
+
+                if !(3..=8).contains(&size) {
+                    panic!("invalid size parameter");
+                }
+
+                clear_persistent_state(size);
+            }
+            "position" => {
+                match parts.next().expect("no position") {
+                    "startpos" => new_game!(),
+                    "tps" => {
+                        let tps = parts
+                            .next()
+                            .expect("no tps string")
+                            .parse::<Tps>()
+                            .expect("invalid tps string");
+
+                        new_game!();
+                        game.add_header("TPS", tps);
+                    }
+                    _ => panic!("invalid position"),
+                }
+
+                assert_eq!(parts.next().expect("no moves"), "moves");
+
+                for ply in parts {
+                    add_ply(size, &mut game, ply);
+                }
+            }
+            "go" => {
+                // We don't care about the timing info right now.
+
+                begin_analysis(size, &game, ai.clone()).await;
+            }
+            "quit" => break,
+            x => error!(input = ?x, "Unexpected input."),
+        }
+    }
+}
+
+static PERSISTENT_STATE_3: Lazy<Mutex<PersistentState<3>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_4: Lazy<Mutex<PersistentState<4>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_5: Lazy<Mutex<PersistentState<5>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_6: Lazy<Mutex<PersistentState<6>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_7: Lazy<Mutex<PersistentState<7>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_8: Lazy<Mutex<PersistentState<8>>> = Lazy::new(Default::default);
+
+fn clear_persistent_state(size: usize) {
+    fn sized<const N: usize>(persistent_state: &'static Mutex<PersistentState<N>>) {
+        let mut guard = persistent_state.lock().unwrap();
+        *guard = PersistentState::default();
+    }
+
+    match size {
+        3 => sized(&PERSISTENT_STATE_3),
+        4 => sized(&PERSISTENT_STATE_4),
+        5 => sized(&PERSISTENT_STATE_5),
+        6 => sized(&PERSISTENT_STATE_6),
+        7 => sized(&PERSISTENT_STATE_7),
+        8 => sized(&PERSISTENT_STATE_8),
+        _ => unreachable!(),
+    }
+}
+
+async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
+    async fn sized<const N: usize>(
+        game: &PtnGame,
+        ai: Ai,
+        persistent_state: &'static Mutex<PersistentState<N>>,
+    ) {
+        let Ai {
+            depth_limit,
+            time_limit,
+            predict_time,
+        } = ai;
+
+        let state: State<N> = game.clone().try_into().expect("could not create state");
+
+        task::spawn_blocking(move || {
+            let analysis = {
+                let mut guard = persistent_state.lock().unwrap();
+
+                let analysis_config = AnalysisConfig {
+                    depth_limit,
+                    time_limit,
+                    predict_time,
+                    persistent_state: Some(&mut *guard),
+                    ..Default::default()
+                };
+
+                analyze(analysis_config, &state)
+            };
+
+            let mut info = String::from("info");
+            write!(info, " score cp {}", analysis.evaluation).unwrap();
+            write!(info, " pv").unwrap();
+            for &ply in &analysis.principal_variation {
+                let ptn: PtnPly = ply.into();
+                write!(info, " {ptn}").unwrap();
+            }
+            println!("{info}");
+
+            let ptn: PtnPly = (*analysis.principal_variation.first().expect("no pv")).into();
+            println!("bestmove {ptn}");
+        });
+    }
+
+    match size {
+        3 => sized(game, ai, &PERSISTENT_STATE_3).await,
+        4 => sized(game, ai, &PERSISTENT_STATE_4).await,
+        5 => sized(game, ai, &PERSISTENT_STATE_5).await,
+        6 => sized(game, ai, &PERSISTENT_STATE_6).await,
+        7 => sized(game, ai, &PERSISTENT_STATE_7).await,
+        8 => sized(game, ai, &PERSISTENT_STATE_8).await,
+        _ => unreachable!(),
+    }
+}
+
+fn add_ply(size: usize, game: &mut PtnGame, ply: &str) {
+    match size {
+        3 => game.add_ply::<3>(ply.parse().expect("invalid ply string")),
+        4 => game.add_ply::<4>(ply.parse().expect("invalid ply string")),
+        5 => game.add_ply::<5>(ply.parse().expect("invalid ply string")),
+        6 => game.add_ply::<6>(ply.parse().expect("invalid ply string")),
+        7 => game.add_ply::<7>(ply.parse().expect("invalid ply string")),
+        8 => game.add_ply::<8>(ply.parse().expect("invalid ply string")),
+        _ => unreachable!(),
+    }
+    .expect("could not add ply");
+}

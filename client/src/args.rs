@@ -19,6 +19,8 @@ pub enum Command {
     Play(PlayConfig),
     /// Analyzes a given position.
     Analyze(AnalyzeConfig),
+    /// Runs in TEI mode, using the limited subset of TEI that is supported by Racetrack. (https://github.com/MortenLohne/racetrack)
+    Tei(TeiConfig),
 }
 
 #[derive(ArgsTrait, Clone, Debug)]
@@ -89,6 +91,23 @@ pub struct AnalyzeConfig {
     /// A position in TPS format to analyze. Must include the TPS tag in the form "[TPS \"...\"]".
     #[arg(short, long, verbatim_doc_comment)]
     pub tps: Option<String>,
+}
+
+#[derive(ArgsTrait, Clone, Debug)]
+pub struct TeiConfig {
+    /// Analysis options.
+    ///
+    /// Parameters:
+    ///   depth=int         - The maximum depth of the move search.
+    ///   time=int          - The maximum number of seconds to spend considering a response.
+    ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
+    ///                       than the time limit. Time limit must be set. (false or true)
+    #[arg(
+        long,
+        default_value = "time=60,predict_time=true",
+        verbatim_doc_comment
+    )]
+    pub ai: Ai,
 }
 
 #[derive(Clone, Debug)]
