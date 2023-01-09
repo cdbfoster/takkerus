@@ -647,16 +647,10 @@ mod tests {
         let mut s = state::<5>("x5/x,212121C,212,2S,x/x5/x5/x5 1 2");
 
         s.execute_ply(ply("b2")).unwrap();
-        assert_eq!(
-            s,
-            state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"),
-        );
+        assert_eq!(s, state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"),);
 
         s.execute_ply(ply("d4>")).unwrap();
-        assert_eq!(
-            s,
-            state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"),
-        );
+        assert_eq!(s, state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"),);
 
         s.execute_ply(ply("4b4>211*")).unwrap();
         assert_eq!(s, state("x5/x,21,21221,2,21C/x5/x,1,x3/x5 2 3"));
@@ -679,16 +673,10 @@ mod tests {
         let mut s = state::<5>("x5/x,21,21221,2,21C/x5/x,1,x3/x5 2 3");
 
         s.revert_ply(ply("4b4>211*")).unwrap();
-        assert_eq!(
-            s,
-            state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"),
-        );
+        assert_eq!(s, state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"),);
 
         s.revert_ply(ply("d4>")).unwrap();
-        assert_eq!(
-            s,
-            state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"),
-        );
+        assert_eq!(s, state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"),);
 
         s.revert_ply(ply("b2")).unwrap();
         assert_eq!(s, state("x5/x,212121C,212,2S,x/x5/x5/x5 1 2"));
