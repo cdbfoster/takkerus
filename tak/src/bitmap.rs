@@ -44,6 +44,26 @@ impl<const N: usize> Bitmap<N> {
     pub fn groups(self) -> GroupIter<N> {
         GroupIter { bitmap: self }
     }
+
+    pub fn width(self) -> usize {
+        let mut row_mask = edge_masks::<N>()[Direction::North as usize];
+        let mut row_population = 0;
+        for _ in 0..N {
+            row_population = row_population.max((self & row_mask).count_ones() as usize);
+            row_mask >>= N;
+        }
+        row_population
+    }
+
+    pub fn height(self) -> usize {
+        let mut column_mask = edge_masks::<N>()[Direction::West as usize];
+        let mut column_population = 0;
+        for _ in 0..N {
+            column_population = column_population.max((self & column_mask).count_ones() as usize);
+            column_mask >>= 1;
+        }
+        column_population
+    }
 }
 
 impl<const N: usize> fmt::Debug for Bitmap<N> {
@@ -412,5 +432,17 @@ mod tests {
         assert_eq!(g.next(), Some(Bitmap::new(0b1110011000000000000000000)),);
 
         assert_eq!(g.next(), None);
+    }
+
+    #[test]
+    fn width() {
+        let b = Bitmap::<5>::new(0b0000001100011100100001000);
+        assert_eq!(b.width(), 3);
+    }
+
+    #[test]
+    fn height() {
+        let b = Bitmap::<5>::new(0b0000001100011100100001000);
+        assert_eq!(b.height(), 4);
     }
 }

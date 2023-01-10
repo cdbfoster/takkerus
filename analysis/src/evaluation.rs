@@ -40,12 +40,14 @@ struct Weights {
     flatstone: EvalType,
     standing_stone: EvalType,
     capstone: EvalType,
+    full_width_group: EvalType,
 }
 
 const WEIGHT: Weights = Weights {
     flatstone: 400,
     standing_stone: 200,
     capstone: 300,
+    full_width_group: -500,
 };
 
 pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
@@ -78,6 +80,11 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     p1_eval += evaluate_material(m, m.p1_pieces);
     p2_eval += evaluate_material(m, m.p2_pieces);
 
+    // Road groups
+    let road_pieces = m.flatstones | m.capstones;
+    p1_eval += evaluate_road_groups(road_pieces & m.p1_pieces);
+    p2_eval += evaluate_road_groups(road_pieces & m.p2_pieces);
+
     match to_move {
         White => p1_eval - p2_eval,
         Black => p2_eval - p1_eval,
@@ -89,6 +96,35 @@ fn evaluate_material<const N: usize>(m: &Metadata<N>, pieces: Bitmap<N>) -> Eval
     eval += (pieces & m.flatstones).count_ones() as EvalType * WEIGHT.flatstone;
     eval += (pieces & m.standing_stones).count_ones() as EvalType * WEIGHT.standing_stone;
     eval += (pieces & m.capstones).count_ones() as EvalType * WEIGHT.capstone;
+    eval
+}
+
+fn evaluate_road_groups<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
+    let mut eval = 0;
+
+    // Weight groups by what percentage of the board they cover.
+    const fn size_weights<const N: usize>() -> &'static [EvalType] {
+        macro_rules! w {
+            ($d:literal, [$($i:literal),+]) => {{
+                &[$(WEIGHT.full_width_group * $i / $d),+]
+            }};
+        }
+        match N {
+            3 => w!(3, [1, 2, 3]),
+            4 => w!(4, [1, 2, 3, 4]),
+            5 => w!(5, [1, 2, 3, 4, 5]),
+            6 => w!(6, [1, 2, 3, 4, 5, 6]),
+            7 => w!(7, [1, 2, 3, 4, 5, 6, 7]),
+            8 => w!(8, [1, 2, 3, 4, 5, 6, 7, 8]),
+            _ => unreachable!()
+        }
+    }
+
+    for group in road_pieces.groups() {
+        eval += size_weights::<N>()[group.width() - 1];
+        eval += size_weights::<N>()[group.height() - 1];
+    }
+
     eval
 }
 
