@@ -1,6 +1,6 @@
 use std::fmt;
 
-use tak::{Color, Resolution, State};
+use tak::{Bitmap, Color, Metadata, Resolution, State};
 
 const WIN: EvalType = 100_000;
 const WIN_THRESHOLD: EvalType = 99_000;
@@ -49,7 +49,9 @@ const WEIGHT: Weights = Weights {
 };
 
 pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
-    let next_color = if state.ply_count % 2 == 0 {
+    use Color::*;
+
+    let to_move = if state.ply_count % 2 == 0 {
         Color::White
     } else {
         Color::Black
@@ -58,31 +60,36 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     match state.resolution() {
         None => (),
         Some(Resolution::Road(color)) | Some(Resolution::Flats { color, .. }) => {
-            if color == next_color {
+            if color == to_move {
                 return Evaluation::win() - state.ply_count as i32;
             } else {
                 return Evaluation::lose() + state.ply_count as i32;
             }
         }
-        Some(Resolution::Draw) => return Evaluation::zero(),
+        Some(Resolution::Draw) => return Evaluation::zero() - state.ply_count as i32,
     }
 
     let m = &state.metadata;
 
     let mut p1_eval = Evaluation::zero();
-    p1_eval += (m.p1_pieces & m.flatstones).count_ones() as EvalType * WEIGHT.flatstone;
-    p1_eval += (m.p1_pieces & m.standing_stones).count_ones() as EvalType * WEIGHT.standing_stone;
-    p1_eval += (m.p1_pieces & m.capstones).count_ones() as EvalType * WEIGHT.capstone;
-
     let mut p2_eval = Evaluation::zero();
-    p2_eval += (m.p2_pieces & m.flatstones).count_ones() as EvalType * WEIGHT.flatstone;
-    p2_eval += (m.p2_pieces & m.standing_stones).count_ones() as EvalType * WEIGHT.standing_stone;
-    p2_eval += (m.p2_pieces & m.capstones).count_ones() as EvalType * WEIGHT.capstone;
 
-    match next_color {
-        Color::White => p1_eval - p2_eval,
-        Color::Black => p2_eval - p1_eval,
+    // Material
+    p1_eval += evaluate_material(m, m.p1_pieces);
+    p2_eval += evaluate_material(m, m.p2_pieces);
+
+    match to_move {
+        White => p1_eval - p2_eval,
+        Black => p2_eval - p1_eval,
     }
+}
+
+fn evaluate_material<const N: usize>(m: &Metadata<N>, pieces: Bitmap<N>) -> EvalType {
+    let mut eval = 0;
+    eval += (pieces & m.flatstones).count_ones() as EvalType * WEIGHT.flatstone;
+    eval += (pieces & m.standing_stones).count_ones() as EvalType * WEIGHT.standing_stone;
+    eval += (pieces & m.capstones).count_ones() as EvalType * WEIGHT.capstone;
+    eval
 }
 
 impl From<EvalType> for Evaluation {
@@ -216,5 +223,35 @@ mod ops {
         fn neg(self) -> Self::Output {
             Evaluation(-self.0)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn material() {
+        let state: State<6> = "x6/x4,2,1/x2,2,2C,1,2/x2,2,x,1,1/x5,1/x6 1 6"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            evaluate_material(&state.metadata, state.metadata.p1_pieces),
+            5 * WEIGHT.flatstone,
+        );
+        assert_eq!(
+            evaluate_material(&state.metadata, state.metadata.p2_pieces),
+            4 * WEIGHT.flatstone + 1 * WEIGHT.capstone,
+        );
+
+        let state: State<6> = "x2,21,122,1121S,112S/1S,x,1112,x,2S,x/112C,2S,x,1222221C,2,x/2,x2,1,2121S,x/112,1112111112S,x3,221S/2,2,x2,21,2 1 56".parse().unwrap();
+        assert_eq!(
+            evaluate_material(&state.metadata, state.metadata.p1_pieces),
+            3 * WEIGHT.flatstone + 4 * WEIGHT.standing_stone + 1 * WEIGHT.capstone,
+        );
+        assert_eq!(
+            evaluate_material(&state.metadata, state.metadata.p2_pieces),
+            8 * WEIGHT.flatstone + 4 * WEIGHT.standing_stone + 1 * WEIGHT.capstone,
+        );
     }
 }
