@@ -44,9 +44,9 @@ struct Weights {
 }
 
 const WEIGHT: Weights = Weights {
-    flatstone: 400,
-    standing_stone: 200,
-    capstone: 300,
+    flatstone: 2000,
+    standing_stone: 1000,
+    capstone: 1500,
     full_width_group: -500,
 };
 
@@ -93,9 +93,10 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
 
 fn evaluate_material<const N: usize>(m: &Metadata<N>, pieces: Bitmap<N>) -> EvalType {
     let mut eval = 0;
-    eval += (pieces & m.flatstones).count_ones() as EvalType * WEIGHT.flatstone;
-    eval += (pieces & m.standing_stones).count_ones() as EvalType * WEIGHT.standing_stone;
-    eval += (pieces & m.capstones).count_ones() as EvalType * WEIGHT.capstone;
+    eval += (pieces & m.flatstones).count_ones() as EvalType * WEIGHT.flatstone / N as EvalType;
+    eval += (pieces & m.standing_stones).count_ones() as EvalType * WEIGHT.standing_stone
+        / N as EvalType;
+    eval += (pieces & m.capstones).count_ones() as EvalType * WEIGHT.capstone / N as EvalType;
     eval
 }
 
@@ -116,7 +117,7 @@ fn evaluate_road_groups<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
             6 => w!(6, [1, 2, 3, 4, 5, 6]),
             7 => w!(7, [1, 2, 3, 4, 5, 6, 7]),
             8 => w!(8, [1, 2, 3, 4, 5, 6, 7, 8]),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
