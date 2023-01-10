@@ -1,6 +1,6 @@
 use std::fmt;
 
-use tak::{Bitmap, Color, Metadata, Resolution, State};
+use tak::{edge_masks, Bitmap, Color, Direction, Metadata, Resolution, State};
 
 const WIN: EvalType = 100_000;
 const WIN_THRESHOLD: EvalType = 99_000;
@@ -40,14 +40,16 @@ struct Weights {
     flatstone: EvalType,
     standing_stone: EvalType,
     capstone: EvalType,
-    full_width_group: EvalType,
+    road_group: EvalType,
+    road_slice: EvalType,
 }
 
 const WEIGHT: Weights = Weights {
     flatstone: 2000,
     standing_stone: 1000,
     capstone: 1500,
-    full_width_group: -500,
+    road_group: -500,
+    road_slice: 250,
 };
 
 pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
@@ -82,8 +84,14 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
 
     // Road groups
     let road_pieces = m.flatstones | m.capstones;
-    p1_eval += evaluate_road_groups(road_pieces & m.p1_pieces);
-    p2_eval += evaluate_road_groups(road_pieces & m.p2_pieces);
+    let p1_road_pieces = road_pieces & m.p1_pieces;
+    let p2_road_pieces = road_pieces & m.p2_pieces;
+    p1_eval += evaluate_road_groups(p1_road_pieces);
+    p2_eval += evaluate_road_groups(p2_road_pieces);
+
+    // Road slices
+    p1_eval += evaluate_road_slices(p1_road_pieces);
+    p2_eval += evaluate_road_slices(p2_road_pieces);
 
     match to_move {
         White => p1_eval - p2_eval,
@@ -107,7 +115,7 @@ fn evaluate_road_groups<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
     const fn size_weights<const N: usize>() -> &'static [EvalType] {
         macro_rules! w {
             ($d:literal, [$($i:literal),+]) => {{
-                &[$(WEIGHT.full_width_group * $i / $d),+]
+                &[$(WEIGHT.road_group * $i / $d),+]
             }};
         }
         match N {
@@ -124,6 +132,28 @@ fn evaluate_road_groups<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
     for group in road_pieces.groups() {
         eval += size_weights::<N>()[group.width() - 1];
         eval += size_weights::<N>()[group.height() - 1];
+    }
+
+    eval
+}
+
+fn evaluate_road_slices<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
+    let mut eval = 0;
+
+    let mut row_mask = edge_masks::<N>()[Direction::North as usize];
+    for _ in 0..N {
+        if road_pieces & row_mask != Bitmap::default() {
+            eval += WEIGHT.road_slice / N as EvalType;
+        }
+        row_mask >>= N;
+    }
+
+    let mut column_mask = edge_masks::<N>()[Direction::West as usize];
+    for _ in 0..N {
+        if road_pieces & column_mask != Bitmap::default() {
+            eval += WEIGHT.road_slice / N as EvalType;
+        }
+        column_mask >>= 1;
     }
 
     eval

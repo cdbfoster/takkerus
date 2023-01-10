@@ -126,7 +126,7 @@ impl<const N: usize> Iterator for GroupIter<N> {
     }
 }
 
-pub(crate) const fn board_mask<const N: usize>() -> Bitmap<N> {
+pub const fn board_mask<const N: usize>() -> Bitmap<N> {
     const BOARD_MASKS: [u64; 9] = [
         0,
         0,
@@ -142,7 +142,7 @@ pub(crate) const fn board_mask<const N: usize>() -> Bitmap<N> {
     Bitmap::new(BOARD_MASKS[N])
 }
 
-pub(crate) const fn edge_masks<const N: usize>() -> [Bitmap<N>; 4] {
+pub const fn edge_masks<const N: usize>() -> [Bitmap<N>; 4] {
     const EDGE_MASKS: [[u64; 4]; 9] = [
         [0; 4],
         [0; 4],

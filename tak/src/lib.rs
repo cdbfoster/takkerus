@@ -1,4 +1,4 @@
-pub use self::bitmap::{Bitmap, GroupIter};
+pub use self::bitmap::{board_mask, edge_masks, Bitmap, GroupIter};
 pub use self::metadata::Metadata;
 pub use self::piece::{Color, Piece, PieceType};
 pub use self::ply::{Direction, Ply, PlyError};
