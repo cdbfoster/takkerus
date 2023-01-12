@@ -230,7 +230,7 @@ struct SearchState<'a, const N: usize> {
 #[instrument(level = "trace", skip(search, principal_variation), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
-    state: &mut State<N>, // XXX This could probably be &RefCell<State<N>>, saving us a clone for PlyGenerator.
+    state: &mut State<N>,
     principal_variation: &mut Vec<Ply<N>>,
     depth: usize,
     mut alpha: Evaluation,
@@ -259,6 +259,8 @@ fn minimax<const N: usize>(
     let mut first_iteration = true;
 
     for mut ply in ply_generator {
+        let mut state = state.clone();
+
         match state.execute_ply(ply) {
             Ok(updated_ply) => {
                 if !first_iteration && ply != updated_ply {
@@ -280,25 +282,20 @@ fn minimax<const N: usize>(
 
         let next_eval = if first_iteration {
             // On the first iteration, perform a full-window search.
-            -minimax(search, state, &mut next_pv, depth - 1, -beta, -alpha)
+            -minimax(search, &mut state, &mut next_pv, depth - 1, -beta, -alpha)
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
-            let scout_eval = -minimax(search, state, &mut next_pv, depth - 1, -alpha - 1, -alpha);
+            let scout_eval = -minimax(search, &mut state, &mut next_pv, depth - 1, -alpha - 1, -alpha);
 
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
                 // If we fail high instead, we need to re-search using the full window.
-                -minimax(search, state, &mut next_pv, depth - 1, -beta, -alpha)
+                -minimax(search, &mut state, &mut next_pv, depth - 1, -beta, -alpha)
             } else {
                 scout_eval
             }
         };
-
-        if let Err(error) = state.revert_ply(ply) {
-            error!(?error, state = ?state, ?ply, first_iteration, "Could not revert a ply.");
-            panic!("Could not revert a ply.");
-        }
 
         if next_eval > alpha {
             alpha = next_eval;
