@@ -142,7 +142,7 @@ fn evaluate_road_slices<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
 
     let mut row_mask = edge_masks::<N>()[Direction::North as usize];
     for _ in 0..N {
-        if road_pieces & row_mask != Bitmap::default() {
+        if road_pieces & row_mask != 0.into() {
             eval += WEIGHT.road_slice / N as EvalType;
         }
         row_mask >>= N;
@@ -150,7 +150,7 @@ fn evaluate_road_slices<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
 
     let mut column_mask = edge_masks::<N>()[Direction::West as usize];
     for _ in 0..N {
-        if road_pieces & column_mask != Bitmap::default() {
+        if road_pieces & column_mask != 0.into() {
             eval += WEIGHT.road_slice / N as EvalType;
         }
         column_mask >>= 1;
@@ -304,21 +304,21 @@ mod tests {
             .unwrap();
         assert_eq!(
             evaluate_material(&state.metadata, state.metadata.p1_pieces),
-            5 * WEIGHT.flatstone,
+            5 * WEIGHT.flatstone / 6,
         );
         assert_eq!(
             evaluate_material(&state.metadata, state.metadata.p2_pieces),
-            4 * WEIGHT.flatstone + 1 * WEIGHT.capstone,
+            4 * WEIGHT.flatstone / 6 + 1 * WEIGHT.capstone / 6,
         );
 
         let state: State<6> = "x2,21,122,1121S,112S/1S,x,1112,x,2S,x/112C,2S,x,1222221C,2,x/2,x2,1,2121S,x/112,1112111112S,x3,221S/2,2,x2,21,2 1 56".parse().unwrap();
         assert_eq!(
             evaluate_material(&state.metadata, state.metadata.p1_pieces),
-            3 * WEIGHT.flatstone + 4 * WEIGHT.standing_stone + 1 * WEIGHT.capstone,
+            3 * WEIGHT.flatstone / 6 + 4 * WEIGHT.standing_stone / 6 + 1 * WEIGHT.capstone / 6,
         );
         assert_eq!(
             evaluate_material(&state.metadata, state.metadata.p2_pieces),
-            8 * WEIGHT.flatstone + 4 * WEIGHT.standing_stone + 1 * WEIGHT.capstone,
+            8 * WEIGHT.flatstone / 6 + 4 * WEIGHT.standing_stone / 6 + 1 * WEIGHT.capstone / 6,
         );
     }
 }
