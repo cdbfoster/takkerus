@@ -601,4 +601,49 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn metadata_updates_correctly() {
+        let mut s = state::<5>("12,1,22,121211,2C/x5/x5/x5/x5 1 2");
+        assert_eq!(s.metadata.p1_flat_count, 2);
+        assert_eq!(s.metadata.p2_flat_count, 2);
+
+        s.execute_ply(ply("a4")).unwrap();
+        assert_eq!(s.metadata.p1_flat_count, 3);
+
+        s.execute_ply(ply("Sb4")).unwrap();
+        assert_eq!(s.metadata.p2_flat_count, 2);
+
+        s.execute_ply(ply("5d5<221")).unwrap();
+        assert_eq!(s.metadata.p1_flat_count, 5);
+        assert_eq!(s.metadata.p2_flat_count, 0);
+
+        assert_eq!(
+            s.metadata.p1_stacks,
+            [
+                [0, 0, 0, 0b00000001, 0b00000101],
+                [0, 0, 0, 0, 0b00000101],
+                [0, 0, 0, 0, 0b00001000],
+                [0, 0, 0, 0, 0b00000001],
+                [0; 5],
+            ]
+        );
+
+        assert_eq!(
+            s.metadata.p2_stacks,
+            [
+                [0, 0, 0, 0, 0b00000010],
+                [0, 0, 0, 0b00000001, 0b00000010],
+                [0, 0, 0, 0, 0b00000111],
+                [0; 5],
+                [0, 0, 0, 0, 0b00000001],
+            ]
+        );
+
+        assert_eq!(s.metadata.p1_pieces, 0b1111010000000000000000000.into());
+        assert_eq!(s.metadata.p2_pieces, 0b0000101000000000000000000.into());
+        assert_eq!(s.metadata.flatstones, 0b1111010000000000000000000.into());
+        assert_eq!(s.metadata.standing_stones, 0b0000001000000000000000000.into());
+        assert_eq!(s.metadata.capstones, 0b0000100000000000000000000.into());
+    }
 }
