@@ -42,7 +42,22 @@ impl<const N: usize> Bitmap<N> {
     }
 
     pub fn groups(self) -> GroupIter<N> {
-        GroupIter { bitmap: self }
+        GroupIter {
+            seeds: self,
+            bitmap: self,
+        }
+    }
+
+    pub fn groups_from(self, seeds: Bitmap<N>) -> GroupIter<N> {
+        assert_eq!(
+            seeds & !self,
+            0.into(),
+            "provided seeds are not part of the bitmap"
+        );
+        GroupIter {
+            seeds,
+            bitmap: self,
+        }
     }
 
     pub fn width(self) -> usize {
@@ -91,6 +106,7 @@ impl<const N: usize> From<u64> for Bitmap<N> {
 }
 
 pub struct GroupIter<const N: usize> {
+    seeds: Bitmap<N>,
     bitmap: Bitmap<N>,
 }
 
@@ -98,17 +114,16 @@ impl<const N: usize> Iterator for GroupIter<N> {
     type Item = Bitmap<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if *self.bitmap == 0 {
+        if *self.seeds == 0 {
             return None;
         }
 
-        fn pop_bit<const M: usize>(bitmap: Bitmap<M>) -> (Bitmap<M>, Bitmap<M>) {
+        fn pop_bit<const N: usize>(bitmap: Bitmap<N>) -> Bitmap<N> {
             let remainder = bitmap & (*bitmap - 1);
-            let bit = bitmap & !remainder;
-            (bit, remainder)
+            bitmap & !remainder
         }
 
-        fn flood_fill<const M: usize>(mut seed: Bitmap<M>, mask: Bitmap<M>) -> Bitmap<M> {
+        fn flood_fill<const N: usize>(mut seed: Bitmap<N>, mask: Bitmap<N>) -> Bitmap<N> {
             loop {
                 let next = seed.dilate() & mask;
                 if next == seed {
@@ -118,9 +133,10 @@ impl<const N: usize> Iterator for GroupIter<N> {
             }
         }
 
-        let (bit, remainder) = pop_bit(self.bitmap);
+        let bit = pop_bit(self.seeds);
         let group = flood_fill(bit, self.bitmap);
-        self.bitmap = remainder & !group;
+        self.seeds &= !group;
+        self.bitmap &= !group;
 
         Some(group)
     }

@@ -256,11 +256,16 @@ impl<const N: usize> State<N> {
     }
 
     pub fn resolution(&self) -> Option<Resolution> {
-        fn spans_board<const M: usize>(bitmap: Bitmap<M>) -> bool {
+        fn spans_board<const N: usize>(bitmap: Bitmap<N>) -> bool {
             use Direction::*;
             let edge = edge_masks();
-            // XXX Get groups from only the edge pixels.
-            for group in bitmap.groups() {
+
+            let all_edges = edge[North as usize]
+                | edge[East as usize]
+                | edge[South as usize]
+                | edge[West as usize];
+
+            for group in bitmap.groups_from(bitmap & all_edges) {
                 if (group & edge[North as usize] != 0.into()
                     && group & edge[South as usize] != 0.into())
                     || (group & edge[West as usize] != 0.into()
