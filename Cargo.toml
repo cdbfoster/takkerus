@@ -1,7 +1,9 @@
 [workspace]
-
 members = [
     "analysis",
     "client",
     "tak",
 ]
+
+[profile.release]
+debug = true
