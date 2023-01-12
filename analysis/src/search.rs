@@ -263,8 +263,10 @@ fn minimax<const N: usize>(
 
         use Fallibility::*;
         match fallibility {
-            Fallible => if state.execute_ply(ply).is_err() {
-                continue;
+            Fallible => {
+                if state.execute_ply(ply).is_err() {
+                    continue;
+                }
             }
             Infallible => state.execute_ply_unchecked(ply),
         }
@@ -275,7 +277,14 @@ fn minimax<const N: usize>(
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
-            let scout_eval = -minimax(search, &mut state, &mut next_pv, depth - 1, -alpha - 1, -alpha);
+            let scout_eval = -minimax(
+                search,
+                &mut state,
+                &mut next_pv,
+                depth - 1,
+                -alpha - 1,
+                -alpha,
+            );
 
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
