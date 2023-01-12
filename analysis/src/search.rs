@@ -9,7 +9,7 @@ use tracing::{debug, error, info, instrument, warn};
 use tak::{Ply, State};
 
 use crate::evaluation::{evaluate, Evaluation};
-use crate::ply_generator::PlyGenerator;
+use crate::ply_generator::{Fallibility, PlyGenerator};
 
 #[derive(Debug, Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
@@ -258,26 +258,15 @@ fn minimax<const N: usize>(
 
     let mut first_iteration = true;
 
-    for mut ply in ply_generator {
+    for (fallibility, ply) in ply_generator {
         let mut state = state.clone();
 
-        match state.execute_ply(ply) {
-            Ok(updated_ply) => {
-                if !first_iteration && ply != updated_ply {
-                    // Only warn if this is not the first iteration. The ply generator tries
-                    //the next ply from the previous PV first, which may be wrong at this point.
-                    warn!(?ply, ?updated_ply, "Ply has been updated and played.");
-                }
-                ply = updated_ply;
-            }
-            Err(error) => {
-                if !first_iteration {
-                    // Only warn if this is not the first iteration. The ply generator tries
-                    //the next ply from the previous PV first, which may be wrong at this point.
-                    warn!(?error, ?state, ?ply, "Ply caused an error. Skipping.");
-                }
+        use Fallibility::*;
+        match fallibility {
+            Fallible => if state.execute_ply(ply).is_err() {
                 continue;
             }
+            Infallible => state.execute_ply_unchecked(ply),
         }
 
         let next_eval = if first_iteration {

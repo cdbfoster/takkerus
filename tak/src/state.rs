@@ -184,10 +184,14 @@ impl<const N: usize> State<N> {
         Ok(ply)
     }
 
-    #[instrument(level = "trace", skip(self))]
     pub fn execute_ply(&mut self, mut ply: Ply<N>) -> Result<Ply<N>, StateError> {
         ply = self.validate_ply(ply)?;
+        self.execute_ply_unchecked(ply);
+        Ok(ply)
+    }
 
+    #[instrument(level = "trace", skip(self))]
+    pub fn execute_ply_unchecked(&mut self, ply: Ply<N>) {
         use Color::*;
         use PieceType::*;
 
@@ -249,7 +253,6 @@ impl<const N: usize> State<N> {
         }
 
         self.ply_count += 1;
-        Ok(ply)
     }
 
     pub fn resolution(&self) -> Option<Resolution> {

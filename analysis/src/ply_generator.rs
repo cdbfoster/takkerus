@@ -14,6 +14,12 @@ pub(crate) struct PlyGenerator<const N: usize> {
     operation: Operation,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Fallibility {
+    Fallible,
+    Infallible,
+}
+
 impl<const N: usize> PlyGenerator<N> {
     pub(crate) fn new(state: &State<N>, previous_principal: Option<Ply<N>>) -> Self {
         Self {
@@ -26,16 +32,17 @@ impl<const N: usize> PlyGenerator<N> {
 }
 
 impl<const N: usize> Iterator for PlyGenerator<N> {
-    type Item = Ply<N>;
+    type Item = (Fallibility, Ply<N>);
 
     fn next(&mut self) -> Option<Self::Item> {
+        use Fallibility::*;
         use Operation::*;
 
         if self.operation == PreviousPrincipal {
             self.operation = self.operation.next();
 
             if self.previous_principal.is_some() {
-                return self.previous_principal;
+                return self.previous_principal.map(|p| (Fallible, p));
             }
         }
 
@@ -55,7 +62,7 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
             }
 
             if ply.is_some() {
-                return ply;
+                return ply.map(|p| (Infallible, p));
             } else {
                 self.operation = self.operation.next();
             }
