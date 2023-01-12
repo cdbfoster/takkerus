@@ -2,17 +2,43 @@ use crate::bitmap::Bitmap;
 use crate::piece::{Color, Piece, PieceType};
 use crate::stack::Stack;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Metadata<const N: usize> {
     pub p1_pieces: Bitmap<N>,
     pub p2_pieces: Bitmap<N>,
     pub flatstones: Bitmap<N>,
     pub standing_stones: Bitmap<N>,
     pub capstones: Bitmap<N>,
+    pub p1_flat_count: u8,
+    pub p2_flat_count: u8,
+    pub p1_stacks: [[u8; N]; N],
+    pub p2_stacks: [[u8; N]; N],
+}
+
+impl<const N: usize> Default for Metadata<N> {
+    fn default() -> Self {
+        Self {
+            p1_pieces: 0.into(),
+            p2_pieces: 0.into(),
+            flatstones: 0.into(),
+            standing_stones: 0.into(),
+            capstones: 0.into(),
+            p1_flat_count: 0,
+            p2_flat_count: 0,
+            p1_stacks: [[0; N]; N],
+            p2_stacks: [[0; N]; N],
+        }
+    }
 }
 
 impl<const N: usize> Metadata<N> {
     pub(crate) fn set_stack(&mut self, stack: &Stack, x: usize, y: usize) {
+        if (self.flatstones & self.p1_pieces).get(x, y) {
+            self.p1_flat_count -= 1;
+        } else if (self.flatstones & self.p2_pieces).get(x, y) {
+            self.p2_flat_count -= 1;
+        }
+
         if let Some(piece) = stack.last() {
             if piece.color() == Color::White {
                 self.p1_pieces.set(x, y);
@@ -27,6 +53,10 @@ impl<const N: usize> Metadata<N> {
                     self.flatstones.set(x, y);
                     self.standing_stones.clear(x, y);
                     self.capstones.clear(x, y);
+                    match piece.color() {
+                        Color::White => self.p1_flat_count += 1,
+                        Color::Black => self.p2_flat_count += 1,
+                    }
                 }
                 PieceType::StandingStone => {
                     self.flatstones.clear(x, y);
@@ -46,16 +76,29 @@ impl<const N: usize> Metadata<N> {
             self.standing_stones.clear(x, y);
             self.capstones.clear(x, y);
         }
+
+        let (p1_stack, p2_stack) = stack.get_hash_repr();
+        self.p1_stacks[x][y] = p1_stack;
+        self.p2_stacks[x][y] = p2_stack;
     }
 
     pub(crate) fn place_piece(&mut self, piece: Piece, x: usize, y: usize) {
-        match piece.color() {
-            Color::White => self.p1_pieces.set(x, y),
-            Color::Black => self.p2_pieces.set(x, y),
+        if piece.color() == Color::White {
+            self.p1_pieces.set(x, y);
+            self.p1_stacks[x][y] = 1;
+        } else {
+            self.p2_pieces.set(x, y);
+            self.p2_stacks[x][y] = 1;
         }
 
         match piece.piece_type() {
-            PieceType::Flatstone => self.flatstones.set(x, y),
+            PieceType::Flatstone => {
+                self.flatstones.set(x, y);
+                match piece.color() {
+                    Color::White => self.p1_flat_count += 1,
+                    Color::Black => self.p2_flat_count += 1,
+                }
+            }
             PieceType::StandingStone => self.standing_stones.set(x, y),
             PieceType::Capstone => self.capstones.set(x, y),
         }

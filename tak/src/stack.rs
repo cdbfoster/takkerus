@@ -129,6 +129,15 @@ impl Stack {
             i_bottom: 0,
         }
     }
+
+    /// Returns the positions of the top 8 pieces of the stack for each color.
+    pub(crate) fn get_hash_repr(&self) -> (u8, u8) {
+        let mask = 0xFF >> (8 - self.height.min(8));
+        let stack_segment = ((self.bitmap >> (self.height.max(8) - 8)) & mask) as u8;
+        let p1 = !stack_segment & mask as u8;
+        let p2 = stack_segment;
+        (p1, p2)
+    }
 }
 
 impl fmt::Debug for Stack {
@@ -180,5 +189,34 @@ impl<'a> DoubleEndedIterator for StackIter<'a> {
             self.i_bottom += 1;
             self.stack.get(self.i_bottom - 1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_hash_repr() {
+        let stack = Stack {
+            bitmap: 0b011010,
+            height: 6,
+            top_piece: Some(Piece::new(PieceType::Flatstone, Color::White)),
+        };
+        assert_eq!(stack.get_hash_repr(), (0b100101, 0b11010));
+
+        let stack = Stack {
+            bitmap: 0b01101001101,
+            height: 11,
+            top_piece: Some(Piece::new(PieceType::Flatstone, Color::White)),
+        };
+        assert_eq!(stack.get_hash_repr(), (0b10010110, 0b1101001));
+
+        let stack = Stack {
+            bitmap: 0,
+            height: 0,
+            top_piece: None,
+        };
+        assert_eq!(stack.get_hash_repr(), (0, 0));
     }
 }

@@ -299,21 +299,21 @@ impl<const N: usize> State<N> {
             || (self.p2_flatstones + self.p2_capstones) == 0
             || (m.p1_pieces | m.p2_pieces) == board_mask()
         {
-            let p1_flatstone_count = (m.p1_pieces & m.flatstones).count_ones() as i8;
-            let p2_flatstone_count = (m.p2_pieces & m.flatstones).count_ones() as i8;
+            let p1_flat_count = m.p1_flat_count as i8;
+            let p2_flat_count = m.p2_flat_count as i8;
 
-            let p1_score = 2 * p1_flatstone_count;
-            let p2_score = 2 * p2_flatstone_count + self.komi.as_half_komi();
+            let p1_score = 2 * p1_flat_count;
+            let p2_score = 2 * p2_flat_count + self.komi.as_half_komi();
 
             let resolution = match p1_score.cmp(&p2_score) {
                 Greater => Resolution::Flats {
                     color: Color::White,
-                    spread: p1_flatstone_count - p2_flatstone_count,
+                    spread: p1_flat_count - p2_flat_count,
                     komi: -self.komi,
                 },
                 Less => Resolution::Flats {
                     color: Color::Black,
-                    spread: p2_flatstone_count - p1_flatstone_count,
+                    spread: p2_flat_count - p1_flat_count,
                     komi: self.komi,
                 },
                 Equal => Resolution::Draw,
@@ -329,8 +329,9 @@ impl<const N: usize> State<N> {
         self.metadata = Default::default();
         for x in 0..N {
             for y in 0..N {
-                if let Some(piece) = self.board[x][y].last() {
-                    self.metadata.place_piece(piece, x, y);
+                let stack = &self.board[x][y];
+                if !stack.is_empty() {
+                    self.metadata.set_stack(stack, x, y);
                 }
             }
         }
