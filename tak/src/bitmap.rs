@@ -62,22 +62,24 @@ impl<const N: usize> Bitmap<N> {
 
     pub fn width(self) -> usize {
         let mut row_mask = edge_masks::<N>()[Direction::North as usize];
-        let mut row_population = 0;
-        for _ in 0..N {
-            row_population = row_population.max((self & row_mask).count_ones() as usize);
+        let mut row_aggregate = Bitmap::default();
+        for i in 0..N {
+            let row = self & row_mask;
+            row_aggregate |= row << (i * N);
             row_mask >>= N;
         }
-        row_population
+        row_aggregate.count_ones() as usize
     }
 
     pub fn height(self) -> usize {
         let mut column_mask = edge_masks::<N>()[Direction::West as usize];
-        let mut column_population = 0;
-        for _ in 0..N {
-            column_population = column_population.max((self & column_mask).count_ones() as usize);
+        let mut column_aggregate = Bitmap::default();
+        for i in 0..N {
+            let column = self & column_mask;
+            column_aggregate |= column << i;
             column_mask >>= 1;
         }
-        column_population
+        column_aggregate.count_ones() as usize
     }
 }
 
