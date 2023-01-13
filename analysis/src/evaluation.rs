@@ -42,6 +42,8 @@ struct Weights {
     capstone: EvalType,
     road_group: EvalType,
     road_slice: EvalType,
+    hard_flat: EvalType,
+    soft_flat: EvalType,
 }
 
 const WEIGHT: Weights = Weights {
@@ -50,6 +52,8 @@ const WEIGHT: Weights = Weights {
     capstone: 1500,
     road_group: -500,
     road_slice: 250,
+    hard_flat: 500,
+    soft_flat: -250,
 };
 
 pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
@@ -92,6 +96,10 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     // Road slices
     p1_eval += evaluate_road_slices(p1_road_pieces);
     p2_eval += evaluate_road_slices(p2_road_pieces);
+
+    // Captured flats
+    p1_eval += evaluate_captured_flats(m.p1_pieces, &m.p1_stacks, &m.p2_stacks);
+    p2_eval += evaluate_captured_flats(m.p2_pieces, &m.p2_stacks, &m.p1_stacks);
 
     match to_move {
         White => p1_eval - p2_eval,
@@ -157,6 +165,31 @@ fn evaluate_road_slices<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
     }
 
     eval
+}
+
+fn evaluate_captured_flats<const N: usize>(
+    mut pieces: Bitmap<N>,
+    player_stacks: &[[u8; N]; N],
+    opponent_stacks: &[[u8; N]; N],
+) -> EvalType {
+    let mut hard_flats = 0;
+    let mut soft_flats = 0;
+
+    for y in 0..N {
+        for x in (0..N).rev() {
+            if pieces & 0x01 == 1.into() {
+                let player_stack = player_stacks[x][y];
+                let opponent_stack = opponent_stacks[x][y];
+
+                hard_flats += player_stack.count_ones() as u8 - 1;
+                soft_flats += opponent_stack.count_ones() as u8;
+            }
+            pieces >>= 1;
+        }
+    }
+
+    hard_flats as EvalType * WEIGHT.hard_flat / N as EvalType
+        + soft_flats as EvalType * WEIGHT.soft_flat / N as EvalType
 }
 
 impl From<EvalType> for Evaluation {

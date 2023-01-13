@@ -643,7 +643,10 @@ mod tests {
         assert_eq!(s.metadata.p1_pieces, 0b1111010000000000000000000.into());
         assert_eq!(s.metadata.p2_pieces, 0b0000101000000000000000000.into());
         assert_eq!(s.metadata.flatstones, 0b1111010000000000000000000.into());
-        assert_eq!(s.metadata.standing_stones, 0b0000001000000000000000000.into());
+        assert_eq!(
+            s.metadata.standing_stones,
+            0b0000001000000000000000000.into()
+        );
         assert_eq!(s.metadata.capstones, 0b0000100000000000000000000.into());
     }
 }
