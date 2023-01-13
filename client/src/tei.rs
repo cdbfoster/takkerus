@@ -112,12 +112,12 @@ async fn listen_spawner(ai: Ai) {
     }
 }
 
-static PERSISTENT_STATE_3: Lazy<Mutex<PersistentState<3>>> = Lazy::new(Default::default);
-static PERSISTENT_STATE_4: Lazy<Mutex<PersistentState<4>>> = Lazy::new(Default::default);
-static PERSISTENT_STATE_5: Lazy<Mutex<PersistentState<5>>> = Lazy::new(Default::default);
-static PERSISTENT_STATE_6: Lazy<Mutex<PersistentState<6>>> = Lazy::new(Default::default);
-static PERSISTENT_STATE_7: Lazy<Mutex<PersistentState<7>>> = Lazy::new(Default::default);
-static PERSISTENT_STATE_8: Lazy<Mutex<PersistentState<8>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_3S: Lazy<Mutex<PersistentState<3>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_4S: Lazy<Mutex<PersistentState<4>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_5S: Lazy<Mutex<PersistentState<5>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_6S: Lazy<Mutex<PersistentState<6>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_7S: Lazy<Mutex<PersistentState<7>>> = Lazy::new(Default::default);
+static PERSISTENT_STATE_8S: Lazy<Mutex<PersistentState<8>>> = Lazy::new(Default::default);
 
 fn clear_persistent_state(size: usize) {
     fn sized<const N: usize>(persistent_state: &'static Mutex<PersistentState<N>>) {
@@ -126,12 +126,12 @@ fn clear_persistent_state(size: usize) {
     }
 
     match size {
-        3 => sized(&PERSISTENT_STATE_3),
-        4 => sized(&PERSISTENT_STATE_4),
-        5 => sized(&PERSISTENT_STATE_5),
-        6 => sized(&PERSISTENT_STATE_6),
-        7 => sized(&PERSISTENT_STATE_7),
-        8 => sized(&PERSISTENT_STATE_8),
+        3 => sized(&PERSISTENT_STATE_3S),
+        4 => sized(&PERSISTENT_STATE_4S),
+        5 => sized(&PERSISTENT_STATE_5S),
+        6 => sized(&PERSISTENT_STATE_6S),
+        7 => sized(&PERSISTENT_STATE_7S),
+        8 => sized(&PERSISTENT_STATE_8S),
         _ => unreachable!(),
     }
 }
@@ -180,12 +180,12 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
     }
 
     match size {
-        3 => sized(game, ai, &PERSISTENT_STATE_3).await,
-        4 => sized(game, ai, &PERSISTENT_STATE_4).await,
-        5 => sized(game, ai, &PERSISTENT_STATE_5).await,
-        6 => sized(game, ai, &PERSISTENT_STATE_6).await,
-        7 => sized(game, ai, &PERSISTENT_STATE_7).await,
-        8 => sized(game, ai, &PERSISTENT_STATE_8).await,
+        3 => sized(game, ai, &PERSISTENT_STATE_3S).await,
+        4 => sized(game, ai, &PERSISTENT_STATE_4S).await,
+        5 => sized(game, ai, &PERSISTENT_STATE_5S).await,
+        6 => sized(game, ai, &PERSISTENT_STATE_6S).await,
+        7 => sized(game, ai, &PERSISTENT_STATE_7S).await,
+        8 => sized(game, ai, &PERSISTENT_STATE_8S).await,
         _ => unreachable!(),
     }
 }
