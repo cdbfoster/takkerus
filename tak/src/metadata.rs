@@ -104,3 +104,43 @@ impl<const N: usize> Metadata<N> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn print_size() {
+        for n in 3..=8 {
+            let (size, alignment) = match n {
+                3 => (
+                    std::mem::size_of::<Metadata<3>>(),
+                    std::mem::align_of::<Metadata<3>>(),
+                ),
+                4 => (
+                    std::mem::size_of::<Metadata<4>>(),
+                    std::mem::align_of::<Metadata<4>>(),
+                ),
+                5 => (
+                    std::mem::size_of::<Metadata<5>>(),
+                    std::mem::align_of::<Metadata<5>>(),
+                ),
+                6 => (
+                    std::mem::size_of::<Metadata<6>>(),
+                    std::mem::align_of::<Metadata<6>>(),
+                ),
+                7 => (
+                    std::mem::size_of::<Metadata<7>>(),
+                    std::mem::align_of::<Metadata<7>>(),
+                ),
+                8 => (
+                    std::mem::size_of::<Metadata<8>>(),
+                    std::mem::align_of::<Metadata<8>>(),
+                ),
+                _ => unreachable!(),
+            };
+
+            println!("Metadata<{n}>: {size} bytes, {alignment} byte alignment");
+        }
+    }
+}

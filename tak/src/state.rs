@@ -49,7 +49,7 @@ impl<const N: usize> Default for State<N> {
             board: [[Stack::default(); N]; N],
             ply_count: 0,
             komi: Komi::default(),
-            metadata: Default::default(),
+            metadata: Metadata::default(),
         }
     }
 }
@@ -521,6 +521,41 @@ impl Neg for Komi {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn print_size() {
+        for n in 3..=8 {
+            let (size, alignment) = match n {
+                3 => (
+                    std::mem::size_of::<State<3>>(),
+                    std::mem::align_of::<State<3>>(),
+                ),
+                4 => (
+                    std::mem::size_of::<State<4>>(),
+                    std::mem::align_of::<State<4>>(),
+                ),
+                5 => (
+                    std::mem::size_of::<State<5>>(),
+                    std::mem::align_of::<State<5>>(),
+                ),
+                6 => (
+                    std::mem::size_of::<State<6>>(),
+                    std::mem::align_of::<State<6>>(),
+                ),
+                7 => (
+                    std::mem::size_of::<State<7>>(),
+                    std::mem::align_of::<State<7>>(),
+                ),
+                8 => (
+                    std::mem::size_of::<State<8>>(),
+                    std::mem::align_of::<State<8>>(),
+                ),
+                _ => unreachable!(),
+            };
+
+            println!("State<{n}>: {size} bytes, {alignment} byte alignment");
+        }
+    }
 
     fn state<const N: usize>(tps: &str) -> State<N> {
         tps.parse().unwrap()
