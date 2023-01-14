@@ -6,6 +6,9 @@ pub use self::ptn::{PtnError, PtnGame, PtnHeader, PtnMove, PtnPly, PtnTurn};
 pub use self::stack::{Stack, StackIter};
 pub use self::state::{Komi, Resolution, State, StateError};
 pub use self::tps::{Tps, TpsError};
+pub use self::zobrist::{
+    zobrist_advance_move, zobrist_hash_stack, zobrist_hash_state, ZobristHash,
+};
 
 mod bitmap;
 mod metadata;
@@ -15,3 +18,4 @@ mod ptn;
 mod stack;
 mod state;
 mod tps;
+mod zobrist;

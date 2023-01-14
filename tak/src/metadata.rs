@@ -1,6 +1,7 @@
 use crate::bitmap::Bitmap;
 use crate::piece::{Color, Piece, PieceType};
 use crate::stack::Stack;
+use crate::zobrist::ZobristHash;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Metadata<const N: usize> {
@@ -13,6 +14,7 @@ pub struct Metadata<const N: usize> {
     pub p2_flat_count: u8,
     pub p1_stacks: [[u8; N]; N],
     pub p2_stacks: [[u8; N]; N],
+    pub hash: ZobristHash,
 }
 
 impl<const N: usize> Default for Metadata<N> {
@@ -27,6 +29,7 @@ impl<const N: usize> Default for Metadata<N> {
             p2_flat_count: 0,
             p1_stacks: [[0; N]; N],
             p2_stacks: [[0; N]; N],
+            hash: 0,
         }
     }
 }
