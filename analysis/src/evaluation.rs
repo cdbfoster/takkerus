@@ -1,6 +1,6 @@
 use std::fmt;
 
-use tak::{edge_masks, Bitmap, Color, Direction, Metadata, Resolution, State};
+use tak::{edge_masks, Bitmap, Color, Direction, Metadata, Resolution, Stack, State};
 
 const WIN: EvalType = 100_000;
 const WIN_THRESHOLD: EvalType = 99_000;

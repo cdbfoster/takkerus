@@ -13,10 +13,10 @@ struct ZobristKeys<const N: usize> {
     black_to_move: ZobristHash,
     /// 6 possible top pieces.
     top_pieces: [[[ZobristHash; 6]; N]; N],
-    /// All possible arrangements of white pieces in the top 8 pieces of a stack.
-    white_stack_maps: [[[ZobristHash; 256]; N]; N],
-    /// All possible arrangements of black pieces in the top 8 pieces of a stack.
-    black_stack_maps: [[[ZobristHash; 256]; N]; N],
+    /// All possible arrangements of pieces in the top 8 pieces of a stack.
+    stack_pieces: [[[ZobristHash; 256]; N]; N],
+    /// All possible stack heights in 8s.
+    stack_heights: [[[ZobristHash; 101]; N]; N],
 }
 
 impl<const N: usize> ZobristKeys<N> {
@@ -32,8 +32,8 @@ impl<const N: usize> Default for ZobristKeys<N> {
         Self {
             black_to_move: 0,
             top_pieces: [[[0; 6]; N]; N],
-            white_stack_maps: [[[0; 256]; N]; N],
-            black_stack_maps: [[[0; 256]; N]; N],
+            stack_pieces: [[[0; 256]; N]; N],
+            stack_heights: [[[0; 101]; N]; N],
         }
     }
 }
@@ -118,10 +118,12 @@ fn zobrist_hash_stack_sized<const N: usize>(
 ) -> ZobristHash {
     let mut hash = 0;
 
-    if let Some(top_piece) = state.board[x][y].last() {
+    let stack = state.board[x][y];
+
+    if let Some(top_piece) = stack.last() {
         hash ^= keys.top_pieces[x][y][piece_index(top_piece)];
-        hash ^= keys.white_stack_maps[x][y][state.metadata.p1_stacks[x][y] as usize];
-        hash ^= keys.black_stack_maps[x][y][state.metadata.p2_stacks[x][y] as usize];
+        hash ^= keys.stack_heights[x][y][stack.len()];
+        hash ^= keys.stack_pieces[x][y][state.metadata.p2_stacks[x][y] as usize];
     }
 
     hash
