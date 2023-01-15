@@ -2,27 +2,26 @@ use std::fmt;
 
 use crate::piece::{Color, Piece, PieceType};
 
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
-pub struct Stack {
-    bitmap: u64,
-    height: u8,
-    top_piece: Option<Piece>,
+type Bitmap = u64;
+
+const MAX_STACK_HEIGHT: usize = Bitmap::BITS as usize - 4;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Stack(Bitmap);
+
+impl Default for Stack {
+    fn default() -> Self {
+        Self(0b1000)
+    }
 }
 
 impl Stack {
     pub fn from_piece(piece: Piece) -> Self {
-        Self {
-            bitmap: match piece.color() {
-                Color::White => 0,
-                Color::Black => 1,
-            },
-            height: 1,
-            top_piece: Some(piece),
-        }
+        Self(0b10000 | (piece.piece_type() as Bitmap >> 3) | (piece.color() as Bitmap - 1))
     }
 
     pub fn len(&self) -> usize {
-        self.height as usize
+        MAX_STACK_HEIGHT - self.0.leading_zeros() as usize
     }
 
     pub fn is_empty(&self) -> bool {
@@ -30,7 +29,11 @@ impl Stack {
     }
 
     pub fn last(&self) -> Option<Piece> {
-        self.top_piece
+        if self.is_empty() {
+            None
+        } else {
+            self.get(self.len() - 1)
+        }
     }
 
     pub fn last_piece_type(&self) -> Option<PieceType> {
@@ -43,22 +46,34 @@ impl Stack {
 
     pub fn get(&self, index: usize) -> Option<Piece> {
         if index >= self.len() {
-            None
-        } else if index == self.len() - 1 {
-            self.top_piece
-        } else if ((self.bitmap >> index) & 0x01) == 0 {
-            Some(Piece::new(PieceType::Flatstone, Color::White))
+            return None;
+        }
+
+        let piece_type = if index == self.len() - 1 {
+            (((self.0 >> self.len()) as u8 & 0x07) << 4)
+                .try_into()
+                .unwrap()
         } else {
-            Some(Piece::new(PieceType::Flatstone, Color::Black))
+            PieceType::Flatstone
+        };
+
+        if ((self.0 >> index) & 0x01) == 0 {
+            Some(Piece::new(piece_type, Color::White))
+        } else {
+            Some(Piece::new(piece_type, Color::Black))
         }
     }
 
     pub fn add(&mut self, stack: Self) {
-        assert!(self.height + stack.height <= 64, "exceeded stack limit");
-        if stack.height > 0 {
-            self.bitmap |= stack.bitmap << self.height;
-            self.height += stack.height;
-            self.top_piece = stack.top_piece;
+        assert!(
+            self.len() + stack.len() <= MAX_STACK_HEIGHT,
+            "exceeded stack limit"
+        );
+        if !stack.is_empty() {
+            let old_len = self.len();
+            let mask = Bitmap::MAX << old_len;
+            self.0 &= !mask;
+            self.0 |= stack.0 << old_len;
         }
     }
 
@@ -67,58 +82,35 @@ impl Stack {
     }
 
     pub fn take(&mut self, count: usize) -> Self {
-        assert!(count > 0 && count <= self.height as usize);
+        assert!(count > 0 && count <= self.len());
 
-        let remaining = self.height as usize - count;
-        let carry_stack = Self {
-            bitmap: self.bitmap >> remaining,
-            height: count as u8,
-            top_piece: self.top_piece,
-        };
+        let remaining = self.len() - count;
+        let carry_stack = Self(self.0 >> remaining);
 
-        let mask = 0xFFFFFFFFFFFFFFFFu64 << remaining;
-        self.bitmap &= !mask;
-        self.height = remaining as u8;
-        self.top_piece = (remaining > 0).then(|| {
-            Piece::new(
-                PieceType::Flatstone,
-                if self.bitmap >> (remaining - 1) == 0 {
-                    Color::White
-                } else {
-                    Color::Black
-                },
-            )
-        });
+        if remaining > 0 {
+            let mask = Bitmap::MAX << remaining;
+            self.0 &= !mask;
+            self.0 |= (0b1001 as Bitmap) << remaining;
+        } else {
+            *self = Self::default();
+        }
 
         carry_stack
     }
 
     pub fn drop(&mut self, count: usize) -> Self {
-        assert!(count > 0 && count <= self.height as usize);
+        assert!(count > 0 && count <= self.len());
 
-        let mask = 0xFFFFFFFFFFFFFFFFu64 << count;
-        let drop_stack = Self {
-            bitmap: self.bitmap & !mask,
-            height: count as u8,
-            top_piece: if count == self.height as usize {
-                self.top_piece
-            } else {
-                Some(Piece::new(
-                    PieceType::Flatstone,
-                    if ((self.bitmap >> (count - 1)) & 0x01) == 0 {
-                        Color::White
-                    } else {
-                        Color::Black
-                    },
-                ))
-            },
-        };
-
-        self.bitmap >>= count;
-        self.height -= count as u8;
-        self.top_piece = self.top_piece.filter(|_| self.height > 0);
-
-        drop_stack
+        if count < self.len() {
+            let mask = Bitmap::MAX << count;
+            let drop_stack = Self((self.0 & !mask) | ((0b1001 as Bitmap) << count));
+            self.0 >>= count;
+            drop_stack
+        } else {
+            let drop_stack = *self;
+            *self = Self::default();
+            drop_stack
+        }
     }
 
     /// Returns an iterator over the pieces in the stack from top to bottom.
@@ -132,9 +124,10 @@ impl Stack {
 
     /// Returns the positions of the top 8 pieces of the stack for each color.
     pub(crate) fn get_hash_repr(&self) -> (u8, u8) {
-        if self.height > 0 {
-            let stack_segment = (self.bitmap >> (self.height.max(8) - 8)) as u8;
-            let p1 = !stack_segment & (0xFF >> (8 - self.height.min(8)));
+        if !self.is_empty() {
+            let mask = 0xFFu8 >> (8 - self.len().min(8));
+            let stack_segment = (self.0 >> (self.len().max(8) - 8)) as u8 & mask;
+            let p1 = !stack_segment & mask;
             let p2 = stack_segment;
             (p1, p2)
         } else {
@@ -201,25 +194,13 @@ mod tests {
 
     #[test]
     fn get_hash_repr() {
-        let stack = Stack {
-            bitmap: 0b011010,
-            height: 6,
-            top_piece: Some(Piece::new(PieceType::Flatstone, Color::White)),
-        };
+        let stack = Stack(0b1001011010);
         assert_eq!(stack.get_hash_repr(), (0b100101, 0b11010));
 
-        let stack = Stack {
-            bitmap: 0b01101001101,
-            height: 11,
-            top_piece: Some(Piece::new(PieceType::Flatstone, Color::White)),
-        };
+        let stack = Stack(0b100101101001101);
         assert_eq!(stack.get_hash_repr(), (0b10010110, 0b1101001));
 
-        let stack = Stack {
-            bitmap: 0,
-            height: 0,
-            top_piece: None,
-        };
+        let stack = Stack(0b1000);
         assert_eq!(stack.get_hash_repr(), (0, 0));
     }
 }
