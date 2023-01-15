@@ -2,7 +2,11 @@ use std::fmt;
 
 use crate::piece::{Color, Piece, PieceType};
 
-type Bitmap = u64;
+#[cfg(not(feature = "deep-stacks"))]
+type Bitmap = u32;
+
+#[cfg(feature = "deep-stacks")]
+type Bitmap = u128;
 
 const MAX_STACK_HEIGHT: usize = Bitmap::BITS as usize - 4;
 
@@ -67,7 +71,7 @@ impl Stack {
     pub fn add(&mut self, stack: Self) {
         assert!(
             self.len() + stack.len() <= MAX_STACK_HEIGHT,
-            "exceeded stack limit"
+            "exceeded stack limit, compile with \"deep-stacks\" feature to support this"
         );
         if !stack.is_empty() {
             let old_len = self.len();

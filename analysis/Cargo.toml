@@ -4,6 +4,9 @@ version = "0.1.0"
 license = "GPL-3.0-or-later"
 edition = "2021"
 
+[features]
+deep-stacks = ["tak/deep-stacks"]
+
 [dependencies]
 once_cell = "1.16"
 rand = "0.8"
