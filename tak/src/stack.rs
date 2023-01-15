@@ -132,10 +132,14 @@ impl Stack {
 
     /// Returns the positions of the top 8 pieces of the stack for each color.
     pub(crate) fn get_hash_repr(&self) -> (u8, u8) {
-        let stack_segment = (self.bitmap >> (self.height.max(8) - 8)) as u8;
-        let p1 = !stack_segment & (0xFF >> (8 - self.height.min(8)));
-        let p2 = stack_segment;
-        (p1, p2)
+        if self.height > 0 {
+            let stack_segment = (self.bitmap >> (self.height.max(8) - 8)) as u8;
+            let p1 = !stack_segment & (0xFF >> (8 - self.height.min(8)));
+            let p2 = stack_segment;
+            (p1, p2)
+        } else {
+            (0x00, 0x00)
+        }
     }
 }
 
