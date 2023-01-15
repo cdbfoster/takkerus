@@ -177,7 +177,7 @@ pub const fn edge_masks<const N: usize>() -> [Bitmap<N>; 4] {
         ],
         [
             0xFF00000000000000,
-            0x1111111111111111,
+            0x0101010101010101,
             0x00000000000000FF,
             0x8080808080808080,
         ],
@@ -462,5 +462,48 @@ mod tests {
     fn height() {
         let b = Bitmap::<5>::new(0b0000001100011100100001000);
         assert_eq!(b.height(), 4);
+    }
+
+    #[test]
+    fn edge_masks_are_correct() {
+        fn all_edges<const N: usize>() -> Bitmap<N> {
+            use Direction::*;
+            let edges = edge_masks();
+            edges[North as usize]
+                | edges[East as usize]
+                | edges[South as usize]
+                | edges[West as usize]
+        }
+
+        assert_eq!(
+            format!("{:?}", all_edges::<3>()),
+            "111/101/111",
+            "3s is wrong"
+        );
+        assert_eq!(
+            format!("{:?}", all_edges::<4>()),
+            "1111/1001/1001/1111",
+            "4s is wrong"
+        );
+        assert_eq!(
+            format!("{:?}", all_edges::<5>()),
+            "11111/10001/10001/10001/11111",
+            "5s is wrong"
+        );
+        assert_eq!(
+            format!("{:?}", all_edges::<6>()),
+            "111111/100001/100001/100001/100001/111111",
+            "6s is wrong"
+        );
+        assert_eq!(
+            format!("{:?}", all_edges::<7>()),
+            "1111111/1000001/1000001/1000001/1000001/1000001/1111111",
+            "7s is wrong"
+        );
+        assert_eq!(
+            format!("{:?}", all_edges::<8>()),
+            "11111111/10000001/10000001/10000001/10000001/10000001/10000001/11111111",
+            "8s is wrong"
+        );
     }
 }
