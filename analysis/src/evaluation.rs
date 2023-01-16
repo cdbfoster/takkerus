@@ -9,27 +9,13 @@ const WIN_THRESHOLD: EvalType = 99_000;
 pub struct Evaluation(EvalType);
 
 impl Evaluation {
-    pub fn zero() -> Self {
-        0.into()
-    }
+    pub const ZERO: Self = Self(0);
+    pub const MAX: Self = Self(EvalType::MAX - 1);
+    pub const MIN: Self = Self(EvalType::MIN + 1);
+    pub const WIN: Self = Self(WIN);
+    pub const LOSE: Self = Self(-WIN);
 
-    pub fn win() -> Self {
-        WIN.into()
-    }
-
-    pub fn lose() -> Self {
-        -Self::win()
-    }
-
-    pub fn max() -> Self {
-        Self(EvalType::MAX - 1)
-    }
-
-    pub fn min() -> Self {
-        Self(EvalType::MIN + 1)
-    }
-
-    pub fn is_win(self) -> bool {
+    pub fn is_terminal(self) -> bool {
         self.0.abs() > WIN_THRESHOLD
     }
 }
@@ -69,18 +55,18 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
         None => (),
         Some(Resolution::Road(color)) | Some(Resolution::Flats { color, .. }) => {
             if color == to_move {
-                return Evaluation::win() - state.ply_count as i32;
+                return Evaluation::WIN - state.ply_count as i32;
             } else {
-                return Evaluation::lose() + state.ply_count as i32;
+                return Evaluation::LOSE + state.ply_count as i32;
             }
         }
-        Some(Resolution::Draw) => return Evaluation::zero() - state.ply_count as i32,
+        Some(Resolution::Draw) => return Evaluation::ZERO - state.ply_count as i32,
     }
 
     let m = &state.metadata;
 
-    let mut p1_eval = Evaluation::zero();
-    let mut p2_eval = Evaluation::zero();
+    let mut p1_eval = Evaluation::ZERO;
+    let mut p2_eval = Evaluation::ZERO;
 
     // Material
     p1_eval += evaluate_material(m, m.p1_pieces);

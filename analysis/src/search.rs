@@ -108,7 +108,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
     let mut analyzed_depth = 0;
     let mut state = state.clone();
-    let mut evaluation = Evaluation::zero();
+    let mut evaluation = Evaluation::ZERO;
 
     let mut branching_factors = Vec::with_capacity(max_depth.min(15));
     let mut previous_stats = Statistics::default();
@@ -129,8 +129,8 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             &mut state,
             &mut principal_variation,
             depth,
-            Evaluation::min(),
-            Evaluation::max(),
+            Evaluation::MIN,
+            Evaluation::MAX,
         );
 
         analyzed_depth = depth as u32;
@@ -174,7 +174,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             "Search:",
         );
 
-        if evaluation.is_win() {
+        if evaluation.is_terminal() {
             info!("Tinuë found. Stopping.");
             break;
         }
