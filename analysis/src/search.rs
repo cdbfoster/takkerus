@@ -10,6 +10,7 @@ use tak::{Ply, State};
 
 use crate::evaluation::{evaluate, Evaluation};
 use crate::ply_generator::{Fallibility, PlyGenerator};
+use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 
 #[derive(Debug, Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
@@ -24,8 +25,18 @@ pub struct AnalysisConfig<'a, const N: usize> {
     pub persistent_state: Option<&'a mut PersistentState<N>>,
 }
 
-#[derive(Debug, Default)]
-pub struct PersistentState<const N: usize>;
+#[derive(Debug)]
+pub struct PersistentState<const N: usize> {
+    transposition_table: TranspositionTable<N>,
+}
+
+impl<const N: usize> Default for PersistentState<N> {
+    fn default() -> Self {
+        Self {
+            transposition_table: TranspositionTable::with_capacity(10_000_000),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Analysis<const N: usize> {
@@ -45,6 +56,10 @@ pub struct Statistics {
     pub scouted: u64,
     pub re_searched: u64,
     pub beta_cutoff: u64,
+    pub tt_stores: u64,
+    pub tt_store_fails: u64,
+    pub tt_hits: u64,
+    pub tt_saves: u64,
 }
 
 impl Add for &Statistics {
@@ -58,6 +73,10 @@ impl Add for &Statistics {
             scouted: self.scouted + other.scouted,
             re_searched: self.re_searched + other.re_searched,
             beta_cutoff: self.beta_cutoff + other.beta_cutoff,
+            tt_stores: self.tt_stores + other.tt_stores,
+            tt_store_fails: self.tt_store_fails + other.tt_store_fails,
+            tt_hits: self.tt_hits + other.tt_hits,
+            tt_saves: self.tt_saves + other.tt_saves,
         }
     }
 }
@@ -136,6 +155,13 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         analyzed_depth = depth as u32;
         total_stats += &search.stats;
 
+        fetch_pv(
+            &state,
+            &search.persistent_state.transposition_table,
+            analyzed_depth as usize,
+            &mut principal_variation,
+        );
+
         let total_time = total_start_time.elapsed();
         let depth_time = depth_start_time.elapsed();
 
@@ -164,13 +190,17 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             scouted = search.stats.scouted,
             re_searched = search.stats.re_searched,
             beta_cutoff = search.stats.beta_cutoff,
+            tt_stores = search.stats.tt_stores,
+            tt_store_fails = search.stats.tt_store_fails,
+            tt_hits = search.stats.tt_hits,
+            tt_saves = search.stats.tt_saves,
             "Stats:",
         );
 
         debug!(
             branch = %format!("{:.2}", branching_factor),
             avg_branch = %format!("{:.2}", average_branching_factor),
-            rate = %format!("{}nodes/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
+            rate = %format!("{} nodes/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
             "Search:",
         );
 
@@ -198,13 +228,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         previous_stats = search.stats.clone();
     }
 
-    for ply in &principal_variation {
-        if let Err(error) = state.execute_ply(*ply) {
-            error!(?error, "Principal variation ply caused an error. Skipping");
-            continue;
-        }
-    }
-
     // If we started a timer, stop it.
     if let Some(cancel_timer) = cancel_timer {
         cancel_timer.store(true, Ordering::Relaxed);
@@ -227,7 +250,39 @@ struct SearchState<'a, const N: usize> {
     persistent_state: &'a mut PersistentState<N>,
 }
 
-#[instrument(level = "trace", skip(search, principal_variation), fields(scout = alpha + 1 == beta))]
+fn fetch_pv<const N: usize>(
+    state: &State<N>,
+    tt: &TranspositionTable<N>,
+    max_depth: usize,
+    pv: &mut Vec<Ply<N>>,
+) {
+    if pv.len() >= max_depth {
+        return;
+    }
+
+    let mut state = state.clone();
+
+    for ply in pv.iter() {
+        if let Err(err) = state.execute_ply(*ply) {
+            error!(error = ?err, "Principal variation ply caused an error. Skipping");
+        }
+    }
+
+    while let Some(entry) = tt.get(state.metadata.hash) {
+        if let Err(err) = state.execute_ply(entry.ply) {
+            error!(error = ?err, "Principal variation ply caused an error. Skipping");
+        } else {
+            pv.push(entry.ply);
+
+            // Only grab as many as we've actually analyzed.
+            if pv.len() == max_depth {
+                break;
+            }
+        }
+    }
+}
+
+#[instrument(level = "trace", skip(search), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &mut State<N>,
@@ -248,7 +303,42 @@ fn minimax<const N: usize>(
         search.stats.scouted += 1;
     }
 
-    let ply_generator = PlyGenerator::new(state, principal_variation.first().copied());
+    let mut tt_entry = search
+        .persistent_state
+        .transposition_table
+        .get(state.metadata.hash);
+
+    if let Some(entry) = tt_entry {
+        search.stats.tt_hits += 1;
+
+        let is_save = entry.depth as usize >= depth
+            && match entry.bound {
+                Bound::Exact => true,
+                Bound::Upper => entry.evaluation <= alpha,
+                Bound::Lower => entry.evaluation >= beta,
+            };
+
+        let is_terminal = entry.bound == Bound::Exact && entry.evaluation.is_terminal();
+
+        if is_save || is_terminal {
+            if state.validate_ply(entry.ply).is_ok() {
+                search.stats.tt_saves += 1;
+
+                principal_variation.clear();
+                principal_variation.push(entry.ply);
+
+                return entry.evaluation;
+            } else {
+                tt_entry = None;
+            }
+        }
+    }
+
+    let ply_generator = PlyGenerator::new(
+        state,
+        principal_variation.first().copied(),
+        tt_entry.map(|e| e.ply),
+    );
 
     let mut next_pv = if !principal_variation.is_empty() {
         principal_variation[1..].to_vec()
@@ -257,6 +347,7 @@ fn minimax<const N: usize>(
     };
 
     let mut first_iteration = true;
+    let mut raised_alpha = false;
 
     for (fallibility, ply) in ply_generator {
         let mut state = state.clone();
@@ -297,6 +388,7 @@ fn minimax<const N: usize>(
 
         if next_eval > alpha {
             alpha = next_eval;
+            raised_alpha = true;
 
             principal_variation.clear();
             principal_variation.push(ply);
@@ -306,12 +398,39 @@ fn minimax<const N: usize>(
                 search.stats.beta_cutoff += 1;
                 break;
             }
+        } else if principal_variation.is_empty() {
+            principal_variation.push(ply);
         }
 
         first_iteration = false;
 
         if search.interrupted.load(Ordering::Relaxed) {
             return alpha;
+        }
+    }
+
+    if let Some(ply) = principal_variation.first().copied() {
+        let inserted = search.persistent_state.transposition_table.insert(
+            state.metadata.hash,
+            TranspositionTableEntry {
+                bound: if alpha >= beta {
+                    Bound::Lower
+                } else if raised_alpha {
+                    Bound::Exact
+                } else {
+                    Bound::Upper
+                },
+                evaluation: alpha,
+                depth: depth as u8,
+                ply_count: (state.ply_count & 0xFF) as u8,
+                ply,
+            },
+        );
+
+        if inserted {
+            search.stats.tt_stores += 1;
+        } else {
+            search.stats.tt_store_fails += 1;
         }
     }
 

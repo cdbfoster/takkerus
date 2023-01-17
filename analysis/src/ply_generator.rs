@@ -10,6 +10,7 @@ use crate::rng::JKiss32Rng;
 pub(crate) struct PlyGenerator<const N: usize> {
     state: State<N>,
     previous_principal: Option<Ply<N>>,
+    tt_ply: Option<Ply<N>>,
     plies: Vec<Ply<N>>,
     operation: Operation,
 }
@@ -21,10 +22,15 @@ pub(crate) enum Fallibility {
 }
 
 impl<const N: usize> PlyGenerator<N> {
-    pub(crate) fn new(state: &State<N>, previous_principal: Option<Ply<N>>) -> Self {
+    pub(crate) fn new(
+        state: &State<N>,
+        previous_principal: Option<Ply<N>>,
+        tt_ply: Option<Ply<N>>,
+    ) -> Self {
         Self {
             state: state.clone(),
             previous_principal,
+            tt_ply,
             plies: Vec::new(),
             operation: Operation::PreviousPrincipal,
         }
@@ -43,6 +49,14 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
 
             if self.previous_principal.is_some() {
                 return self.previous_principal.map(|p| (Fallible, p));
+            }
+        }
+
+        if self.operation == TtPly {
+            self.operation = self.operation.next();
+
+            if self.tt_ply.is_some() && self.tt_ply != self.previous_principal {
+                return self.tt_ply.map(|p| (Fallible, p));
             }
         }
 
@@ -76,6 +90,7 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Operation {
     PreviousPrincipal = 0u32,
+    TtPly,
     GeneratePlies,
     AllPlies,
     Finished,
@@ -91,8 +106,9 @@ impl From<u32> for Operation {
     fn from(value: u32) -> Self {
         match value {
             0 => Self::PreviousPrincipal,
-            1 => Self::GeneratePlies,
-            2 => Self::AllPlies,
+            1 => Self::TtPly,
+            2 => Self::GeneratePlies,
+            3 => Self::AllPlies,
             _ => Self::Finished,
         }
     }
