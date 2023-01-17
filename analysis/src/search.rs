@@ -56,6 +56,7 @@ pub struct Statistics {
     pub scouted: u64,
     pub re_searched: u64,
     pub beta_cutoff: u64,
+    pub null_cutoff: u64,
     pub tt_stores: u64,
     pub tt_store_fails: u64,
     pub tt_hits: u64,
@@ -73,6 +74,7 @@ impl Add for &Statistics {
             scouted: self.scouted + other.scouted,
             re_searched: self.re_searched + other.re_searched,
             beta_cutoff: self.beta_cutoff + other.beta_cutoff,
+            null_cutoff: self.null_cutoff + other.null_cutoff,
             tt_stores: self.tt_stores + other.tt_stores,
             tt_store_fails: self.tt_store_fails + other.tt_store_fails,
             tt_hits: self.tt_hits + other.tt_hits,
@@ -137,7 +139,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         let depth_start_time = Instant::now();
 
         let mut search = SearchState {
-            search_depth: depth,
             stats: Default::default(),
             interrupted: &config.interrupted,
             persistent_state,
@@ -150,6 +151,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             depth,
             Evaluation::MIN,
             Evaluation::MAX,
+            true,
         );
 
         analyzed_depth = depth as u32;
@@ -190,6 +192,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             scouted = search.stats.scouted,
             re_searched = search.stats.re_searched,
             beta_cutoff = search.stats.beta_cutoff,
+            null_cutoff = search.stats.null_cutoff,
             tt_stores = search.stats.tt_stores,
             tt_store_fails = search.stats.tt_store_fails,
             tt_hits = search.stats.tt_hits,
@@ -244,7 +247,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 }
 
 struct SearchState<'a, const N: usize> {
-    search_depth: usize,
     stats: Statistics,
     interrupted: &'a AtomicBool,
     persistent_state: &'a mut PersistentState<N>,
@@ -291,6 +293,7 @@ fn minimax<const N: usize>(
     depth: usize,
     mut alpha: Evaluation,
     beta: Evaluation,
+    null_move_allowed: bool,
 ) -> Evaluation {
     search.stats.visited += 1;
 
@@ -304,12 +307,15 @@ fn minimax<const N: usize>(
         search.stats.scouted += 1;
     }
 
-    let mut tt_entry = search
+    // Fetch from transposition table ===========
+
+    let mut tt_ply = None;
+
+    if let Some(entry) = search
         .persistent_state
         .transposition_table
-        .get(state.metadata.hash);
-
-    if let Some(entry) = tt_entry {
+        .get(state.metadata.hash)
+    {
         search.stats.tt_hits += 1;
 
         let is_save = entry.depth as usize >= depth
@@ -329,22 +335,48 @@ fn minimax<const N: usize>(
                 principal_variation.push(entry.ply);
 
                 return entry.evaluation;
-            } else {
-                tt_entry = None;
             }
+        } else {
+            tt_ply = Some(entry.ply);
         }
     }
 
-    let ply_generator = PlyGenerator::new(
-        state,
-        principal_variation.first().copied(),
-        tt_entry.map(|e| e.ply),
-    );
+    // Null move search =========================
+
+    if null_move_allowed && depth >= 3 {
+        // Apply a null move.
+        state.ply_count += 1;
+
+        // We're not interested in any ply results.
+        let mut scratch_pv = Vec::new();
+
+        let eval = -minimax(
+            search,
+            state,
+            &mut scratch_pv,
+            depth - 3,
+            -beta,
+            -beta + 1,
+            false,
+        );
+
+        // Undo the null move.
+        state.ply_count -= 1;
+
+        if eval >= beta {
+            search.stats.null_cutoff += 1;
+            return eval;
+        }
+    }
+
+    // Ply search ===============================
+
+    let ply_generator = PlyGenerator::new(state, principal_variation.first().copied(), tt_ply);
 
     let mut next_pv = if !principal_variation.is_empty() {
         principal_variation[1..].to_vec()
     } else {
-        Vec::with_capacity(search.search_depth - depth)
+        Vec::with_capacity(depth)
     };
 
     let mut first_iteration = true;
@@ -365,7 +397,15 @@ fn minimax<const N: usize>(
 
         let next_eval = if first_iteration {
             // On the first iteration, perform a full-window search.
-            -minimax(search, &mut state, &mut next_pv, depth - 1, -beta, -alpha)
+            -minimax(
+                search,
+                &mut state,
+                &mut next_pv,
+                depth - 1,
+                -beta,
+                -alpha,
+                true,
+            )
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
@@ -376,12 +416,21 @@ fn minimax<const N: usize>(
                 depth - 1,
                 -alpha - 1,
                 -alpha,
+                true,
             );
 
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
                 // If we fail high instead, we need to re-search using the full window.
-                -minimax(search, &mut state, &mut next_pv, depth - 1, -beta, -alpha)
+                -minimax(
+                    search,
+                    &mut state,
+                    &mut next_pv,
+                    depth - 1,
+                    -beta,
+                    -alpha,
+                    true,
+                )
             } else {
                 scout_eval
             }
@@ -409,6 +458,8 @@ fn minimax<const N: usize>(
             return alpha;
         }
     }
+
+    // Store in transposition table =============
 
     if let Some(ply) = principal_variation.first().copied() {
         let inserted = search.persistent_state.transposition_table.insert(
