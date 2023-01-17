@@ -270,7 +270,8 @@ fn fetch_pv<const N: usize>(
 
     while let Some(entry) = tt.get(state.metadata.hash) {
         if let Err(err) = state.execute_ply(entry.ply) {
-            error!(error = ?err, "Principal variation ply caused an error. Skipping");
+            warn!(error = ?err, "Principal variation ply caused an error. Ending fetch");
+            break;
         } else {
             pv.push(entry.ply);
 
