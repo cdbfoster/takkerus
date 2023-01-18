@@ -70,8 +70,6 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
         ..Default::default()
     };
 
-    println!("\nAnalyzing...");
-
     let analysis = analyze(analysis_config, &state);
 
     let game = {
