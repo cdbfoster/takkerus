@@ -136,8 +136,8 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
     let mut state = state.clone();
 
-    let mut branching_factors = Vec::new();
-    let mut previous_stats = Statistics::default();
+    // Visited nodes per depth, used in calculating effective branching factor.
+    let mut node_counts = Vec::new();
 
     for depth in 1..=max_depth {
         let depth_start_time = Instant::now();
@@ -184,6 +184,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         info!(
             depth = analysis.depth,
+            time = %format!("{:05.2}s", analysis.time.as_secs_f64()),
             eval = %format!("{:<4}", evaluation),
             pv = ?analysis.principal_variation,
             "Analyzed:",
@@ -204,17 +205,21 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             "Stats:",
         );
 
-        // Calculate previous and average branching factors.
-        let branching_factor =
-            search.stats.evaluated as f64 / previous_stats.evaluated.max(1) as f64;
-        branching_factors.push(branching_factor);
-        let average_branching_factor =
-            branching_factors.iter().sum::<f64>() / branching_factors.len() as f64;
+        node_counts.push(search.stats.visited.max(1));
+
+        // Treat even and odd depths separately, to account for alpha-beta's quirk.
+        let branching_factor = if depth % 2 == 0 {
+            effective_branching_factor(node_counts.iter().copied().skip(1).step_by(2))
+        } else {
+            effective_branching_factor(node_counts.iter().copied().step_by(2))
+        };
+
+        let next_depth_prediction = depth_time.as_secs_f64() * branching_factor;
 
         debug!(
             branch = %format!("{:.2}", branching_factor),
-            avg_branch = %format!("{:.2}", average_branching_factor),
             rate = %format!("{} nodes/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
+            next_depth_prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
             "Search:",
         );
 
@@ -225,21 +230,17 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         if config.predict_time {
             if let Some(time_limit) = config.time_limit {
-                let next_depth_prediction = depth_time * average_branching_factor.round() as u32;
-
-                if analysis.time + next_depth_prediction > time_limit {
+                if analysis.time + Duration::from_secs_f64(next_depth_prediction) > time_limit {
                     info!(
                         time = %format!("{:.2}s", analysis.time.as_secs_f64()),
                         limit = %format!("{:.2}s", time_limit.as_secs_f64()),
-                        prediction = %format!("{:.2}s", next_depth_prediction.as_secs_f64()),
+                        prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
                         "Next depth is predicted to take too long. Stopping."
                     );
                     break;
                 }
             }
         }
-
-        previous_stats = search.stats;
     }
 
     // If we started a timer, stop it.
@@ -250,10 +251,24 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     analysis
 }
 
-struct SearchState<'a, const N: usize> {
-    stats: Statistics,
-    interrupted: &'a AtomicBool,
-    persistent_state: &'a mut PersistentState<N>,
+fn effective_branching_factor(node_counts: impl Iterator<Item = u64>) -> f64 {
+    let mut node_counts = node_counts.peekable();
+    let mut factors = Vec::new();
+
+    while let Some(denominator) = node_counts.next() {
+        if let Some(&numerator) = node_counts.peek() {
+            factors.push(numerator as f64 / denominator as f64);
+        } else {
+            if factors.is_empty() {
+                factors.push(denominator as f64);
+            }
+            break;
+        }
+    }
+
+    let average = factors.iter().sum::<f64>() / factors.len() as f64;
+
+    average.sqrt()
 }
 
 fn fetch_pv<const N: usize>(
@@ -289,6 +304,12 @@ fn fetch_pv<const N: usize>(
     }
 
     state
+}
+
+struct SearchState<'a, const N: usize> {
+    stats: Statistics,
+    interrupted: &'a AtomicBool,
+    persistent_state: &'a mut PersistentState<N>,
 }
 
 #[instrument(level = "trace", skip(search), fields(scout = alpha + 1 == beta))]
