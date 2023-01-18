@@ -125,15 +125,19 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         &mut local_persistent_state
     };
 
-    let mut principal_variation = Vec::with_capacity(max_depth.min(15));
+    let mut analysis = Analysis {
+        depth: 0,
+        final_state: state.clone(),
+        evaluation: evaluate(state),
+        principal_variation: Vec::new(),
+        stats: Statistics::default(),
+        time: Duration::ZERO,
+    };
 
-    let mut analyzed_depth = 0;
     let mut state = state.clone();
-    let mut evaluation = Evaluation::ZERO;
 
-    let mut branching_factors = Vec::with_capacity(max_depth.min(15));
+    let mut branching_factors = Vec::new();
     let mut previous_stats = Statistics::default();
-    let mut total_stats = Statistics::default();
 
     for depth in 1..=max_depth {
         let depth_start_time = Instant::now();
@@ -144,7 +148,9 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             persistent_state,
         };
 
-        evaluation = minimax(
+        let mut principal_variation = Vec::with_capacity(depth);
+
+        let evaluation = minimax(
             &mut search,
             &mut state,
             &mut principal_variation,
@@ -154,34 +160,32 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             true,
         );
 
-        analyzed_depth = depth as u32;
-        total_stats += &search.stats;
-
-        fetch_pv(
-            &state,
-            &search.persistent_state.transposition_table,
-            analyzed_depth as usize,
-            &mut principal_variation,
-        );
-
-        let total_time = total_start_time.elapsed();
-        let depth_time = depth_start_time.elapsed();
-
         if config.interrupted.load(Ordering::Relaxed) {
             break;
         }
 
-        // Calculate previous and average branching factors.
-        let branching_factor =
-            search.stats.evaluated as f64 / previous_stats.evaluated.max(1) as f64;
-        branching_factors.push(branching_factor);
-        let average_branching_factor =
-            branching_factors.iter().sum::<f64>() / branching_factors.len() as f64;
+        let final_state = fetch_pv(
+            &state,
+            &search.persistent_state.transposition_table,
+            depth,
+            &mut principal_variation,
+        );
+
+        analysis = Analysis {
+            depth: depth as u32,
+            final_state,
+            evaluation,
+            principal_variation,
+            stats: &analysis.stats + &search.stats,
+            time: total_start_time.elapsed(),
+        };
+
+        let depth_time = depth_start_time.elapsed();
 
         info!(
-            depth = analyzed_depth,
+            depth = analysis.depth,
             eval = %format!("{:<4}", evaluation),
-            pv = ?principal_variation,
+            pv = ?analysis.principal_variation,
             "Analyzed:",
         );
 
@@ -200,6 +204,13 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             "Stats:",
         );
 
+        // Calculate previous and average branching factors.
+        let branching_factor =
+            search.stats.evaluated as f64 / previous_stats.evaluated.max(1) as f64;
+        branching_factors.push(branching_factor);
+        let average_branching_factor =
+            branching_factors.iter().sum::<f64>() / branching_factors.len() as f64;
+
         debug!(
             branch = %format!("{:.2}", branching_factor),
             avg_branch = %format!("{:.2}", average_branching_factor),
@@ -216,9 +227,9 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             if let Some(time_limit) = config.time_limit {
                 let next_depth_prediction = depth_time * average_branching_factor.round() as u32;
 
-                if total_time + next_depth_prediction > time_limit {
+                if analysis.time + next_depth_prediction > time_limit {
                     info!(
-                        time = %format!("{:.2}s", total_time.as_secs_f64()),
+                        time = %format!("{:.2}s", analysis.time.as_secs_f64()),
                         limit = %format!("{:.2}s", time_limit.as_secs_f64()),
                         prediction = %format!("{:.2}s", next_depth_prediction.as_secs_f64()),
                         "Next depth is predicted to take too long. Stopping."
@@ -228,7 +239,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             }
         }
 
-        previous_stats = search.stats.clone();
+        previous_stats = search.stats;
     }
 
     // If we started a timer, stop it.
@@ -236,14 +247,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         cancel_timer.store(true, Ordering::Relaxed);
     }
 
-    Analysis {
-        depth: analyzed_depth,
-        final_state: state,
-        evaluation,
-        principal_variation,
-        stats: total_stats,
-        time: total_start_time.elapsed(),
-    }
+    analysis
 }
 
 struct SearchState<'a, const N: usize> {
@@ -257,9 +261,9 @@ fn fetch_pv<const N: usize>(
     tt: &TranspositionTable<N>,
     max_depth: usize,
     pv: &mut Vec<Ply<N>>,
-) {
+) -> State<N> {
     if pv.len() >= max_depth {
-        return;
+        return state.clone();
     }
 
     let mut state = state.clone();
@@ -283,6 +287,8 @@ fn fetch_pv<const N: usize>(
             }
         }
     }
+
+    state
 }
 
 #[instrument(level = "trace", skip(search), fields(scout = alpha + 1 == beta))]
