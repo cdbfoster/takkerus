@@ -41,6 +41,18 @@ impl<const N: usize> Bitmap<N> {
         dilation
     }
 
+    pub fn flood_fill(self, mask: Self) -> Self {
+        let mut seed = self & mask;
+
+        loop {
+            let next = seed.dilate() & mask;
+            if next == seed {
+                return seed;
+            }
+            seed = next;
+        }
+    }
+
     pub fn groups(self) -> GroupIter<N> {
         GroupIter {
             seeds: self,
@@ -125,18 +137,8 @@ impl<const N: usize> Iterator for GroupIter<N> {
             bitmap & !remainder
         }
 
-        fn flood_fill<const N: usize>(mut seed: Bitmap<N>, mask: Bitmap<N>) -> Bitmap<N> {
-            loop {
-                let next = seed.dilate() & mask;
-                if next == seed {
-                    return seed;
-                }
-                seed = next;
-            }
-        }
-
         let bit = pop_bit(self.seeds);
-        let group = flood_fill(bit, self.bitmap);
+        let group = bit.flood_fill(self.bitmap);
         self.seeds &= !group;
         self.bitmap &= !group;
 

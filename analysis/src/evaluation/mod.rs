@@ -1,5 +1,7 @@
 pub use self::util::Evaluation;
 
+pub(crate) use self::util::placement_threat_maps;
+
 use self::util::EvalType;
 
 mod util;
@@ -34,14 +36,16 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     let mut p1_eval = Evaluation::ZERO;
     let mut p2_eval = Evaluation::ZERO;
 
+    let road_pieces = m.flatstones | m.capstones;
+    let p1_road_pieces = road_pieces & m.p1_pieces;
+    let p2_road_pieces = road_pieces & m.p2_pieces;
+    let all_pieces = m.p1_pieces & m.p2_pieces;
+
     // Material
     p1_eval += evaluate_material(m, m.p1_pieces);
     p2_eval += evaluate_material(m, m.p2_pieces);
 
     // Road groups
-    let road_pieces = m.flatstones | m.capstones;
-    let p1_road_pieces = road_pieces & m.p1_pieces;
-    let p2_road_pieces = road_pieces & m.p2_pieces;
     p1_eval += evaluate_road_groups(p1_road_pieces);
     p2_eval += evaluate_road_groups(p2_road_pieces);
 
@@ -52,6 +56,10 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     // Captured flats
     p1_eval += evaluate_captured_flats(m.p1_pieces, &m.p1_stacks, &m.p2_stacks);
     p2_eval += evaluate_captured_flats(m.p2_pieces, &m.p2_stacks, &m.p1_stacks);
+
+    // Placement threats
+    p1_eval += evaluate_placement_threats(all_pieces, p1_road_pieces);
+    p2_eval += evaluate_placement_threats(all_pieces, p2_road_pieces);
 
     match to_move {
         White => p1_eval - p2_eval,
@@ -67,6 +75,7 @@ struct Weights {
     road_slice: EvalType,
     hard_flat: EvalType,
     soft_flat: EvalType,
+    placement_threat: EvalType,
 }
 
 const WEIGHT: Weights = Weights {
@@ -77,6 +86,7 @@ const WEIGHT: Weights = Weights {
     road_slice: 250,
     hard_flat: 500,
     soft_flat: -250,
+    placement_threat: 1000,
 };
 
 fn evaluate_material<const N: usize>(m: &Metadata<N>, pieces: Bitmap<N>) -> EvalType {
@@ -162,6 +172,19 @@ fn evaluate_captured_flats<const N: usize>(
 
     hard_flats as EvalType * WEIGHT.hard_flat / N as EvalType
         + soft_flats as EvalType * WEIGHT.soft_flat / N as EvalType
+}
+
+fn evaluate_placement_threats<const N: usize>(
+    all_pieces: Bitmap<N>,
+    road_pieces: Bitmap<N>,
+) -> EvalType {
+    let (horizontal_threats, vertical_threats) = placement_threat_maps(all_pieces, road_pieces);
+
+    let mut eval = 0;
+    eval += horizontal_threats.count_ones() as EvalType * WEIGHT.placement_threat / N as EvalType;
+    eval += vertical_threats.count_ones() as EvalType * WEIGHT.placement_threat / N as EvalType;
+
+    eval
 }
 
 impl From<EvalType> for Evaluation {
