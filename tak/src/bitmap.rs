@@ -29,6 +29,16 @@ impl<const N: usize> Bitmap<N> {
         *self & (1 << ((N - 1 - x) + y * N)) > 0
     }
 
+    pub fn coordinates(self) -> (usize, usize) {
+        debug_assert_eq!(self.count_ones(), 1);
+
+        let index = self.trailing_zeros();
+        let y = index as usize / N;
+        let x = N - 1 - index as usize % N;
+
+        (x, y)
+    }
+
     pub fn dilate(self) -> Self {
         use Direction::*;
 
@@ -93,6 +103,15 @@ impl<const N: usize> Bitmap<N> {
         }
         column_aggregate.count_ones() as usize
     }
+
+    pub fn lowest_bit(self: Bitmap<N>) -> Bitmap<N> {
+        let remainder = self & (*self - 1);
+        self & !remainder
+    }
+
+    pub fn bits(self) -> BitIter<N> {
+        BitIter { bitmap: self }
+    }
 }
 
 impl<const N: usize> fmt::Debug for Bitmap<N> {
@@ -132,17 +151,31 @@ impl<const N: usize> Iterator for GroupIter<N> {
             return None;
         }
 
-        fn pop_bit<const N: usize>(bitmap: Bitmap<N>) -> Bitmap<N> {
-            let remainder = bitmap & (*bitmap - 1);
-            bitmap & !remainder
-        }
-
-        let bit = pop_bit(self.seeds);
+        let bit = self.seeds.lowest_bit();
         let group = bit.flood_fill(self.bitmap);
         self.seeds &= !group;
         self.bitmap &= !group;
 
         Some(group)
+    }
+}
+
+pub struct BitIter<const N: usize> {
+    bitmap: Bitmap<N>,
+}
+
+impl<const N: usize> Iterator for BitIter<N> {
+    type Item = Bitmap<N>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if *self.bitmap == 0 {
+            return None;
+        }
+
+        let remainder = self.bitmap & (*self.bitmap - 1);
+        let bit = self.bitmap & !remainder;
+        self.bitmap = remainder;
+        Some(bit)
     }
 }
 
@@ -430,27 +463,32 @@ mod tests {
     }
 
     #[test]
+    fn coordinates() {
+        assert_eq!(Bitmap::<3>::new(0b000000001).coordinates(), (2, 0));
+        assert_eq!(Bitmap::<3>::new(0b000010000).coordinates(), (1, 1));
+        assert_eq!(Bitmap::<3>::new(0b000100000).coordinates(), (0, 1));
+        assert_eq!(Bitmap::<3>::new(0b010000000).coordinates(), (1, 2));
+    }
+
+    #[test]
     fn dilate() {
         let b = Bitmap::<5>::new(0b0000000000001000000000000);
-        assert_eq!(b.dilate(), Bitmap::new(0b0000000100011100010000000),);
+        assert_eq!(b.dilate(), 0b0000000100011100010000000.into());
 
         let b = Bitmap::<5>::new(0b1000100000000000000010001);
-        assert_eq!(b.dilate(), Bitmap::new(0b1101110001000001000111011),);
+        assert_eq!(b.dilate(), 0b1101110001000001000111011.into());
 
         let b = Bitmap::<5>::new(0b0000000100011100010000000);
-        assert_eq!(b.dilate(), Bitmap::new(0b0010001110111110111000100),);
+        assert_eq!(b.dilate(), 0b0010001110111110111000100.into());
     }
 
     #[test]
     fn groups() {
         let mut g = Bitmap::<5>::new(0b1110011010001100011111000).groups();
 
-        assert_eq!(g.next(), Some(Bitmap::new(0b0000000000000000000011000)),);
-
-        assert_eq!(g.next(), Some(Bitmap::new(0b0000000010001100011100000)),);
-
-        assert_eq!(g.next(), Some(Bitmap::new(0b1110011000000000000000000)),);
-
+        assert_eq!(g.next(), Some(0b0000000000000000000011000.into()));
+        assert_eq!(g.next(), Some(0b0000000010001100011100000.into()));
+        assert_eq!(g.next(), Some(0b1110011000000000000000000.into()));
         assert_eq!(g.next(), None);
     }
 
@@ -464,6 +502,17 @@ mod tests {
     fn height() {
         let b = Bitmap::<5>::new(0b0000001100011100100001000);
         assert_eq!(b.height(), 4);
+    }
+
+    #[test]
+    fn bits() {
+        let mut b = Bitmap::<3>::new(0b010110001).bits();
+
+        assert_eq!(b.next(), Some(0b000000001.into()));
+        assert_eq!(b.next(), Some(0b000010000.into()));
+        assert_eq!(b.next(), Some(0b000100000.into()));
+        assert_eq!(b.next(), Some(0b010000000.into()));
+        assert_eq!(b.next(), None);
     }
 
     #[test]

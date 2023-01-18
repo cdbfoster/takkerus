@@ -1,17 +1,18 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use once_cell::sync::Lazy;
-use rand::seq::SliceRandom;
+use rand::Rng;
 
 use tak::{Color, Direction, PieceType, Ply, State};
 
+use crate::evaluation::placement_threat_maps;
 use crate::rng::JKiss32Rng;
 
 pub(crate) struct PlyGenerator<const N: usize> {
     state: State<N>,
     previous_principal: Option<Ply<N>>,
     tt_ply: Option<Ply<N>>,
-    plies: Vec<Ply<N>>,
+    plies: Vec<ScoredPly<N>>,
     operation: Operation,
 }
 
@@ -65,18 +66,66 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
 
             generate_plies(&self.state, &mut self.plies);
 
-            static RNG: Lazy<Mutex<JKiss32Rng>> = Lazy::new(|| Mutex::new(JKiss32Rng::new()));
-            self.plies.shuffle(&mut *RNG.lock().unwrap());
+            // Score plies for sorting ==========
+
+            let m = &self.state.metadata;
+
+            let all_pieces = m.p1_pieces & m.p2_pieces;
+            let road_pieces = m.flatstones | m.capstones;
+
+            let player_road_pieces = match self.state.to_move() {
+                Color::White => road_pieces & m.p1_pieces,
+                Color::Black => road_pieces & m.p2_pieces,
+            };
+
+            for scored_ply in &mut self.plies {
+                // Search placements before spreads.
+                if let ScoredPly {
+                    score,
+                    ply: Ply::Place { x, y, .. },
+                } = scored_ply
+                {
+                    *score += 1 << 8;
+
+                    // Search placements that would cause a threat first.
+                    let mut placed_map = player_road_pieces;
+                    placed_map.set(*x as usize, *y as usize);
+
+                    let threat_map = {
+                        let (horizontal, vertical) =
+                            placement_threat_maps(all_pieces, player_road_pieces);
+                        horizontal | vertical
+                    };
+
+                    if *threat_map > 0 {
+                        *score += 1 << 8;
+                    }
+                }
+            }
+
+            // Shuffle plies randomly so we don't always play the same move if
+            // two moves eval the same. Any merit-based scoring is much bigger
+            // than this, so this random bonus will only affect order between
+            // otherwise equally important plies.
+            let mut rng = get_rng();
+            for scored_ply in &mut self.plies {
+                scored_ply.score += rng.gen::<u8>() as u32;
+            }
+
+            self.plies.sort_unstable_by_key(|ply| ply.score);
         }
 
         if self.operation == AllPlies {
-            let mut ply = self.plies.pop();
-            if ply == self.previous_principal {
-                ply = self.plies.pop();
-            }
+            if let Some(ScoredPly { ply, .. }) = self.plies.pop() {
+                if Some(ply) == self.previous_principal {
+                    return self.next();
+                }
 
-            if ply.is_some() {
-                return ply.map(|p| (Infallible, p));
+                if Some(ply) == self.tt_ply {
+                    return self.next();
+                }
+
+                return Some((Infallible, ply));
             } else {
                 self.operation = self.operation.next();
             }
@@ -144,7 +193,18 @@ fn generate_drop_combos(max_size: usize) -> Vec<Vec<Vec<u8>>> {
     combos_for_size
 }
 
-fn generate_plies<const N: usize>(state: &State<N>, ply_buffer: &mut Vec<Ply<N>>) {
+struct ScoredPly<const N: usize> {
+    score: u32,
+    ply: Ply<N>,
+}
+
+impl<const N: usize> From<Ply<N>> for ScoredPly<N> {
+    fn from(ply: Ply<N>) -> Self {
+        Self { score: 0, ply }
+    }
+}
+
+fn generate_plies<const N: usize>(state: &State<N>, ply_buffer: &mut Vec<ScoredPly<N>>) {
     use Color::*;
     use PieceType::*;
 
@@ -163,22 +223,31 @@ fn generate_plies<const N: usize>(state: &State<N>, ply_buffer: &mut Vec<Ply<N>>
         for x in 0..N {
             for y in 0..N {
                 if state.board[x][y].is_empty() {
-                    ply_buffer.push(Ply::Place {
-                        x: x as u8,
-                        y: y as u8,
-                        piece_type: Flatstone,
-                    });
-                    ply_buffer.push(Ply::Place {
-                        x: x as u8,
-                        y: y as u8,
-                        piece_type: StandingStone,
-                    });
-                    if next_capstones > 0 {
-                        ply_buffer.push(Ply::Place {
+                    ply_buffer.push(
+                        Ply::Place {
                             x: x as u8,
                             y: y as u8,
-                            piece_type: Capstone,
-                        });
+                            piece_type: Flatstone,
+                        }
+                        .into(),
+                    );
+                    ply_buffer.push(
+                        Ply::Place {
+                            x: x as u8,
+                            y: y as u8,
+                            piece_type: StandingStone,
+                        }
+                        .into(),
+                    );
+                    if next_capstones > 0 {
+                        ply_buffer.push(
+                            Ply::Place {
+                                x: x as u8,
+                                y: y as u8,
+                                piece_type: Capstone,
+                            }
+                            .into(),
+                        );
                     }
                 } else {
                     let stack = &state.board[x][y];
@@ -240,13 +309,16 @@ fn generate_plies<const N: usize>(state: &State<N>, ply_buffer: &mut Vec<Ply<N>>
                                 let mut drops = [0; N];
                                 drops[..drop_combo.len()].copy_from_slice(drop_combo);
 
-                                ply_buffer.push(Ply::Spread {
-                                    x: x as u8,
-                                    y: y as u8,
-                                    direction,
-                                    drops,
-                                    crush,
-                                });
+                                ply_buffer.push(
+                                    Ply::Spread {
+                                        x: x as u8,
+                                        y: y as u8,
+                                        direction,
+                                        drops,
+                                        crush,
+                                    }
+                                    .into(),
+                                );
                             }
                         }
                     }
@@ -257,15 +329,23 @@ fn generate_plies<const N: usize>(state: &State<N>, ply_buffer: &mut Vec<Ply<N>>
         for x in 0..N {
             for y in 0..N {
                 if state.board[x][y].is_empty() {
-                    ply_buffer.push(Ply::Place {
-                        x: x as u8,
-                        y: y as u8,
-                        piece_type: Flatstone,
-                    });
+                    ply_buffer.push(
+                        Ply::Place {
+                            x: x as u8,
+                            y: y as u8,
+                            piece_type: Flatstone,
+                        }
+                        .into(),
+                    );
                 }
             }
         }
     }
+}
+
+fn get_rng() -> MutexGuard<'static, JKiss32Rng> {
+    static RNG: Lazy<Mutex<JKiss32Rng>> = Lazy::new(|| Default::default());
+    RNG.lock().unwrap()
 }
 
 #[cfg(test)]
@@ -279,7 +359,7 @@ mod tests {
         let mut plies = Vec::new();
         generate_plies(&state, &mut plies);
 
-        for ply in plies {
+        for ScoredPly { ply, .. } in plies {
             let validated_ply = state.validate_ply(ply);
             assert_eq!(Ok(ply), validated_ply);
         }
@@ -289,7 +369,7 @@ mod tests {
         let mut plies = Vec::new();
         generate_plies(&state, &mut plies);
 
-        for ply in plies {
+        for ScoredPly { ply, .. } in plies {
             let validated_ply = state.validate_ply(ply);
             assert_eq!(Ok(ply), validated_ply);
         }
