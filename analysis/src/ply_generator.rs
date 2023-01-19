@@ -70,7 +70,7 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
 
             let m = &self.state.metadata;
 
-            let all_pieces = m.p1_pieces & m.p2_pieces;
+            let all_pieces = m.p1_pieces | m.p2_pieces;
             let road_pieces = m.flatstones | m.capstones;
 
             let player_road_pieces = match self.state.to_move() {
