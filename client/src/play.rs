@@ -1,4 +1,3 @@
-use std::fmt::Write;
 use std::mem;
 
 use async_std::prelude::*;
@@ -8,7 +7,7 @@ use futures::{select, FutureExt, SinkExt};
 use tracing::{debug, error, instrument, trace, warn};
 
 use tak::{
-    Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, PtnPly, Resolution, State, StateError,
+    Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, Resolution, State, StateError,
 };
 
 use crate::args::{Game, PlayConfig, Player as PlayerArgs};
@@ -376,38 +375,27 @@ fn handle_ply<const N: usize>(game: &mut PtnGame, ply: Ply<N>) -> Result<(), Sta
 
 fn print_board<const N: usize>(game: &PtnGame) {
     let state = state!(game);
-    let ply_history = plies!(game);
 
     println!("\n--------------------------------------------------");
 
     println!("\n{state}");
 
-    let turn_number = format!("{}.", state.ply_count / 2 + 1);
-    if ply_history.is_empty() {
-        println!("\n {turn_number:<3}  --");
-    } else {
-        let last_turn = if ply_history.len() % 2 == 0 {
-            &ply_history[2 * (ply_history.len() / 2 - 1)..]
-        } else {
-            &ply_history[2 * (ply_history.len() / 2)..]
+    if let Some(last_turn) = game.turns.last() {
+        let turn_number = format!("{}.", last_turn.number);
+
+        let p1_move = match &last_turn.p1_move.ply {
+            Some(ply) => ply.to_string(),
+            None => "--".to_owned(),
         };
 
-        let mut turn = String::new();
-        write!(
-            turn,
-            "\n {turn_number:<3}  {:<width$}",
-            PtnPly::from(last_turn[0]),
-            width = N + 4,
-        )
-        .unwrap();
+        let p2_move = match &last_turn.p2_move.ply {
+            Some(ply) => ply.to_string(),
+            None => "--".to_owned(),
+        };
 
-        if last_turn.len() == 2 {
-            write!(turn, "{}", PtnPly::from(last_turn[1])).unwrap();
-        } else {
-            write!(turn, "--").unwrap();
-        }
-
-        println!("{turn}");
+        println!("\n  {turn_number:<3}  {:<width$}{}", p1_move, p2_move, width = N + 4);
+    } else {
+        println!("\n  1.   --");
     }
 }
 
