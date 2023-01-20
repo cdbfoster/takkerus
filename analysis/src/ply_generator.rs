@@ -10,6 +10,7 @@ use crate::rng::JKiss32Rng;
 
 pub(crate) struct PlyGenerator<const N: usize> {
     state: State<N>,
+    road_plies: Vec<Ply<N>>,
     previous_principal: Option<Ply<N>>,
     tt_ply: Option<Ply<N>>,
     plies: Vec<ScoredPly<N>>,
@@ -30,10 +31,11 @@ impl<const N: usize> PlyGenerator<N> {
     ) -> Self {
         Self {
             state: state.clone(),
+            road_plies: Vec::new(),
             previous_principal,
             tt_ply,
             plies: Vec::new(),
-            operation: Operation::PreviousPrincipal,
+            operation: Operation::FindRoadPlacements,
         }
     }
 }
@@ -44,6 +46,47 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
     fn next(&mut self) -> Option<Self::Item> {
         use Fallibility::*;
         use Operation::*;
+
+        if self.operation == FindRoadPlacements {
+            let m = &self.state.metadata;
+
+            let all_pieces = m.p1_pieces | m.p2_pieces;
+            let road_pieces = m.flatstones | m.capstones;
+
+            let player_road_pieces = match self.state.to_move() {
+                Color::White => road_pieces & m.p1_pieces,
+                Color::Black => road_pieces & m.p2_pieces,
+            };
+
+            let threat_map = {
+                let (horizontal, vertical) = placement_threat_maps(all_pieces, player_road_pieces);
+                horizontal | vertical
+            };
+
+            self.road_plies = threat_map
+                .bits()
+                .map(|b| b.coordinates())
+                .map(|(x, y)| Ply::Place {
+                    x: x as u8,
+                    y: y as u8,
+                    piece_type: PieceType::Flatstone,
+                })
+                .collect();
+
+            if self.road_plies.is_empty() {
+                self.operation = PreviousPrincipal;
+            } else {
+                self.operation = PlayRoadPlacements;
+            }
+        }
+
+        if self.operation == PlayRoadPlacements {
+            if let Some(ply) = self.road_plies.pop() {
+                return Some((Infallible, ply));
+            } else {
+                self.operation = Finished;
+            }
+        }
 
         if self.operation == PreviousPrincipal {
             self.operation = self.operation.next();
@@ -138,7 +181,9 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
 #[repr(u32)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Operation {
-    PreviousPrincipal = 0u32,
+    FindRoadPlacements = 0u32,
+    PlayRoadPlacements,
+    PreviousPrincipal,
     TtPly,
     GeneratePlies,
     AllPlies,
@@ -154,10 +199,12 @@ impl Operation {
 impl From<u32> for Operation {
     fn from(value: u32) -> Self {
         match value {
-            0 => Self::PreviousPrincipal,
-            1 => Self::TtPly,
-            2 => Self::GeneratePlies,
-            3 => Self::AllPlies,
+            0 => Self::FindRoadPlacements,
+            1 => Self::PlayRoadPlacements,
+            2 => Self::PreviousPrincipal,
+            3 => Self::TtPly,
+            4 => Self::GeneratePlies,
+            5 => Self::AllPlies,
             _ => Self::Finished,
         }
     }
