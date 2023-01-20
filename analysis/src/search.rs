@@ -136,10 +136,47 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
     let mut state = state.clone();
 
+    let mut start_depth = 1;
+    let mut principal_variation = Vec::new();
+
+    // Attempt to pull an initial pv from the table.
+    if let Some(entry) = persistent_state
+        .transposition_table
+        .get(state.metadata.hash)
+    {
+        analysis.stats.tt_hits += 1;
+
+        if entry.bound == Bound::Exact {
+            analysis.stats.tt_saves += 1;
+
+            let final_state = fetch_pv(
+                &state,
+                &persistent_state.transposition_table,
+                entry.depth as usize,
+                &mut principal_variation,
+            );
+
+            analysis = Analysis {
+                depth: entry.depth as u32,
+                final_state,
+                evaluation: entry.evaluation,
+                principal_variation: principal_variation.clone(),
+                stats: analysis.stats,
+                time: total_start_time.elapsed(),
+            };
+
+            if !entry.evaluation.is_terminal() {
+                start_depth = entry.depth as usize + 1;
+            } else {
+                start_depth = entry.depth as usize;
+            }
+        }
+    }
+
     // Visited nodes per depth, used in calculating effective branching factor.
     let mut node_counts = Vec::new();
 
-    for depth in 1..=max_depth {
+    for depth in start_depth..=max_depth {
         let depth_start_time = Instant::now();
 
         let mut search = SearchState {
@@ -147,8 +184,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             interrupted: &config.interrupted,
             persistent_state,
         };
-
-        let mut principal_variation = Vec::with_capacity(depth);
 
         let evaluation = minimax(
             &mut search,
@@ -175,7 +210,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             depth: depth as u32,
             final_state,
             evaluation,
-            principal_variation,
+            principal_variation: principal_variation.clone(),
             stats: &analysis.stats + &search.stats,
             time: total_start_time.elapsed(),
         };
@@ -208,7 +243,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         node_counts.push(search.stats.visited.max(1));
 
         // Treat even and odd depths separately, to account for alpha-beta's quirk.
-        let branching_factor = if depth % 2 == 0 {
+        let branching_factor = if depth % 2 != start_depth % 2 {
             effective_branching_factor(node_counts.iter().copied().skip(1).step_by(2))
         } else {
             effective_branching_factor(node_counts.iter().copied().step_by(2))
