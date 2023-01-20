@@ -1,12 +1,10 @@
-use std::sync::{Mutex, MutexGuard};
-
 use once_cell::sync::Lazy;
 use rand::Rng;
 
 use tak::{Color, Direction, PieceType, Ply, State};
 
 use crate::evaluation::placement_threat_maps;
-use crate::rng::JKiss32Rng;
+use crate::rng::get_rng;
 
 pub(crate) struct PlyGenerator<const N: usize> {
     state: State<N>,
@@ -388,11 +386,6 @@ fn generate_plies<const N: usize>(state: &State<N>, ply_buffer: &mut Vec<ScoredP
             }
         }
     }
-}
-
-fn get_rng() -> MutexGuard<'static, JKiss32Rng> {
-    static RNG: Lazy<Mutex<JKiss32Rng>> = Lazy::new(|| Default::default());
-    RNG.lock().unwrap()
 }
 
 #[cfg(test)]

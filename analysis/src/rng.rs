@@ -1,3 +1,6 @@
+use std::sync::{Mutex, MutexGuard};
+
+use once_cell::sync::Lazy;
 use rand::{self, Rng};
 use rand_core::{impls, RngCore};
 
@@ -12,7 +15,27 @@ pub struct JKiss32Rng {
 
 impl JKiss32Rng {
     pub fn new() -> JKiss32Rng {
+        #[cfg(not(feature = "fixed-rng"))]
         let mut rng = rand::thread_rng();
+
+        #[cfg(feature = "fixed-rng")]
+        let mut rng = {
+            use rand::rngs::StdRng;
+            use rand::SeedableRng;
+            use std::env;
+            use tracing::info;
+
+            let seed = if let Ok(seed) = env::var("FIXED_RNG_SEED") {
+                seed.parse::<u64>().expect("could not parse random seed")
+            } else {
+                u64::from_be_bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+            };
+
+            info!(?seed, "Initializing search rng.");
+
+            StdRng::seed_from_u64(seed)
+        };
+
         JKiss32Rng {
             x: rng.gen(),
             y: rng.gen(),
@@ -54,4 +77,9 @@ impl RngCore for JKiss32Rng {
         self.fill_bytes(dest);
         Ok(())
     }
+}
+
+pub(crate) fn get_rng() -> MutexGuard<'static, JKiss32Rng> {
+    static RNG: Lazy<Mutex<JKiss32Rng>> = Lazy::new(|| Default::default());
+    RNG.lock().unwrap()
 }

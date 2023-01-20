@@ -21,8 +21,35 @@ struct ZobristKeys<const N: usize> {
 
 impl<const N: usize> ZobristKeys<N> {
     fn new() -> Self {
+        #[cfg(not(feature = "fixed-rng"))]
+        let mut rng = rand::thread_rng();
+
+        #[cfg(feature = "fixed-rng")]
+        let mut rng = {
+            use rand::rngs::StdRng;
+            use rand::SeedableRng;
+            use std::env;
+            use std::sync::Mutex;
+            use tracing::info;
+
+            static RNG: Lazy<Mutex<StdRng>> = Lazy::new(|| {
+                let seed = if let Ok(seed) = env::var("FIXED_RNG_SEED") {
+                    seed.parse::<u64>().expect("could not parse random seed")
+                } else {
+                    u64::from_be_bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+                };
+
+                info!(?seed, "Initializing Zobrist hashing rng.");
+
+                Mutex::new(StdRng::seed_from_u64(seed))
+            });
+
+            RNG.lock().unwrap()
+        };
+
         let mut keys = Self::default();
-        rand::thread_rng().fill(&mut keys);
+        rng.fill(&mut keys);
+
         keys
     }
 }
