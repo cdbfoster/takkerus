@@ -41,7 +41,7 @@ impl<const N: usize> TranspositionTable<N> {
 
         fn score<const N: usize>(entry: &TranspositionTableEntry<N>) -> u16 {
             // Score by depth and then by ply count.
-            ((entry.depth as u16) << 8) | entry.ply_count as u16
+            ((entry.depth as u16) << 10) | ((entry.ply_count as u16) << 2) | (entry.bound as u16)
         }
 
         while offset < MAX_PROBE_DEPTH {
@@ -123,9 +123,9 @@ pub struct Slot<const N: usize> {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Bound {
-    Exact,
-    Upper,
+    Upper = 0,
     Lower,
+    Exact,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
