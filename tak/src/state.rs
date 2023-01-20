@@ -10,6 +10,7 @@ use crate::metadata::Metadata;
 use crate::piece::{Color, Piece, PieceType};
 use crate::ply::{Direction, Ply, PlyError};
 use crate::stack::Stack;
+use crate::tps::Tps;
 use crate::zobrist::{zobrist_advance_move, zobrist_hash_stack, zobrist_hash_state};
 
 #[derive(Clone, Eq, PartialEq)]
@@ -358,7 +359,7 @@ impl<const N: usize> fmt::Debug for State<N> {
             .field("ply", &self.ply_count)
             .field("flats", &(self.p1_flatstones, self.p2_flatstones))
             .field("caps", &(self.p1_capstones, self.p2_capstones))
-            .field("board", &self.board)
+            .field("board", &Tps::from(self.clone()).to_string())
             .finish()
     }
 }
