@@ -6,9 +6,7 @@ use futures::channel::mpsc::{self, UnboundedReceiver as Receiver, UnboundedSende
 use futures::{select, FutureExt, SinkExt};
 use tracing::{debug, error, instrument, trace, warn};
 
-use tak::{
-    Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, Resolution, State, StateError,
-};
+use tak::{Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, Resolution, State, StateError};
 
 use crate::args::{Game, PlayConfig, Player as PlayerArgs};
 
@@ -393,7 +391,12 @@ fn print_board<const N: usize>(game: &PtnGame) {
             None => "--".to_owned(),
         };
 
-        println!("\n  {turn_number:<3}  {:<width$}{}", p1_move, p2_move, width = N + 4);
+        println!(
+            "\n  {turn_number:<3}  {:<width$}{}",
+            p1_move,
+            p2_move,
+            width = N + 4
+        );
     } else {
         println!("\n  1.   --");
     }
