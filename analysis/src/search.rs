@@ -459,6 +459,7 @@ fn minimax<const N: usize>(
 
     let mut first_iteration = true;
     let mut raised_alpha = false;
+    let mut best_ply = None;
 
     for (fallibility, ply) in ply_generator {
         let mut state = state.clone();
@@ -517,6 +518,7 @@ fn minimax<const N: usize>(
         if next_eval > alpha {
             alpha = next_eval;
             raised_alpha = true;
+            best_ply = Some(ply);
 
             principal_variation.clear();
             principal_variation.push(ply);
@@ -527,8 +529,8 @@ fn minimax<const N: usize>(
                 search.stats.beta_cutoff += 1;
                 break;
             }
-        } else if principal_variation.is_empty() {
-            principal_variation.push(ply);
+        } else if best_ply.is_none() {
+            best_ply = Some(ply);
         }
 
         first_iteration = false;
@@ -540,7 +542,7 @@ fn minimax<const N: usize>(
 
     // Store in transposition table =============
 
-    if let Some(ply) = principal_variation.first().copied() {
+    if let Some(ply) = best_ply {
         let inserted = search.persistent_state.transposition_table.insert(
             state.metadata.hash,
             TranspositionTableEntry {
