@@ -361,7 +361,11 @@ fn minimax<const N: usize>(
                 principal_variation.clear();
                 principal_variation.push(entry.ply);
 
-                return entry.evaluation;
+                match entry.bound {
+                    Bound::Exact => return entry.evaluation,
+                    Bound::Upper => return alpha,
+                    Bound::Lower => return beta,
+                }
             }
         } else {
             tt_ply = Some(entry.ply);
@@ -392,7 +396,7 @@ fn minimax<const N: usize>(
 
         if eval >= beta {
             search.stats.null_cutoff += 1;
-            return eval;
+            return beta;
         }
     }
 
@@ -472,6 +476,7 @@ fn minimax<const N: usize>(
             principal_variation.extend_from_slice(&next_pv);
 
             if alpha >= beta {
+                alpha = beta;
                 search.stats.beta_cutoff += 1;
                 break;
             }
@@ -492,7 +497,7 @@ fn minimax<const N: usize>(
         let inserted = search.persistent_state.transposition_table.insert(
             state.metadata.hash,
             TranspositionTableEntry {
-                bound: if alpha >= beta {
+                bound: if alpha == beta {
                     Bound::Lower
                 } else if raised_alpha {
                     Bound::Exact
