@@ -283,6 +283,8 @@ fn fetch_pv<const N: usize>(
 
     let mut state = state.clone();
 
+    debug!(?pv, "PV from search:");
+
     for ply in pv.iter() {
         if let Err(err) = state.execute_ply(*ply) {
             error!(error = ?err, "Principal variation ply caused an error. Skipping");
@@ -290,18 +292,28 @@ fn fetch_pv<const N: usize>(
     }
 
     while let Some(entry) = tt.get(state.metadata.hash) {
-        if let Err(err) = state.execute_ply(entry.ply) {
-            warn!(error = ?err, "Principal variation ply caused an error. Ending fetch");
-            break;
-        } else {
-            pv.push(entry.ply);
-
-            // Only grab as many as we've actually analyzed.
-            if pv.len() == max_depth {
+        if entry.bound == Bound::Exact {
+            let old_state = state.clone();
+            if let Err(err) = state.execute_ply(entry.ply) {
+                error!(error = ?err, ?entry, state = ?old_state, "Principal variation ply caused an error. Ending fetch");
                 break;
+            } else {
+                debug!(?entry, "Adding PV ply.");
+
+                pv.push(entry.ply);
+
+                // Only grab as many as we've actually analyzed.
+                if pv.len() == max_depth {
+                    break;
+                }
             }
+        } else {
+            debug!(?entry, "Non-PV node encountered. Ending fetch");
+            break;
         }
     }
+
+    debug!(?pv, "PV after fetch:");
 
     state
 }
