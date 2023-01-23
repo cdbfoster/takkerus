@@ -80,6 +80,6 @@ impl RngCore for JKiss32Rng {
 }
 
 pub(crate) fn get_rng() -> MutexGuard<'static, JKiss32Rng> {
-    static RNG: Lazy<Mutex<JKiss32Rng>> = Lazy::new(|| Default::default());
+    static RNG: Lazy<Mutex<JKiss32Rng>> = Lazy::new(Default::default);
     RNG.lock().unwrap()
 }
