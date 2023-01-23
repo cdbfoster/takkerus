@@ -80,7 +80,8 @@ struct Weights {
     hard_flat: EvalType,
     soft_flat: EvalType,
     placement_threat: EvalType,
-    influence_over_flat: EvalType,
+    influence_over_self: EvalType,
+    influence_over_enemy: EvalType,
     influence_over_empty: EvalType,
 }
 
@@ -93,7 +94,8 @@ const WEIGHT: Weights = Weights {
     hard_flat: 500,
     soft_flat: -250,
     placement_threat: 1000,
-    influence_over_flat: 100,
+    influence_over_self: 100,
+    influence_over_enemy: 200,
     influence_over_empty: 50,
 };
 
@@ -208,9 +210,13 @@ fn evaluate_influence<const N: usize>(
     let mut eval = 0;
 
     for (i, bitfield) in influence.into_iter().enumerate() {
-        let influenced_flats = bitfield & m.flatstones;
-        eval += (WEIGHT.influence_over_flat / N as EvalType)
-            * ((influenced_flats.count_ones() as EvalType) << i);
+        let influenced_self = bitfield & m.flatstones & player_pieces;
+        eval += (WEIGHT.influence_over_self / N as EvalType)
+            * ((influenced_self.count_ones() as EvalType) << i);
+
+        let influenced_enemy = bitfield & m.flatstones & !player_pieces;
+        eval += (WEIGHT.influence_over_enemy / N as EvalType)
+            * ((influenced_enemy.count_ones() as EvalType) << i);
 
         let influenced_empty = bitfield & !all_pieces;
         eval += (WEIGHT.influence_over_empty / N as EvalType)
