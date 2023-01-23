@@ -43,9 +43,9 @@ impl<const N: usize> Bitmap<N> {
         use Direction::*;
 
         let mut dilation = self;
-        dilation |= self << 1 & !edge_masks::<N>()[East as usize] & board_mask::<N>();
-        dilation |= self >> 1 & !edge_masks::<N>()[West as usize];
-        dilation |= self << N & board_mask::<N>();
+        dilation |= self << 1 & !edge_masks()[East as usize] & board_mask();
+        dilation |= self >> 1 & !edge_masks()[West as usize];
+        dilation |= self << N & board_mask();
         dilation |= self >> N;
 
         dilation
@@ -232,8 +232,8 @@ mod ops {
     use super::*;
 
     use std::ops::{
-        BitAnd, BitAndAssign, BitOr, BitOrAssign, Deref, DerefMut, Not, Shl, ShlAssign, Shr,
-        ShrAssign,
+        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Deref, DerefMut, Not, Shl,
+        ShlAssign, Shr, ShrAssign,
     };
 
     impl<const N: usize> Deref for Bitmap<N> {
@@ -290,6 +290,7 @@ mod ops {
 
     impl_pod_binary_op!(BitAnd, bitand, [u64]);
     impl_pod_binary_op!(BitOr, bitor, [u64]);
+    impl_pod_binary_op!(BitXor, bitxor, [u64]);
     impl_pod_binary_op!(
         Shl,
         shl,
@@ -321,6 +322,7 @@ mod ops {
 
     impl_pod_assign_op!(BitAndAssign, bitand_assign, [u64]);
     impl_pod_assign_op!(BitOrAssign, bitor_assign, [u64]);
+    impl_pod_assign_op!(BitXorAssign, bitxor_assign, [u64]);
     impl_pod_assign_op!(
         ShlAssign,
         shl_assign,
@@ -370,7 +372,7 @@ mod ops {
         };
     }
 
-    impl_bitmap_binary_ops!([(BitAnd, bitand), (BitOr, bitor)]);
+    impl_bitmap_binary_ops!([(BitAnd, bitand), (BitOr, bitor), (BitXor, bitxor)]);
 
     macro_rules! impl_bitmap_assign_op {
         ([$(($op:ident, $fn:ident)),+]) => {
@@ -390,7 +392,11 @@ mod ops {
         };
     }
 
-    impl_bitmap_assign_op!([(BitAndAssign, bitand_assign), (BitOrAssign, bitor_assign)]);
+    impl_bitmap_assign_op!([
+        (BitAndAssign, bitand_assign),
+        (BitOrAssign, bitor_assign),
+        (BitXorAssign, bitxor_assign)
+    ]);
 
     impl<const N: usize> Not for Bitmap<N> {
         type Output = Bitmap<N>;
