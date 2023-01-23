@@ -147,6 +147,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         analysis.stats.tt_hits += 1;
 
         if entry.bound == Bound::Exact {
+            analysis.stats.visited = entry.node_count as u64;
             analysis.stats.tt_saves += 1;
 
             let final_state = fetch_pv(
@@ -174,7 +175,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     }
 
     // Visited nodes per depth, used in calculating effective branching factor.
-    let mut node_counts = Vec::new();
+    let mut node_counts = vec![analysis.stats.visited.max(1)];
 
     for depth in start_depth..=max_depth {
         let depth_start_time = Instant::now();
@@ -242,8 +243,10 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         node_counts.push(search.stats.visited.max(1));
 
-        // Treat even and odd depths separately, to account for alpha-beta's quirk.
-        let branching_factor = if depth % 2 != start_depth % 2 {
+        // Treat even and odd depths separately (if there are enough data points), to account for alpha-beta's quirk.
+        let branching_factor = if node_counts.len() <= 2 {
+            effective_branching_factor(node_counts.iter().copied())
+        } else if depth % 2 == start_depth % 2 {
             effective_branching_factor(node_counts.iter().copied().skip(1).step_by(2))
         } else {
             effective_branching_factor(node_counts.iter().copied().step_by(2))
@@ -554,6 +557,7 @@ fn minimax<const N: usize>(
                     Bound::Upper
                 },
                 evaluation: alpha,
+                node_count: search.stats.visited.try_into().unwrap_or(u32::MAX),
                 depth: depth as u8,
                 ply_count: (state.ply_count & 0xFF) as u8,
                 ply,

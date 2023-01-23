@@ -132,6 +132,7 @@ pub enum Bound {
 pub struct TranspositionTableEntry<const N: usize> {
     pub bound: Bound,
     pub evaluation: Evaluation,
+    pub node_count: u32,
     pub depth: u8,
     pub ply_count: u8,
     pub ply: Ply<N>,
@@ -162,6 +163,7 @@ mod tests {
         TranspositionTableEntry {
             bound: Bound::Exact,
             evaluation: 0.into(),
+            node_count: 0,
             depth: value,
             ply_count: 0,
             ply: Ply::Place {
@@ -177,6 +179,76 @@ mod tests {
             hash,
             entry: test_entry(value),
         })
+    }
+
+    #[test]
+    fn slot_print_size() {
+        for n in 3..=8 {
+            let (size, alignment) = match n {
+                3 => (
+                    std::mem::size_of::<Slot<3>>(),
+                    std::mem::align_of::<Slot<3>>(),
+                ),
+                4 => (
+                    std::mem::size_of::<Slot<4>>(),
+                    std::mem::align_of::<Slot<4>>(),
+                ),
+                5 => (
+                    std::mem::size_of::<Slot<5>>(),
+                    std::mem::align_of::<Slot<5>>(),
+                ),
+                6 => (
+                    std::mem::size_of::<Slot<6>>(),
+                    std::mem::align_of::<Slot<6>>(),
+                ),
+                7 => (
+                    std::mem::size_of::<Slot<7>>(),
+                    std::mem::align_of::<Slot<7>>(),
+                ),
+                8 => (
+                    std::mem::size_of::<Slot<8>>(),
+                    std::mem::align_of::<Slot<8>>(),
+                ),
+                _ => unreachable!(),
+            };
+
+            println!("Slot<{n}>: {size} bytes, {alignment} byte alignment");
+        }
+    }
+
+    #[test]
+    fn entry_print_size() {
+        for n in 3..=8 {
+            let (size, alignment) = match n {
+                3 => (
+                    std::mem::size_of::<TranspositionTableEntry<3>>(),
+                    std::mem::align_of::<TranspositionTableEntry<3>>(),
+                ),
+                4 => (
+                    std::mem::size_of::<TranspositionTableEntry<4>>(),
+                    std::mem::align_of::<TranspositionTableEntry<4>>(),
+                ),
+                5 => (
+                    std::mem::size_of::<TranspositionTableEntry<5>>(),
+                    std::mem::align_of::<TranspositionTableEntry<5>>(),
+                ),
+                6 => (
+                    std::mem::size_of::<TranspositionTableEntry<6>>(),
+                    std::mem::align_of::<TranspositionTableEntry<6>>(),
+                ),
+                7 => (
+                    std::mem::size_of::<TranspositionTableEntry<7>>(),
+                    std::mem::align_of::<TranspositionTableEntry<7>>(),
+                ),
+                8 => (
+                    std::mem::size_of::<TranspositionTableEntry<8>>(),
+                    std::mem::align_of::<TranspositionTableEntry<8>>(),
+                ),
+                _ => unreachable!(),
+            };
+
+            println!("TranspositionTableEntry<{n}>: {size} bytes, {alignment} byte alignment");
+        }
     }
 
     #[test]
