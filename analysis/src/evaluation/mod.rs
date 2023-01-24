@@ -13,16 +13,10 @@ use tak::{board_mask, edge_masks, Bitmap, Color, Direction, Metadata, Resolution
 pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     use Color::*;
 
-    let to_move = if state.ply_count % 2 == 0 {
-        Color::White
-    } else {
-        Color::Black
-    };
-
     match state.resolution() {
         None => (),
         Some(Resolution::Road(color)) | Some(Resolution::Flats { color, .. }) => {
-            if color == to_move {
+            if color == state.to_move() {
                 return Evaluation::WIN - state.ply_count as i32;
             } else {
                 return Evaluation::LOSE + state.ply_count as i32;
@@ -65,7 +59,7 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     p1_eval += evaluate_influence(m, m.p1_pieces, &m.p1_stacks);
     p2_eval += evaluate_influence(m, m.p2_pieces, &m.p2_stacks);
 
-    match to_move {
+    match state.to_move() {
         White => p1_eval - p2_eval,
         Black => p2_eval - p1_eval,
     }
