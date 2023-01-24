@@ -6,8 +6,6 @@ use self::util::EvalType;
 
 mod util;
 
-use std::fmt;
-
 use tak::{board_mask, edge_masks, Bitmap, Color, Direction, Metadata, Resolution, State};
 
 pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
@@ -263,18 +261,6 @@ fn calculate_influence_bitfield<const N: usize>(
     }
 
     influence
-}
-
-impl From<EvalType> for Evaluation {
-    fn from(value: EvalType) -> Self {
-        Self(value)
-    }
-}
-
-impl fmt::Display for Evaluation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
 }
 
 #[cfg(test)]

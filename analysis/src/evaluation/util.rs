@@ -1,3 +1,5 @@
+use std::fmt;
+
 use tak::{edge_masks, Bitmap, Direction};
 
 const WIN: EvalType = 100_000;
@@ -139,6 +141,18 @@ mod ops {
         fn neg(self) -> Self::Output {
             Evaluation(-self.0)
         }
+    }
+}
+
+impl From<EvalType> for Evaluation {
+    fn from(value: EvalType) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Display for Evaluation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
