@@ -50,8 +50,8 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     p2_eval += evaluate_captured_flats(m.p2_pieces, &m.p2_stacks, &m.p1_stacks);
 
     // Placement threats
-    p1_eval += evaluate_placement_threats(all_pieces, p1_road_pieces);
-    p2_eval += evaluate_placement_threats(all_pieces, p2_road_pieces);
+    p1_eval += evaluate_placement_threats(p1_road_pieces, all_pieces & !p1_road_pieces);
+    p2_eval += evaluate_placement_threats(p2_road_pieces, all_pieces & !p2_road_pieces);
 
     match state.to_move() {
         White => p1_eval - p2_eval,
@@ -81,16 +81,24 @@ const WEIGHT: Weights = Weights {
     placement_threat: 1000,
 };
 
-fn evaluate_material<const N: usize>(m: &Metadata<N>, pieces: Bitmap<N>) -> EvalType {
+/// Scores a player's top-most pieces by type.
+fn evaluate_material<const N: usize>(m: &Metadata<N>, player_pieces: Bitmap<N>) -> EvalType {
     let mut eval = 0;
-    eval += (pieces & m.flatstones).count_ones() as EvalType * WEIGHT.flatstone / N as EvalType;
-    eval += (pieces & m.standing_stones).count_ones() as EvalType * WEIGHT.standing_stone
-        / N as EvalType;
-    eval += (pieces & m.capstones).count_ones() as EvalType * WEIGHT.capstone / N as EvalType;
+
+    let flatstones = (player_pieces & m.flatstones).count_ones() as EvalType;
+    let standing_stones = (player_pieces & m.standing_stones).count_ones() as EvalType;
+    let capstones = (player_pieces & m.capstones).count_ones() as EvalType;
+
+    eval += flatstones * WEIGHT.flatstone / N as EvalType;
+    eval += standing_stones * WEIGHT.standing_stone / N as EvalType;
+    eval += capstones * WEIGHT.capstone / N as EvalType;
+
     eval
 }
 
-fn evaluate_road_groups<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
+/// Scores a player's road-contributing groups by how much of the board they
+/// span in each direction.
+fn evaluate_road_groups<const N: usize>(player_road_pieces: Bitmap<N>) -> EvalType {
     let mut eval = 0;
 
     // Weight groups by what percentage of the board they cover.
@@ -111,7 +119,7 @@ fn evaluate_road_groups<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
         }
     }
 
-    for group in road_pieces.groups() {
+    for group in player_road_pieces.groups() {
         eval += size_weights::<N>()[group.width() - 1];
         eval += size_weights::<N>()[group.height() - 1];
     }
@@ -119,12 +127,14 @@ fn evaluate_road_groups<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
     eval
 }
 
-fn evaluate_road_slices<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
+/// Returns a bonus for each horizontal and vertical slice of the board
+/// that a player has at least 1 road-contributing piece in.
+fn evaluate_road_slices<const N: usize>(player_road_pieces: Bitmap<N>) -> EvalType {
     let mut eval = 0;
 
     let mut row_mask = edge_masks::<N>()[Direction::North as usize];
     for _ in 0..N {
-        if road_pieces & row_mask != 0.into() {
+        if player_road_pieces & row_mask != 0.into() {
             eval += WEIGHT.road_slice / N as EvalType;
         }
         row_mask >>= N;
@@ -132,7 +142,7 @@ fn evaluate_road_slices<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
 
     let mut column_mask = edge_masks::<N>()[Direction::West as usize];
     for _ in 0..N {
-        if road_pieces & column_mask != 0.into() {
+        if player_road_pieces & column_mask != 0.into() {
             eval += WEIGHT.road_slice / N as EvalType;
         }
         column_mask >>= 1;
@@ -141,8 +151,10 @@ fn evaluate_road_slices<const N: usize>(road_pieces: Bitmap<N>) -> EvalType {
     eval
 }
 
+/// Scores a player's stacks by how many of each player's flatstones are
+/// contained within them.
 fn evaluate_captured_flats<const N: usize>(
-    mut pieces: Bitmap<N>,
+    mut player_pieces: Bitmap<N>,
     player_stacks: &[[u8; N]; N],
     opponent_stacks: &[[u8; N]; N],
 ) -> EvalType {
@@ -151,14 +163,14 @@ fn evaluate_captured_flats<const N: usize>(
 
     for y in 0..N {
         for x in (0..N).rev() {
-            if pieces & 0x01 == 1.into() {
+            if player_pieces & 0x01 == 1.into() {
                 let player_stack = player_stacks[x][y];
                 let opponent_stack = opponent_stacks[x][y];
 
                 hard_flats += player_stack.count_ones() as u8 - 1;
                 soft_flats += opponent_stack.count_ones() as u8;
             }
-            pieces >>= 1;
+            player_pieces >>= 1;
         }
     }
 
@@ -166,11 +178,15 @@ fn evaluate_captured_flats<const N: usize>(
         + soft_flats as EvalType * WEIGHT.soft_flat / N as EvalType
 }
 
+/// Returns a bonus for each empty square that would complete a road
+/// in the horizontal or vertical direction if a player were to place
+/// a flatstone there.
 fn evaluate_placement_threats<const N: usize>(
-    all_pieces: Bitmap<N>,
-    road_pieces: Bitmap<N>,
+    player_road_pieces: Bitmap<N>,
+    blocking_pieces: Bitmap<N>,
 ) -> EvalType {
-    let (horizontal_threats, vertical_threats) = placement_threat_maps(all_pieces, road_pieces);
+    let (horizontal_threats, vertical_threats) =
+        placement_threat_maps(player_road_pieces, blocking_pieces);
 
     let mut eval = 0;
     eval += horizontal_threats.count_ones() as EvalType * WEIGHT.placement_threat / N as EvalType;

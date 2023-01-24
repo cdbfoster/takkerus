@@ -55,9 +55,11 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
                 Color::White => road_pieces & m.p1_pieces,
                 Color::Black => road_pieces & m.p2_pieces,
             };
+            let blocking_pieces = all_pieces & !player_road_pieces;
 
             let threat_map = {
-                let (horizontal, vertical) = placement_threat_maps(all_pieces, player_road_pieces);
+                let (horizontal, vertical) =
+                    placement_threat_maps(player_road_pieces, blocking_pieces);
                 horizontal | vertical
             };
 
@@ -118,6 +120,7 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
                 Color::White => road_pieces & m.p1_pieces,
                 Color::Black => road_pieces & m.p2_pieces,
             };
+            let blocking_pieces = all_pieces & !player_road_pieces;
 
             for scored_ply in &mut self.plies {
                 // Search placements before spreads.
@@ -134,7 +137,7 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
 
                     let threat_map = {
                         let (horizontal, vertical) =
-                            placement_threat_maps(all_pieces, player_road_pieces);
+                            placement_threat_maps(player_road_pieces, blocking_pieces);
                         horizontal | vertical
                     };
 
