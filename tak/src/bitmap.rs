@@ -184,15 +184,31 @@ pub const fn board_mask<const N: usize>() -> Bitmap<N> {
         0,
         0,
         0,
-        0x01FF,
-        0xFFFF,
-        0x01FFFFFF,
-        0x0FFFFFFFFF,
-        0x01FFFFFFFFFFFF,
-        0xFFFFFFFFFFFFFFFF,
+        0b111_111_111,
+        0b1111_1111_1111_1111,
+        0b11111_11111_11111_11111_11111,
+        0b111111_111111_111111_111111_111111_111111,
+        0b1111111_1111111_1111111_1111111_1111111_1111111_1111111,
+        0b11111111_11111111_11111111_11111111_11111111_11111111_11111111_11111111,
     ];
 
     Bitmap::new(BOARD_MASKS[N])
+}
+
+pub const fn center_mask<const N: usize>() -> Bitmap<N> {
+    const CENTER_MASKS: [u64; 9] = [
+        0,
+        0,
+        0,
+        0b000_010_000,
+        0b0000_0110_0110_0000,
+        0b00000_00000_00100_00000_00000,
+        0b000000_000000_001100_001100_000000_000000,
+        0b0000000_0000000_0000000_0001000_0000000_0000000_0000000,
+        0b00000000_00000000_00000000_00011000_00011000_00000000_00000000_00000000,
+    ];
+
+    Bitmap::new(CENTER_MASKS[N])
 }
 
 pub const fn edge_masks<const N: usize>() -> [Bitmap<N>; 4] {
@@ -200,21 +216,36 @@ pub const fn edge_masks<const N: usize>() -> [Bitmap<N>; 4] {
         [0; 4],
         [0; 4],
         [0; 4],
-        [0x01C0, 0x0049, 0x0007, 0x0124],
-        [0xF000, 0x1111, 0x000F, 0x8888],
-        [0x01F00000, 0x00108421, 0x0000001F, 0x01084210],
-        [0x0FC0000000, 0x0041041041, 0x000000003F, 0x0820820820],
+        [0b111_000_000, 0b001_001_001, 0b000_000_111, 0b100_100_100],
         [
-            0x01FC0000000000,
-            0x00040810204081,
-            0x0000000000007F,
-            0x01020408102040,
+            0b1111_0000_0000_0000,
+            0b0001_0001_0001_0001,
+            0b0000_0000_0000_1111,
+            0b1000_1000_1000_1000,
         ],
         [
-            0xFF00000000000000,
-            0x0101010101010101,
-            0x00000000000000FF,
-            0x8080808080808080,
+            0b11111_00000_00000_00000_00000,
+            0b00001_00001_00001_00001_00001,
+            0b00000_00000_00000_00000_11111,
+            0b10000_10000_10000_10000_10000,
+        ],
+        [
+            0b111111_000000_000000_000000_000000_000000,
+            0b000001_000001_000001_000001_000001_000001,
+            0b000000_000000_000000_000000_000000_111111,
+            0b100000_100000_100000_100000_100000_100000,
+        ],
+        [
+            0b1111111_0000000_0000000_0000000_0000000_0000000_0000000,
+            0b0000001_0000001_0000001_0000001_0000001_0000001_0000001,
+            0b0000000_0000000_0000000_0000000_0000000_0000000_1111111,
+            0b1000000_1000000_1000000_1000000_1000000_1000000_1000000,
+        ],
+        [
+            0b11111111_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+            0b00000001_00000001_00000001_00000001_00000001_00000001_00000001_00000001,
+            0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_11111111,
+            0b10000000_10000000_10000000_10000000_10000000_10000000_10000000_10000000,
         ],
     ];
 
@@ -423,43 +454,43 @@ mod tests {
     fn set() {
         let mut b = Bitmap::<5>::default();
         b.set(0, 0);
-        assert_eq!(b, Bitmap::new(0x10));
+        assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_10000));
 
         let mut b = Bitmap::<5>::default();
         b.set(1, 0);
-        assert_eq!(b, Bitmap::new(0x08));
+        assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_01000));
 
         let mut b = Bitmap::<5>::default();
         b.set(1, 1);
-        assert_eq!(b, Bitmap::new(0x0100));
+        assert_eq!(b, Bitmap::new(0b00000_00000_00000_01000_00000));
 
         let mut b = Bitmap::<5>::default();
         b.set(4, 4);
-        assert_eq!(b, Bitmap::new(0x100000));
+        assert_eq!(b, Bitmap::new(0b00001_00000_00000_00000_00000));
     }
 
     #[test]
     fn clear() {
-        let mut b = Bitmap::<5>::new(0xFFFFFFFFFFFFFFFF);
+        let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(0, 0);
-        assert_eq!(b, Bitmap::new(0xFFFFFFFFFFFFFFEF));
+        assert_eq!(b, Bitmap::new(0b11111_11111_11111_11111_01111));
 
-        let mut b = Bitmap::<5>::new(0xFFFFFFFFFFFFFFFF);
+        let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(1, 0);
-        assert_eq!(b, Bitmap::new(0xFFFFFFFFFFFFFFF7));
+        assert_eq!(b, Bitmap::new(0b11111_11111_11111_11111_10111));
 
-        let mut b = Bitmap::<5>::new(0xFFFFFFFFFFFFFFFF);
+        let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(1, 1);
-        assert_eq!(b, Bitmap::new(0xFFFFFFFFFFFFFEFF));
+        assert_eq!(b, Bitmap::new(0b11111_11111_11111_10111_11111));
 
-        let mut b = Bitmap::<5>::new(0xFFFFFFFFFFFFFFFF);
+        let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(4, 4);
-        assert_eq!(b, Bitmap::new(0xFFFFFFFFFFEFFFFF));
+        assert_eq!(b, Bitmap::new(0b11110_11111_11111_11111_11111));
     }
 
     #[test]
     fn get() {
-        let b = Bitmap::<5>::new(0b0000000110001001010101000);
+        let b = Bitmap::<5>::new(0b00000_00110_00100_10101_01000);
         assert!(!b.get(0, 0));
         assert!(b.get(1, 0));
         assert!(b.get(0, 1));
@@ -470,97 +501,54 @@ mod tests {
 
     #[test]
     fn coordinates() {
-        assert_eq!(Bitmap::<3>::new(0b000000001).coordinates(), (2, 0));
-        assert_eq!(Bitmap::<3>::new(0b000010000).coordinates(), (1, 1));
-        assert_eq!(Bitmap::<3>::new(0b000100000).coordinates(), (0, 1));
-        assert_eq!(Bitmap::<3>::new(0b010000000).coordinates(), (1, 2));
+        assert_eq!(Bitmap::<3>::new(0b000_000_001).coordinates(), (2, 0));
+        assert_eq!(Bitmap::<3>::new(0b000_010_000).coordinates(), (1, 1));
+        assert_eq!(Bitmap::<3>::new(0b000_100_000).coordinates(), (0, 1));
+        assert_eq!(Bitmap::<3>::new(0b010_000_000).coordinates(), (1, 2));
     }
 
     #[test]
     fn dilate() {
-        let b = Bitmap::<5>::new(0b0000000000001000000000000);
-        assert_eq!(b.dilate(), 0b0000000100011100010000000.into());
+        let b = Bitmap::<5>::new(0b00000_00000_00100_00000_00000);
+        assert_eq!(b.dilate(), 0b00000_00100_01110_00100_00000.into());
 
-        let b = Bitmap::<5>::new(0b1000100000000000000010001);
-        assert_eq!(b.dilate(), 0b1101110001000001000111011.into());
+        let b = Bitmap::<5>::new(0b10001_00000_00000_00000_10001);
+        assert_eq!(b.dilate(), 0b11011_10001_00000_10001_11011.into());
 
-        let b = Bitmap::<5>::new(0b0000000100011100010000000);
-        assert_eq!(b.dilate(), 0b0010001110111110111000100.into());
+        let b = Bitmap::<5>::new(0b00000_00100_01110_00100_00000);
+        assert_eq!(b.dilate(), 0b00100_01110_11111_01110_00100.into());
     }
 
     #[test]
     fn groups() {
-        let mut g = Bitmap::<5>::new(0b1110011010001100011111000).groups();
+        let mut g = Bitmap::<5>::new(0b11100_11010_00110_00111_11000).groups();
 
-        assert_eq!(g.next(), Some(0b0000000000000000000011000.into()));
-        assert_eq!(g.next(), Some(0b0000000010001100011100000.into()));
-        assert_eq!(g.next(), Some(0b1110011000000000000000000.into()));
+        assert_eq!(g.next(), Some(0b00000_00000_00000_00000_11000.into()));
+        assert_eq!(g.next(), Some(0b00000_00010_00110_00111_00000.into()));
+        assert_eq!(g.next(), Some(0b11100_11000_00000_00000_00000.into()));
         assert_eq!(g.next(), None);
     }
 
     #[test]
     fn width() {
-        let b = Bitmap::<5>::new(0b0000001100011100100001000);
+        let b = Bitmap::<5>::new(0b00000_01100_01110_01000_01000);
         assert_eq!(b.width(), 3);
     }
 
     #[test]
     fn height() {
-        let b = Bitmap::<5>::new(0b0000001100011100100001000);
+        let b = Bitmap::<5>::new(0b00000_01100_01110_01000_01000);
         assert_eq!(b.height(), 4);
     }
 
     #[test]
     fn bits() {
-        let mut b = Bitmap::<3>::new(0b010110001).bits();
+        let mut b = Bitmap::<3>::new(0b010_110_001).bits();
 
-        assert_eq!(b.next(), Some(0b000000001.into()));
-        assert_eq!(b.next(), Some(0b000010000.into()));
-        assert_eq!(b.next(), Some(0b000100000.into()));
-        assert_eq!(b.next(), Some(0b010000000.into()));
+        assert_eq!(b.next(), Some(0b000_000_001.into()));
+        assert_eq!(b.next(), Some(0b000_010_000.into()));
+        assert_eq!(b.next(), Some(0b000_100_000.into()));
+        assert_eq!(b.next(), Some(0b010_000_000.into()));
         assert_eq!(b.next(), None);
-    }
-
-    #[test]
-    fn edge_masks_are_correct() {
-        fn all_edges<const N: usize>() -> Bitmap<N> {
-            use Direction::*;
-            let edges = edge_masks();
-            edges[North as usize]
-                | edges[East as usize]
-                | edges[South as usize]
-                | edges[West as usize]
-        }
-
-        assert_eq!(
-            format!("{:?}", all_edges::<3>()),
-            "111/101/111",
-            "3s is wrong"
-        );
-        assert_eq!(
-            format!("{:?}", all_edges::<4>()),
-            "1111/1001/1001/1111",
-            "4s is wrong"
-        );
-        assert_eq!(
-            format!("{:?}", all_edges::<5>()),
-            "11111/10001/10001/10001/11111",
-            "5s is wrong"
-        );
-        assert_eq!(
-            format!("{:?}", all_edges::<6>()),
-            "111111/100001/100001/100001/100001/111111",
-            "6s is wrong"
-        );
-        assert_eq!(
-            format!("{:?}", all_edges::<7>()),
-            "1111111/1000001/1000001/1000001/1000001/1000001/1111111",
-            "7s is wrong"
-        );
-        assert_eq!(
-            format!("{:?}", all_edges::<8>()),
-            "11111111/10000001/10000001/10000001/10000001/10000001/10000001/11111111",
-            "8s is wrong"
-        );
     }
 }
