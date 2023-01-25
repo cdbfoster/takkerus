@@ -80,7 +80,7 @@ impl<const N: usize> Metadata<N> {
             self.capstones.clear(x, y);
         }
 
-        let (p1_stack, p2_stack) = stack.get_hash_repr();
+        let (p1_stack, p2_stack) = stack.get_player_pieces();
         self.p1_stacks[x][y] = p1_stack;
         self.p2_stacks[x][y] = p2_stack;
     }

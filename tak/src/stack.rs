@@ -127,7 +127,10 @@ impl Stack {
     }
 
     /// Returns the positions of the top 8 pieces of the stack for each color.
-    pub(crate) fn get_hash_repr(&self) -> (u8, u8) {
+    /// The first byte is white's piece map, the second is black's.
+    /// A 1 is a piece of that color, a 0 could be the opponent's piece or an
+    /// empty space (if the stack is less than 8 pieces tall).
+    pub(crate) fn get_player_pieces(&self) -> (u8, u8) {
         if !self.is_empty() {
             let mask = 0xFFu8 >> (8 - self.len().min(8));
             let stack_segment = (self.0 >> (self.len().max(8) - 8)) as u8 & mask;
@@ -197,14 +200,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get_hash_repr() {
+    fn get_player_pieces() {
         let stack = Stack(0b1001011010);
-        assert_eq!(stack.get_hash_repr(), (0b100101, 0b11010));
+        assert_eq!(stack.get_player_pieces(), (0b100101, 0b11010));
 
         let stack = Stack(0b100101101001101);
-        assert_eq!(stack.get_hash_repr(), (0b10010110, 0b1101001));
+        assert_eq!(stack.get_player_pieces(), (0b10010110, 0b1101001));
 
         let stack = Stack(0b1000);
-        assert_eq!(stack.get_hash_repr(), (0, 0));
+        assert_eq!(stack.get_player_pieces(), (0, 0));
     }
 }
