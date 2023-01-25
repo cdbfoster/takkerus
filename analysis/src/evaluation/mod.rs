@@ -2,7 +2,7 @@ use tak::{Color, Resolution, State};
 
 pub use self::util::Evaluation;
 
-pub(crate) use self::util::placement_threat_maps;
+pub(crate) use self::util::placement_threat_map;
 
 use self::scoring::*;
 

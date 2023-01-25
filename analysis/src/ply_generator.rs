@@ -3,7 +3,7 @@ use rand::Rng;
 
 use tak::{Color, Direction, PieceType, Ply, State};
 
-use crate::evaluation::placement_threat_maps;
+use crate::evaluation::placement_threat_map;
 use crate::rng::get_rng;
 
 pub(crate) struct PlyGenerator<const N: usize> {
@@ -57,11 +57,7 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
             };
             let blocking_pieces = all_pieces & !player_road_pieces;
 
-            let threat_map = {
-                let (horizontal, vertical) =
-                    placement_threat_maps(player_road_pieces, blocking_pieces);
-                horizontal | vertical
-            };
+            let threat_map = placement_threat_map(player_road_pieces, blocking_pieces);
 
             self.road_plies = threat_map
                 .bits()
@@ -135,11 +131,7 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
                     let mut placed_map = player_road_pieces;
                     placed_map.set(*x as usize, *y as usize);
 
-                    let threat_map = {
-                        let (horizontal, vertical) =
-                            placement_threat_maps(player_road_pieces, blocking_pieces);
-                        horizontal | vertical
-                    };
+                    let threat_map = placement_threat_map(player_road_pieces, blocking_pieces);
 
                     if *threat_map > 0 {
                         *score += 1 << 8;

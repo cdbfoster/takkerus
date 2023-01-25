@@ -1,6 +1,6 @@
 use tak::{edge_masks, Bitmap, Direction, Metadata};
 
-use super::util::{placement_threat_maps, EvalType};
+use super::util::{placement_threat_map, EvalType};
 
 struct Weights {
     flatstone: EvalType,
@@ -125,20 +125,14 @@ pub(super) fn evaluate_captured_flats<const N: usize>(
 }
 
 /// Returns a bonus for each empty square that would complete a road
-/// in the horizontal or vertical direction if a player were to place
-/// a flatstone there.
+/// if a player were to place a flatstone there.
 pub(super) fn evaluate_placement_threats<const N: usize>(
     player_road_pieces: Bitmap<N>,
     blocking_pieces: Bitmap<N>,
 ) -> EvalType {
-    let (horizontal_threats, vertical_threats) =
-        placement_threat_maps(player_road_pieces, blocking_pieces);
+    let threats = placement_threat_map(player_road_pieces, blocking_pieces);
 
-    let mut eval = 0;
-    eval += horizontal_threats.count_ones() as EvalType * WEIGHT.placement_threat / N as EvalType;
-    eval += vertical_threats.count_ones() as EvalType * WEIGHT.placement_threat / N as EvalType;
-
-    eval
+    threats.count_ones() as EvalType * WEIGHT.placement_threat / N as EvalType
 }
 
 #[cfg(test)]

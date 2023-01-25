@@ -156,12 +156,11 @@ impl fmt::Display for Evaluation {
     }
 }
 
-/// Returns two maps, filled with all single locations that would complete a road
-/// horizontally and vertically, respectively.
-pub(crate) fn placement_threat_maps<const N: usize>(
+/// Returns a map filled with all single locations that would complete a road.
+pub(crate) fn placement_threat_map<const N: usize>(
     road_pieces: Bitmap<N>,
     blocking_pieces: Bitmap<N>,
-) -> (Bitmap<N>, Bitmap<N>) {
+) -> Bitmap<N> {
     use Direction::*;
 
     let edges = edge_masks();
@@ -169,16 +168,14 @@ pub(crate) fn placement_threat_maps<const N: usize>(
     let left_pieces = edges[West as usize].flood_fill(road_pieces);
     let right_pieces = edges[East as usize].flood_fill(road_pieces);
     let horizontal_threats = (left_pieces.dilate() | edges[West as usize])
-        & (right_pieces.dilate() | edges[East as usize])
-        & !blocking_pieces;
+        & (right_pieces.dilate() | edges[East as usize]);
 
     let top_pieces = edges[North as usize].flood_fill(road_pieces);
     let bottom_pieces = edges[South as usize].flood_fill(road_pieces);
     let vertical_threats = (top_pieces.dilate() | edges[North as usize])
-        & (bottom_pieces.dilate() | edges[South as usize])
-        & !blocking_pieces;
+        & (bottom_pieces.dilate() | edges[South as usize]);
 
-    (horizontal_threats, vertical_threats)
+    (horizontal_threats | vertical_threats) & !blocking_pieces
 }
 
 #[cfg(test)]
@@ -189,18 +186,15 @@ mod tests {
     fn placement_threat_maps_are_correct() {
         let b: Bitmap<5> = 0b0100011110010000000001000.into();
 
-        let (h, v) = placement_threat_maps(b, 0.into());
-        assert_eq!(h, 0b0000000001000000000000000.into());
-        assert_eq!(v, 0b0000000000000000100000000.into());
+        let t = placement_threat_map(b, 0.into());
+        assert_eq!(t, 0b0000000001000000100000000.into());
 
-        let (h, v) = placement_threat_maps(b, 0b0100011111010000000001000.into());
-        assert_eq!(h, 0.into());
-        assert_eq!(v, 0b0000000000000000100000000.into());
+        let t = placement_threat_map(b, 0b0100011111010000000001000.into());
+        assert_eq!(t, 0b0000000000000000100000000.into());
 
         let b: Bitmap<6> = 0b001000111110101010010101011111000100.into();
 
-        let (h, v) = placement_threat_maps(b, 0.into());
-        assert_eq!(h, 0b000000000001010101101010100000000000.into());
-        assert_eq!(v, 0b000000000000010101101010000000000000.into());
+        let t = placement_threat_map(b, 0.into());
+        assert_eq!(t, 0b000000000001010101101010100000000000.into());
     }
 }
