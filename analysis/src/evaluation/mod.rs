@@ -29,14 +29,23 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     let mut p1_eval = Evaluation::ZERO;
     let mut p2_eval = Evaluation::ZERO;
 
+    let all_pieces = m.p1_pieces & m.p2_pieces;
+
     let road_pieces = m.flatstones | m.capstones;
     let p1_road_pieces = road_pieces & m.p1_pieces;
     let p2_road_pieces = road_pieces & m.p2_pieces;
-    let all_pieces = m.p1_pieces & m.p2_pieces;
+
+    let blocking_pieces = m.standing_stones | m.capstones;
+    let p1_blocking_pieces = blocking_pieces & m.p1_pieces;
+    let p2_blocking_pieces = blocking_pieces & m.p1_pieces;
 
     // Material
     p1_eval += evaluate_material(m, m.p1_pieces);
     p2_eval += evaluate_material(m, m.p2_pieces);
+
+    // Blocker locations
+    p1_eval += evaluate_blocker_locations(p1_blocking_pieces);
+    p2_eval += evaluate_blocker_locations(p2_blocking_pieces);
 
     // Road groups
     p1_eval += evaluate_road_groups(p1_road_pieces);

@@ -1,4 +1,4 @@
-use tak::{edge_masks, Bitmap, Direction, Metadata};
+use tak::{center_mask, edge_masks, Bitmap, Direction, Metadata};
 
 use super::util::{placement_threat_map, EvalType};
 
@@ -6,6 +6,7 @@ struct Weights {
     flatstone: EvalType,
     standing_stone: EvalType,
     capstone: EvalType,
+    location: EvalType,
     road_group: EvalType,
     road_slice: EvalType,
     hard_flat: EvalType,
@@ -17,6 +18,7 @@ const WEIGHT: Weights = Weights {
     flatstone: 2000,
     standing_stone: 1000,
     capstone: 1500,
+    location: 100,
     road_group: -500,
     road_slice: 250,
     hard_flat: 500,
@@ -38,6 +40,34 @@ pub(super) fn evaluate_material<const N: usize>(
     eval += flatstones * WEIGHT.flatstone / N as EvalType;
     eval += standing_stones * WEIGHT.standing_stone / N as EvalType;
     eval += capstones * WEIGHT.capstone / N as EvalType;
+
+    eval
+}
+
+/// Scores a player's blocking pieces by where they lie on the board.
+pub(super) fn evaluate_blocker_locations<const N: usize>(
+    player_blocking_pieces: Bitmap<N>,
+) -> EvalType {
+    if player_blocking_pieces == 0.into() {
+        return 0;
+    }
+    // The number of dilations it will take to fill all edges except the corners.
+    let steps = (N - 1) / 2 * 2;
+
+    let mut eval = 0;
+
+    let mut covered_area = center_mask();
+    let mut next_area = center_mask();
+
+    for step in 0..steps {
+        let multiplier = (steps - step) as EvalType;
+        let location_bonus = multiplier * WEIGHT.location / N as EvalType;
+
+        eval += (player_blocking_pieces & next_area).count_ones() as EvalType * location_bonus;
+
+        next_area = covered_area.dilate() ^ covered_area;
+        covered_area |= next_area;
+    }
 
     eval
 }
@@ -163,5 +193,25 @@ mod tests {
             evaluate_material(&state.metadata, state.metadata.p2_pieces),
             8 * WEIGHT.flatstone / 6 + 4 * WEIGHT.standing_stone / 6 + 1 * WEIGHT.capstone / 6,
         );
+    }
+
+    #[test]
+    fn blocker_locations() {
+        let mut weights = [[0; 3]; 3];
+        let map = Bitmap::<6>::new(0b000000_000000_000000_111000_111000_111000);
+
+        for (b, (x, y)) in map.bits().map(|b| (b, b.coordinates())) {
+            weights[x][y] = evaluate_blocker_locations(b);
+        }
+
+        assert_eq!(weights[0][1], weights[1][0]);
+        assert_eq!(weights[0][2], weights[1][1]);
+        assert_eq!(weights[1][1], weights[2][0]);
+        assert_eq!(weights[1][2], weights[2][1]);
+
+        assert!(weights[2][2] > weights[1][2]);
+        assert!(weights[1][2] > weights[0][2]);
+        assert!(weights[0][2] > weights[0][1]);
+        assert!(weights[0][1] > weights[0][0]);
     }
 }
