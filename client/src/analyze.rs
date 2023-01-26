@@ -96,10 +96,10 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
     println!("\nEvaluation: {}", analysis.evaluation);
 
     println!("\nPrincipal Variation:");
-    for turn in game.turns {
+    for turn in &game.turns {
         println!("  {turn:<7}");
     }
-    if let Some(result) = game.result {
+    if let Some(result) = &game.result {
         println!("  {result}");
     }
 
@@ -116,6 +116,17 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
         punctuate(analysis.stats.evaluated),
         punctuate((analysis.stats.evaluated as f64 / analysis.time.as_secs_f64()) as u64),
     );
+
+    let resulting_state: State<N> = match game.try_into() {
+        Ok(state) => state,
+        Err(err) => {
+            error!(error = ?err, "Could not apply principal variation.");
+            return;
+        }
+    };
+
+    println!("\nResulting State:");
+    println!("{resulting_state}");
 
     println!();
 }
