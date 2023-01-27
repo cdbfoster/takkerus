@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::ops::{Add, AddAssign};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -61,12 +62,18 @@ pub struct Statistics {
     pub tt_store_fails: u64,
     pub tt_hits: u64,
     pub tt_saves: u64,
+    pub best_ply_order: [u64; 6],
 }
 
 impl Add for &Statistics {
     type Output = Statistics;
 
     fn add(self, other: Self) -> Self::Output {
+        let mut best_ply_order = self.best_ply_order;
+        for (a, b) in best_ply_order.iter_mut().zip(other.best_ply_order) {
+            *a += b;
+        }
+
         Self::Output {
             visited: self.visited + other.visited,
             evaluated: self.evaluated + other.evaluated,
@@ -79,6 +86,7 @@ impl Add for &Statistics {
             tt_store_fails: self.tt_store_fails + other.tt_store_fails,
             tt_hits: self.tt_hits + other.tt_hits,
             tt_saves: self.tt_saves + other.tt_saves,
+            best_ply_order,
         }
     }
 }
@@ -184,6 +192,8 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             persistent_state,
         };
 
+        debug!(depth, "Beginning analysis...");
+
         let evaluation = minimax(
             &mut search,
             &mut state,
@@ -233,6 +243,27 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             tt_saves = search.stats.tt_saves,
             "Stats:",
         );
+
+        // Best ply ordering calc.
+        {
+            let total = search.stats.best_ply_order.iter().sum::<u64>().max(1);
+            let mut buffer = String::new();
+            for (i, c) in search.stats.best_ply_order.into_iter().enumerate() {
+                if i < 5 {
+                    write!(
+                        buffer,
+                        "{}: {:5.2}%, ",
+                        i + 1,
+                        100.0 * c as f64 / total as f64
+                    )
+                    .ok();
+                } else {
+                    write!(buffer, "6+: {:5.2}%", 100.0 * c as f64 / total as f64).ok();
+                }
+            }
+
+            debug!("Best ply ordering: {buffer}");
+        }
 
         node_counts.push(search.stats.visited.max(1));
 
@@ -310,13 +341,17 @@ fn fetch_pv<const N: usize>(
     let mut pv = Vec::new();
     let mut state = state.clone();
 
+    debug!("Fetching PV from transposition table.");
+
     while let Some(entry) = tt.get(state.metadata.hash) {
         let old_state = state.clone();
         if let Err(err) = state.execute_ply(entry.ply) {
-            error!(error = ?err, ?entry, state = ?old_state, "Principal variation ply caused an error. Ending fetch");
+            error!(error = ?err, ?entry, state = ?old_state, "Transposition table ply caused an error. Ending fetch");
             break;
         } else {
-            debug!(?entry, "Adding PV ply.");
+            if entry.bound != Bound::Exact {
+                debug!(?entry, "Adding non-exact ply.");
+            }
 
             pv.push(entry.ply);
 
@@ -419,11 +454,10 @@ fn minimax<const N: usize>(
 
     let ply_generator = PlyGenerator::new(state, tt_ply);
 
-    let mut first_iteration = true;
     let mut raised_alpha = false;
     let mut best_ply = None;
 
-    for (fallibility, ply) in ply_generator {
+    for (i, (fallibility, ply)) in ply_generator.enumerate() {
         let mut state = state.clone();
 
         use Fallibility::*;
@@ -436,7 +470,7 @@ fn minimax<const N: usize>(
             Infallible => state.execute_ply_unchecked(ply),
         }
 
-        let next_eval = if first_iteration {
+        let next_eval = if i == 0 {
             // On the first iteration, perform a full-window search.
             -minimax(search, &mut state, depth - 1, -beta, -alpha, true)
         } else {
@@ -456,7 +490,7 @@ fn minimax<const N: usize>(
         if next_eval > alpha {
             alpha = next_eval;
             raised_alpha = true;
-            best_ply = Some(ply);
+            best_ply = Some((i, ply));
 
             if alpha >= beta {
                 alpha = beta;
@@ -464,42 +498,42 @@ fn minimax<const N: usize>(
                 break;
             }
         } else if best_ply.is_none() {
-            best_ply = Some(ply);
+            best_ply = Some((i, ply));
         }
-
-        first_iteration = false;
 
         if search.interrupted.load(Ordering::Relaxed) {
             return alpha;
         }
     }
 
+    let (i, best_ply) = best_ply.expect("no plies were searched");
+
+    search.stats.best_ply_order[i.min(5)] += 1;
+
     // Store in transposition table =============
 
-    if let Some(ply) = best_ply {
-        let inserted = search.persistent_state.transposition_table.insert(
-            state.metadata.hash,
-            TranspositionTableEntry {
-                bound: if alpha == beta {
-                    Bound::Lower
-                } else if raised_alpha {
-                    Bound::Exact
-                } else {
-                    Bound::Upper
-                },
-                evaluation: alpha,
-                node_count: search.stats.visited.try_into().unwrap_or(u32::MAX),
-                depth: depth as u8,
-                ply_count: (state.ply_count & 0xFF) as u8,
-                ply,
+    let inserted = search.persistent_state.transposition_table.insert(
+        state.metadata.hash,
+        TranspositionTableEntry {
+            bound: if alpha == beta {
+                Bound::Lower
+            } else if raised_alpha {
+                Bound::Exact
+            } else {
+                Bound::Upper
             },
-        );
+            evaluation: alpha,
+            node_count: search.stats.visited.try_into().unwrap_or(u32::MAX),
+            depth: depth as u8,
+            ply_count: (state.ply_count & 0xFF) as u8,
+            ply: best_ply,
+        },
+    );
 
-        if inserted {
-            search.stats.tt_stores += 1;
-        } else {
-            search.stats.tt_store_fails += 1;
-        }
+    if inserted {
+        search.stats.tt_stores += 1;
+    } else {
+        search.stats.tt_store_fails += 1;
     }
 
     alpha
