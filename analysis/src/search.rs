@@ -128,7 +128,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     let mut analysis = Analysis {
         depth: 0,
         final_state: state.clone(),
-        evaluation: evaluate(state),
+        evaluation: evaluate(state, state.ply_count),
         principal_variation: Vec::new(),
         stats: Statistics::default(),
         time: Duration::ZERO,
@@ -181,6 +181,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         let depth_start_time = Instant::now();
 
         let mut search = SearchState {
+            start_ply: state.ply_count,
             stats: Default::default(),
             interrupted: &config.interrupted,
             persistent_state,
@@ -357,6 +358,7 @@ fn fetch_pv<const N: usize>(
 }
 
 struct SearchState<'a, const N: usize> {
+    start_ply: u16,
     stats: Statistics,
     interrupted: &'a AtomicBool,
     persistent_state: &'a mut PersistentState<N>,
@@ -377,7 +379,7 @@ fn minimax<const N: usize>(
     if depth == 0 || state.resolution().is_some() {
         search.stats.evaluated += 1;
         principal_variation.clear();
-        return evaluate(state);
+        return evaluate(state, search.start_ply);
     }
 
     if alpha + 1 == beta {

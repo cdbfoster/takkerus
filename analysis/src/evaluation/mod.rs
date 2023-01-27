@@ -9,7 +9,7 @@ use self::scoring::*;
 mod scoring;
 mod util;
 
-pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
+pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation {
     use Color::*;
 
     match state.resolution() {
@@ -62,6 +62,12 @@ pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     // Placement threats
     p1_eval += evaluate_placement_threats(p1_road_pieces, all_pieces & !p1_road_pieces);
     p2_eval += evaluate_placement_threats(p2_road_pieces, all_pieces & !p2_road_pieces);
+
+    // Tempo offset
+    match state.to_move() {
+        White => p1_eval += tempo_offset::<N>(start_ply, state.ply_count),
+        Black => p2_eval += tempo_offset::<N>(start_ply, state.ply_count),
+    }
 
     match state.to_move() {
         White => p1_eval - p2_eval,

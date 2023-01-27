@@ -165,6 +165,23 @@ pub(super) fn evaluate_placement_threats<const N: usize>(
     threats.count_ones() as EvalType * WEIGHT.placement_threat / N as EvalType
 }
 
+/// Returns an offset meant to stabilize the evaluation against the even-odd effect.
+pub(super) fn tempo_offset<const N: usize>(start_ply: u16, current_ply: u16) -> EvalType {
+    if (current_ply - start_ply) % 2 == 1 {
+        // Flip the offset at the beginning of a game since we're placing opponent pieces.
+        let mul = if current_ply > 2 { 1 } else { -1 };
+
+        // This is the value of a single, lone flatstone.
+        let offset = WEIGHT.flatstone / N as EvalType
+            + WEIGHT.road_group / N as EvalType * 2
+            + WEIGHT.road_slice / N as EvalType * 2;
+
+        mul * offset
+    } else {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

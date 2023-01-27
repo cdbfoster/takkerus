@@ -39,7 +39,7 @@ fn bench_position(c: &mut Criterion, size: usize, key: &str, tps: &str) {
             macro_rules! iter {
                 ($size:literal) => {{
                     let state: State<$size> = tps.parse().unwrap();
-                    b.iter(|| evaluate(black_box(&state)))
+                    b.iter(|| evaluate(black_box(&state), state.ply_count))
                 }};
             }
 
