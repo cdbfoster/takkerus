@@ -4,12 +4,13 @@ use rand::Rng;
 use tak::{Color, Direction, PieceType, Ply, State};
 
 use crate::rng::get_rng;
-use crate::util::placement_threat_map;
+use crate::util::{placement_threat_map, FixedLifoBuffer};
 
 pub(crate) struct PlyGenerator<const N: usize> {
     state: State<N>,
     road_plies: Vec<Ply<N>>,
     tt_ply: Option<Ply<N>>,
+    killer_moves: KillerMoves<N>,
     plies: Vec<ScoredPly<N>>,
     operation: Operation,
 }
@@ -20,12 +21,19 @@ pub(crate) enum Fallibility {
     Infallible,
 }
 
+pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
+
 impl<const N: usize> PlyGenerator<N> {
-    pub(crate) fn new(state: &State<N>, tt_ply: Option<Ply<N>>) -> Self {
+    pub(crate) fn new(
+        state: &State<N>,
+        tt_ply: Option<Ply<N>>,
+        killer_moves: KillerMoves<N>,
+    ) -> Self {
         Self {
             state: state.clone(),
             road_plies: Vec::new(),
             tt_ply,
+            killer_moves,
             plies: Vec::new(),
             operation: Operation::FindRoadPlacements,
         }
@@ -83,6 +91,14 @@ impl<const N: usize> Iterator for PlyGenerator<N> {
 
             if self.tt_ply.is_some() {
                 return self.tt_ply.map(|p| (Fallible, p));
+            }
+        }
+
+        if self.operation == KillerMoves {
+            if let Some(ply) = self.killer_moves.pop() {
+                return Some((Fallible, ply));
+            } else {
+                self.operation = self.operation.next();
             }
         }
 
@@ -159,6 +175,7 @@ enum Operation {
     FindRoadPlacements = 0u32,
     PlayRoadPlacements,
     TtPly,
+    KillerMoves,
     GeneratePlies,
     AllPlies,
     Finished,
@@ -176,8 +193,9 @@ impl From<u32> for Operation {
             0 => Self::FindRoadPlacements,
             1 => Self::PlayRoadPlacements,
             2 => Self::TtPly,
-            3 => Self::GeneratePlies,
-            4 => Self::AllPlies,
+            3 => Self::KillerMoves,
+            4 => Self::GeneratePlies,
+            5 => Self::AllPlies,
             _ => Self::Finished,
         }
     }

@@ -10,7 +10,7 @@ use tracing::{debug, error, info, instrument, warn};
 use tak::{Ply, State};
 
 use crate::evaluation::{evaluate, Evaluation};
-use crate::ply_generator::{Fallibility, PlyGenerator};
+use crate::ply_generator::{Fallibility, KillerMoves, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 
 #[derive(Debug, Default)]
@@ -190,6 +190,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             stats: Default::default(),
             interrupted: &config.interrupted,
             persistent_state,
+            killer_moves: vec![KillerMoves::default(); depth],
         };
 
         debug!(depth, "Beginning analysis...");
@@ -376,20 +377,21 @@ struct SearchState<'a, const N: usize> {
     stats: Statistics,
     interrupted: &'a AtomicBool,
     persistent_state: &'a mut PersistentState<N>,
+    killer_moves: Vec<KillerMoves<N>>,
 }
 
 #[instrument(level = "trace", skip(search), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &mut State<N>,
-    depth: usize,
+    remaining_depth: usize,
     mut alpha: Evaluation,
     beta: Evaluation,
     null_move_allowed: bool,
 ) -> Evaluation {
     search.stats.visited += 1;
 
-    if depth == 0 || state.resolution().is_some() {
+    if remaining_depth == 0 || state.resolution().is_some() {
         search.stats.evaluated += 1;
         return evaluate(state, search.start_ply);
     }
@@ -409,7 +411,7 @@ fn minimax<const N: usize>(
     {
         search.stats.tt_hits += 1;
 
-        let is_save = entry.depth as usize >= depth
+        let is_save = entry.depth as usize >= remaining_depth
             && match entry.bound {
                 Bound::Exact => true,
                 Bound::Upper => entry.evaluation <= alpha,
@@ -435,11 +437,11 @@ fn minimax<const N: usize>(
 
     // Null move search =========================
 
-    if null_move_allowed && depth >= 3 {
+    if null_move_allowed && remaining_depth >= 3 {
         // Apply a null move.
         state.ply_count += 1;
 
-        let eval = -minimax(search, state, depth - 3, -beta, -beta + 1, false);
+        let eval = -minimax(search, state, remaining_depth - 3, -beta, -beta + 1, false);
 
         // Undo the null move.
         state.ply_count -= 1;
@@ -452,7 +454,9 @@ fn minimax<const N: usize>(
 
     // Ply search ===============================
 
-    let ply_generator = PlyGenerator::new(state, tt_ply);
+    let search_depth = (state.ply_count - search.start_ply) as usize;
+
+    let ply_generator = PlyGenerator::new(state, tt_ply, search.killer_moves[search_depth].clone());
 
     let mut raised_alpha = false;
     let mut best_ply = None;
@@ -472,16 +476,23 @@ fn minimax<const N: usize>(
 
         let next_eval = if i == 0 {
             // On the first iteration, perform a full-window search.
-            -minimax(search, &mut state, depth - 1, -beta, -alpha, true)
+            -minimax(search, &mut state, remaining_depth - 1, -beta, -alpha, true)
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
-            let scout_eval = -minimax(search, &mut state, depth - 1, -alpha - 1, -alpha, true);
+            let scout_eval = -minimax(
+                search,
+                &mut state,
+                remaining_depth - 1,
+                -alpha - 1,
+                -alpha,
+                true,
+            );
 
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
                 // If we fail high instead, we need to re-search using the full window.
-                -minimax(search, &mut state, depth - 1, -beta, -alpha, true)
+                -minimax(search, &mut state, remaining_depth - 1, -beta, -alpha, true)
             } else {
                 scout_eval
             }
@@ -495,6 +506,9 @@ fn minimax<const N: usize>(
             if alpha >= beta {
                 alpha = beta;
                 search.stats.beta_cutoff += 1;
+
+                search.killer_moves[search_depth].push(ply);
+
                 break;
             }
         } else if best_ply.is_none() {
@@ -524,7 +538,7 @@ fn minimax<const N: usize>(
             },
             evaluation: alpha,
             node_count: search.stats.visited.try_into().unwrap_or(u32::MAX),
-            depth: depth as u8,
+            depth: remaining_depth as u8,
             ply_count: (state.ply_count & 0xFF) as u8,
             ply: best_ply,
         },
