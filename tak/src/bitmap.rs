@@ -1,3 +1,5 @@
+#![allow(clippy::unusual_byte_groupings)]
+
 use std::fmt;
 
 use crate::ply::Direction;
