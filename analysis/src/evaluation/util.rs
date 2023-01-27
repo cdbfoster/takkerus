@@ -184,17 +184,17 @@ mod tests {
 
     #[test]
     fn placement_threat_maps_are_correct() {
-        let b: Bitmap<5> = 0b0100011110010000000001000.into();
+        let b: Bitmap<5> = 0b01000_11110_01000_00000_01000.into();
 
         let t = placement_threat_map(b, 0.into());
-        assert_eq!(t, 0b0000000001000000100000000.into());
+        assert_eq!(t, 0b00000_00001_00000_01000_00000.into());
 
-        let t = placement_threat_map(b, 0b0100011111010000000001000.into());
-        assert_eq!(t, 0b0000000000000000100000000.into());
+        let t = placement_threat_map(b, 0b01000_11111_01000_00000_01000.into());
+        assert_eq!(t, 0b00000_00000_00000_01000_00000.into());
 
-        let b: Bitmap<6> = 0b001000111110101010010101011111000100.into();
+        let b: Bitmap<6> = 0b001000_111110_101010_010101_011111_000100.into();
 
         let t = placement_threat_map(b, 0.into());
-        assert_eq!(t, 0b000000000001010101101010100000000000.into());
+        assert_eq!(t, 0b000000_000001_010101_101010_100000_000000.into());
     }
 }

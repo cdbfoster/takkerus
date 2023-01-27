@@ -691,7 +691,10 @@ mod tests {
 
         assert_eq!(s.metadata.p1_pieces, 0b11110_10000_00000_00000_00000.into());
         assert_eq!(s.metadata.p2_pieces, 0b00001_01000_00000_00000_00000.into());
-        assert_eq!(s.metadata.flatstones, 0b11110_10000_00000_00000_00000.into());
+        assert_eq!(
+            s.metadata.flatstones,
+            0b11110_10000_00000_00000_00000.into()
+        );
         assert_eq!(
             s.metadata.standing_stones,
             0b00000_01000_00000_00000_00000.into()
