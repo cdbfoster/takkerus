@@ -135,9 +135,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     };
 
     let mut state = state.clone();
-
     let mut start_depth = 1;
-    let mut principal_variation = Vec::new();
 
     // Attempt to pull an initial pv from the table.
     if let Some(entry) = persistent_state
@@ -150,18 +148,17 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             analysis.stats.visited = entry.node_count as u64;
             analysis.stats.tt_saves += 1;
 
-            let final_state = fetch_pv(
+            let (principal_variation, final_state) = fetch_pv(
                 &state,
                 &persistent_state.transposition_table,
                 entry.depth as usize,
-                &mut principal_variation,
             );
 
             analysis = Analysis {
                 depth: entry.depth as u32,
                 final_state,
                 evaluation: entry.evaluation,
-                principal_variation: principal_variation.clone(),
+                principal_variation,
                 stats: analysis.stats,
                 time: total_start_time.elapsed(),
             };
@@ -190,7 +187,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         let evaluation = minimax(
             &mut search,
             &mut state,
-            &mut principal_variation,
             depth,
             Evaluation::MIN,
             Evaluation::MAX,
@@ -201,18 +197,14 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             break;
         }
 
-        let final_state = fetch_pv(
-            &state,
-            &search.persistent_state.transposition_table,
-            depth,
-            &mut principal_variation,
-        );
+        let (principal_variation, final_state) =
+            fetch_pv(&state, &search.persistent_state.transposition_table, depth);
 
         analysis = Analysis {
             depth: depth as u32,
             final_state,
             evaluation,
-            principal_variation: principal_variation.clone(),
+            principal_variation,
             stats: &analysis.stats + &search.stats,
             time: total_start_time.elapsed(),
         };
@@ -314,47 +306,34 @@ fn fetch_pv<const N: usize>(
     state: &State<N>,
     tt: &TranspositionTable<N>,
     max_depth: usize,
-    pv: &mut Vec<Ply<N>>,
-) -> State<N> {
-    if pv.len() >= max_depth {
-        return state.clone();
-    }
-
+) -> (Vec<Ply<N>>, State<N>) {
+    let mut pv = Vec::new();
     let mut state = state.clone();
 
-    debug!(?pv, "PV from search:");
-
-    for ply in pv.iter() {
-        if let Err(err) = state.execute_ply(*ply) {
-            error!(error = ?err, "Principal variation ply caused an error. Skipping");
-        }
-    }
-
     while let Some(entry) = tt.get(state.metadata.hash) {
-        if entry.bound == Bound::Exact {
-            let old_state = state.clone();
-            if let Err(err) = state.execute_ply(entry.ply) {
-                error!(error = ?err, ?entry, state = ?old_state, "Principal variation ply caused an error. Ending fetch");
-                break;
-            } else {
-                debug!(?entry, "Adding PV ply.");
-
-                pv.push(entry.ply);
-
-                // Only grab as many as we've actually analyzed.
-                if pv.len() == max_depth {
-                    break;
-                }
-            }
-        } else {
-            debug!(?entry, "Non-PV node encountered. Ending fetch");
+        let old_state = state.clone();
+        if let Err(err) = state.execute_ply(entry.ply) {
+            error!(error = ?err, ?entry, state = ?old_state, "Principal variation ply caused an error. Ending fetch");
             break;
+        } else {
+            debug!(?entry, "Adding PV ply.");
+
+            pv.push(entry.ply);
+
+            // Only grab as many as we've actually analyzed.
+            if pv.len() == max_depth || state.resolution().is_some() {
+                break;
+            }
         }
     }
 
     debug!(?pv, "PV after fetch:");
 
-    state
+    if pv.len() < max_depth && state.resolution().is_none() {
+        warn!("PV is smaller than search depth!");
+    }
+
+    (pv, state)
 }
 
 struct SearchState<'a, const N: usize> {
@@ -368,7 +347,6 @@ struct SearchState<'a, const N: usize> {
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &mut State<N>,
-    principal_variation: &mut Vec<Ply<N>>,
     depth: usize,
     mut alpha: Evaluation,
     beta: Evaluation,
@@ -378,7 +356,6 @@ fn minimax<const N: usize>(
 
     if depth == 0 || state.resolution().is_some() {
         search.stats.evaluated += 1;
-        principal_variation.clear();
         return evaluate(state, search.start_ply);
     }
 
@@ -410,9 +387,6 @@ fn minimax<const N: usize>(
             if state.validate_ply(entry.ply).is_ok() {
                 search.stats.tt_saves += 1;
 
-                principal_variation.clear();
-                principal_variation.push(entry.ply);
-
                 match entry.bound {
                     Bound::Exact => return entry.evaluation,
                     Bound::Upper => return alpha,
@@ -430,18 +404,7 @@ fn minimax<const N: usize>(
         // Apply a null move.
         state.ply_count += 1;
 
-        // We're not interested in any ply results.
-        let mut scratch_pv = Vec::new();
-
-        let eval = -minimax(
-            search,
-            state,
-            &mut scratch_pv,
-            depth - 3,
-            -beta,
-            -beta + 1,
-            false,
-        );
+        let eval = -minimax(search, state, depth - 3, -beta, -beta + 1, false);
 
         // Undo the null move.
         state.ply_count -= 1;
@@ -454,13 +417,7 @@ fn minimax<const N: usize>(
 
     // Ply search ===============================
 
-    let ply_generator = PlyGenerator::new(state, principal_variation.first().copied(), tt_ply);
-
-    let mut next_pv = if !principal_variation.is_empty() {
-        principal_variation[1..].to_vec()
-    } else {
-        Vec::with_capacity(depth)
-    };
+    let ply_generator = PlyGenerator::new(state, tt_ply);
 
     let mut first_iteration = true;
     let mut raised_alpha = false;
@@ -481,40 +438,16 @@ fn minimax<const N: usize>(
 
         let next_eval = if first_iteration {
             // On the first iteration, perform a full-window search.
-            -minimax(
-                search,
-                &mut state,
-                &mut next_pv,
-                depth - 1,
-                -beta,
-                -alpha,
-                true,
-            )
+            -minimax(search, &mut state, depth - 1, -beta, -alpha, true)
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
-            let scout_eval = -minimax(
-                search,
-                &mut state,
-                &mut next_pv,
-                depth - 1,
-                -alpha - 1,
-                -alpha,
-                true,
-            );
+            let scout_eval = -minimax(search, &mut state, depth - 1, -alpha - 1, -alpha, true);
 
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
                 // If we fail high instead, we need to re-search using the full window.
-                -minimax(
-                    search,
-                    &mut state,
-                    &mut next_pv,
-                    depth - 1,
-                    -beta,
-                    -alpha,
-                    true,
-                )
+                -minimax(search, &mut state, depth - 1, -beta, -alpha, true)
             } else {
                 scout_eval
             }
@@ -524,10 +457,6 @@ fn minimax<const N: usize>(
             alpha = next_eval;
             raised_alpha = true;
             best_ply = Some(ply);
-
-            principal_variation.clear();
-            principal_variation.push(ply);
-            principal_variation.extend_from_slice(&next_pv);
 
             if alpha >= beta {
                 alpha = beta;
