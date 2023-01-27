@@ -3,8 +3,8 @@ use rand::Rng;
 
 use tak::{Color, Direction, PieceType, Ply, State};
 
-use crate::evaluation::placement_threat_map;
 use crate::rng::get_rng;
+use crate::util::placement_threat_map;
 
 pub(crate) struct PlyGenerator<const N: usize> {
     state: State<N>,

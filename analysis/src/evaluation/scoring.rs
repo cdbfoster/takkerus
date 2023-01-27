@@ -1,6 +1,8 @@
 use tak::{center_mask, edge_masks, Bitmap, Direction, Metadata};
 
-use super::util::{placement_threat_map, EvalType};
+use crate::util::placement_threat_map;
+
+use super::types::EvalType;
 
 struct Weights {
     flatstone: EvalType,

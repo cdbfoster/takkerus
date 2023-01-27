@@ -7,6 +7,7 @@ mod ply_generator;
 mod rng;
 mod search;
 mod transposition_table;
+mod util;
 
 pub fn version() -> &'static str {
     option_env!("CARGO_PKG_VERSION").unwrap_or("(unknown version)")

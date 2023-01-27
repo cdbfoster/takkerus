@@ -1,13 +1,11 @@
 use tak::{Color, Resolution, State};
 
-pub use self::util::Evaluation;
-
-pub(crate) use self::util::placement_threat_map;
+pub use self::types::Evaluation;
 
 use self::scoring::*;
 
 mod scoring;
-mod util;
+mod types;
 
 pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation {
     use Color::*;
