@@ -52,7 +52,7 @@ pub(super) fn evaluate_material<const N: usize>(
 pub(super) fn evaluate_blocker_locations<const N: usize>(
     player_blocking_pieces: Bitmap<N>,
 ) -> EvalType {
-    if player_blocking_pieces == 0.into() {
+    if player_blocking_pieces.is_empty() {
         return 0;
     }
     // The number of dilations it will take to fill all edges except the corners.
@@ -108,11 +108,11 @@ pub(super) fn evaluate_road_groups<const N: usize>(player_road_pieces: Bitmap<N>
         eval += size_weights::<N>()[group.width() - 1];
         eval += size_weights::<N>()[group.height() - 1];
 
-        if group & horizontal_road_edges != 0.into() {
+        if !(group & horizontal_road_edges).is_empty() {
             eval += WEIGHT.road_anchor / N as EvalType;
         }
 
-        if group & vertical_road_edges != 0.into() {
+        if !(group & vertical_road_edges).is_empty() {
             eval += WEIGHT.road_anchor / N as EvalType;
         }
     }
@@ -127,7 +127,7 @@ pub(super) fn evaluate_road_slices<const N: usize>(player_road_pieces: Bitmap<N>
 
     let mut row_mask = edge_masks()[Direction::North as usize];
     for _ in 0..N {
-        if player_road_pieces & row_mask != 0.into() {
+        if !(player_road_pieces & row_mask).is_empty() {
             eval += WEIGHT.road_slice / N as EvalType;
         }
         row_mask >>= N;
@@ -135,7 +135,7 @@ pub(super) fn evaluate_road_slices<const N: usize>(player_road_pieces: Bitmap<N>
 
     let mut column_mask = edge_masks()[Direction::West as usize];
     for _ in 0..N {
-        if player_road_pieces & column_mask != 0.into() {
+        if !(player_road_pieces & column_mask).is_empty() {
             eval += WEIGHT.road_slice / N as EvalType;
         }
         column_mask >>= 1;

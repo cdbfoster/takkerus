@@ -277,10 +277,10 @@ impl<const N: usize> State<N> {
                 | edge[West as usize];
 
             for group in bitmap.groups_from(bitmap & all_edges) {
-                if (group & edge[North as usize] != 0.into()
-                    && group & edge[South as usize] != 0.into())
-                    || (group & edge[West as usize] != 0.into()
-                        && group & edge[East as usize] != 0.into())
+                if ((group & edge[North as usize]).is_empty()
+                    && (group & edge[South as usize]).is_empty())
+                    || ((group & edge[West as usize]).is_empty()
+                        && (group & edge[East as usize]).is_empty())
                 {
                     return true;
                 }

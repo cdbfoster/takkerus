@@ -13,6 +13,16 @@ impl<const N: usize> Bitmap<N> {
         Self(value)
     }
 
+    pub fn from_coordinates(x: usize, y: usize) -> Self {
+        let mut bit = Self::default();
+        bit.set(x, y);
+        bit
+    }
+
+    pub fn is_empty(&self) -> bool {
+        *self == 0.into()
+    }
+
     pub fn set(&mut self, x: usize, y: usize) {
         debug_assert!(x < N);
         debug_assert!(y < N);
@@ -73,9 +83,8 @@ impl<const N: usize> Bitmap<N> {
     }
 
     pub fn groups_from(self, seeds: Bitmap<N>) -> GroupIter<N> {
-        assert_eq!(
-            seeds & !self,
-            0.into(),
+        assert!(
+            (seeds & !self).is_empty(),
             "provided seeds are not part of the bitmap"
         );
         GroupIter {
