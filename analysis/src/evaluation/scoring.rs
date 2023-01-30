@@ -99,8 +99,10 @@ pub(super) fn evaluate_road_groups<const N: usize>(player_road_pieces: Bitmap<N>
         }
     }
 
-    let horizontal_road_edges = edge_masks()[Direction::West as usize] | edge_masks()[Direction::East as usize];
-    let vertical_road_edges = edge_masks()[Direction::North as usize] | edge_masks()[Direction::South as usize];
+    let horizontal_road_edges =
+        edge_masks()[Direction::West as usize] | edge_masks()[Direction::East as usize];
+    let vertical_road_edges =
+        edge_masks()[Direction::North as usize] | edge_masks()[Direction::South as usize];
 
     for group in player_road_pieces.groups() {
         eval += size_weights::<N>()[group.width() - 1];
