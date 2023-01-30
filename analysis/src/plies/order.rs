@@ -1,4 +1,4 @@
-use tak::{board_mask, Bitmap, Color, PieceType, Ply, State};
+use tak::{board_mask, edge_masks, Bitmap, Color, Direction, PieceType, Ply, State};
 
 use crate::util::{placement_threat_map, FixedLifoBuffer};
 
@@ -8,6 +8,7 @@ use super::Fallibility::{self, *};
 use super::PlyBuffer;
 
 use Color::*;
+use Direction::*;
 use PieceType::*;
 
 pub(super) struct GeneratedPly<const N: usize> {
@@ -223,6 +224,45 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
     let road_pieces = (m.flatstones | m.capstones) & player_pieces;
     let blocking_pieces = all_pieces ^ road_pieces;
 
+    // Basically an inlined placement_threat_maps to avoid all the flood fills per ply.
+    let e = edge_masks();
+    let left = e[West as usize].flood_fill(road_pieces).dilate() | e[West as usize];
+    let right = e[East as usize].flood_fill(road_pieces).dilate() | e[East as usize];
+    let top = e[North as usize].flood_fill(road_pieces).dilate() | e[North as usize];
+    let bottom = e[South as usize].flood_fill(road_pieces).dilate() | e[South as usize];
+
+    let placement_threat = |bit: Bitmap<N>| {
+        let dilated = bit.dilate();
+
+        let next_left = if !(bit & left).is_empty() {
+            left | dilated
+        } else {
+            left
+        };
+        let next_right = if !(bit & right).is_empty() {
+            right | dilated
+        } else {
+            right
+        };
+        let next_top = if !(bit & top).is_empty() {
+            top | dilated
+        } else {
+            top
+        };
+        let next_bottom = if !(bit & bottom).is_empty() {
+            bottom | dilated
+        } else {
+            bottom
+        };
+
+        let horizontal = next_left & next_right;
+        let vertical = next_top & next_bottom;
+
+        let threats = (horizontal | vertical) & !blocking_pieces;
+
+        !threats.is_empty()
+    };
+
     let player_stacks = match state.to_move() {
         White => &m.p1_stacks,
         Black => &m.p2_stacks,
@@ -239,11 +279,9 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
 
                 // Road threats
                 if piece_type == Capstone || piece_type == Flatstone {
-                    let placed_map = road_pieces | Bitmap::from_coordinates(x as usize, y as usize);
+                    let bit = Bitmap::from_coordinates(x as usize, y as usize);
 
-                    let threat_map = placement_threat_map(placed_map, blocking_pieces);
-
-                    if !threat_map.is_empty() {
+                    if placement_threat(bit) {
                         *score |= ROAD_THREAT;
 
                         if piece_type == Capstone {
