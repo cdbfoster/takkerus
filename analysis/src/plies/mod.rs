@@ -73,7 +73,11 @@ impl<'a, const N: usize> PlyGeneratorIter<'a, N> {
             used_plies: &generator.used_plies,
             killer_moves: &mut generator.killer_moves,
         })
-        .chain(AllPlies::new(&generator.used_plies, generator.state));
+        .chain(AllPlies {
+            used_plies: &generator.used_plies,
+            state: generator.state,
+            plies: None,
+        });
 
         Self {
             used_plies: &generator.used_plies,

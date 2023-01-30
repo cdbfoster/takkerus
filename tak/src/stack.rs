@@ -48,6 +48,7 @@ impl Stack {
         self.last().map(|p| p.color())
     }
 
+    /// Get the piece at the specified index in the stack, ordered bottom to top.
     pub fn get(&self, index: usize) -> Option<Piece> {
         if index >= self.len() {
             return None;
