@@ -10,6 +10,7 @@ struct Weights {
     capstone: EvalType,
     location: EvalType,
     road_group: EvalType,
+    road_anchor: EvalType,
     road_slice: EvalType,
     hard_flat: EvalType,
     soft_flat: EvalType,
@@ -22,6 +23,7 @@ const WEIGHT: Weights = Weights {
     capstone: 1500,
     location: 100,
     road_group: -500,
+    road_anchor: -150,
     road_slice: 250,
     hard_flat: 500,
     soft_flat: -250,
@@ -75,7 +77,7 @@ pub(super) fn evaluate_blocker_locations<const N: usize>(
 }
 
 /// Scores a player's road-contributing groups by how much of the board they
-/// span in each direction.
+/// span in each direction, and by whether or not they touch a board edge.
 pub(super) fn evaluate_road_groups<const N: usize>(player_road_pieces: Bitmap<N>) -> EvalType {
     let mut eval = 0;
 
@@ -97,9 +99,20 @@ pub(super) fn evaluate_road_groups<const N: usize>(player_road_pieces: Bitmap<N>
         }
     }
 
+    let horizontal_road_edges = edge_masks()[Direction::West as usize] | edge_masks()[Direction::East as usize];
+    let vertical_road_edges = edge_masks()[Direction::North as usize] | edge_masks()[Direction::South as usize];
+
     for group in player_road_pieces.groups() {
         eval += size_weights::<N>()[group.width() - 1];
         eval += size_weights::<N>()[group.height() - 1];
+
+        if group & horizontal_road_edges != 0.into() {
+            eval += WEIGHT.road_anchor / N as EvalType;
+        }
+
+        if group & vertical_road_edges != 0.into() {
+            eval += WEIGHT.road_anchor / N as EvalType;
+        }
     }
 
     eval
@@ -110,7 +123,7 @@ pub(super) fn evaluate_road_groups<const N: usize>(player_road_pieces: Bitmap<N>
 pub(super) fn evaluate_road_slices<const N: usize>(player_road_pieces: Bitmap<N>) -> EvalType {
     let mut eval = 0;
 
-    let mut row_mask = edge_masks::<N>()[Direction::North as usize];
+    let mut row_mask = edge_masks()[Direction::North as usize];
     for _ in 0..N {
         if player_road_pieces & row_mask != 0.into() {
             eval += WEIGHT.road_slice / N as EvalType;
@@ -118,7 +131,7 @@ pub(super) fn evaluate_road_slices<const N: usize>(player_road_pieces: Bitmap<N>
         row_mask >>= N;
     }
 
-    let mut column_mask = edge_masks::<N>()[Direction::West as usize];
+    let mut column_mask = edge_masks()[Direction::West as usize];
     for _ in 0..N {
         if player_road_pieces & column_mask != 0.into() {
             eval += WEIGHT.road_slice / N as EvalType;
