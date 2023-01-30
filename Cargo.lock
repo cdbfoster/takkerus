@@ -17,8 +17,6 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "once_cell",
- "rand",
- "rand_core",
  "tak",
  "tracing",
  "tracing-subscriber",

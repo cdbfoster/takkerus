@@ -3,8 +3,7 @@ pub use self::search::{analyze, Analysis, AnalysisConfig, PersistentState, Stati
 pub use self::transposition_table::{TranspositionTable, TranspositionTableEntry};
 
 mod evaluation;
-mod ply_generator;
-mod rng;
+mod plies;
 mod search;
 mod transposition_table;
 mod util;

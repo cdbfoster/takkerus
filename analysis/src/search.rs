@@ -10,7 +10,7 @@ use tracing::{debug, error, info, instrument, warn};
 use tak::{Ply, State};
 
 use crate::evaluation::{evaluate, Evaluation};
-use crate::ply_generator::{Fallibility, KillerMoves, PlyGenerator};
+use crate::plies::{Fallibility, KillerMoves, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 
 #[derive(Debug, Default)]
@@ -456,12 +456,13 @@ fn minimax<const N: usize>(
 
     let search_depth = (state.ply_count - search.start_ply) as usize;
 
-    let ply_generator = PlyGenerator::new(state, tt_ply, search.killer_moves[search_depth].clone());
+    let mut ply_generator =
+        PlyGenerator::new(state, tt_ply, search.killer_moves[search_depth].clone());
 
     let mut raised_alpha = false;
     let mut best_ply = None;
 
-    for (i, (fallibility, ply)) in ply_generator.enumerate() {
+    for (i, (fallibility, ply)) in ply_generator.plies().enumerate() {
         let mut state = state.clone();
 
         use Fallibility::*;
