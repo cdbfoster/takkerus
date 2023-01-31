@@ -97,7 +97,6 @@ impl AddAssign<&Statistics> for Statistics {
     }
 }
 
-#[instrument(level = "trace")]
 pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> Analysis<N> {
     info!(
         depth_limit = %if let Some(depth_limit) = config.depth_limit {
@@ -380,7 +379,7 @@ struct SearchState<'a, const N: usize> {
     killer_moves: Vec<KillerMoves<N>>,
 }
 
-#[instrument(level = "trace", skip(search), fields(scout = alpha + 1 == beta))]
+#[instrument(level = "trace", skip(search, state, null_move_allowed), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &mut State<N>,
@@ -492,7 +491,7 @@ fn minimax<const N: usize>(
 
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
-                // If we fail high instead, we need to re-search using the full window.
+                // If we are inside the PV window instead, we need to re-search using the full PV window.
                 -minimax(search, &mut state, remaining_depth - 1, -beta, -alpha, true)
             } else {
                 scout_eval
