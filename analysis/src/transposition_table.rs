@@ -40,9 +40,10 @@ impl<const N: usize> TranspositionTable<N> {
         let mut target_score = u16::MAX;
 
         fn score<const N: usize>(entry: &TranspositionTableEntry<N>) -> u16 {
-            // Score by depth and then by ply count.
-            // Prioritize lower over upper bounds, and exact over everything.
-            ((entry.depth as u16) << 10) | ((entry.ply_count as u16) << 2) | (entry.bound as u16)
+            // Score by total ply depth, bound, and then individual search depth.
+            ((entry.depth as u16 + entry.ply_count as u16) << 10)
+                | ((entry.bound as u16) << 8)
+                | (entry.depth as u16)
         }
 
         while offset < MAX_PROBE_DEPTH {
@@ -124,8 +125,8 @@ pub struct Slot<const N: usize> {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Bound {
-    Upper = 0,
-    Lower,
+    Lower = 0,
+    Upper,
     Exact,
 }
 

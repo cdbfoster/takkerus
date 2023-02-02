@@ -241,6 +241,11 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             tt_store_fails = search.stats.tt_store_fails,
             tt_hits = search.stats.tt_hits,
             tt_saves = search.stats.tt_saves,
+            tt_full = %format!(
+                "{:05.2}%",
+                100.0 * search.persistent_state.transposition_table.len() as f64
+                    / search.persistent_state.transposition_table.capacity() as f64
+            ),
             "Stats:",
         );
 
