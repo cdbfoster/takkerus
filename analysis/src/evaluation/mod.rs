@@ -7,7 +7,7 @@ use self::types::EvalType;
 
 mod types;
 
-pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation {
+pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation {
     use Color::*;
     use PieceType::*;
 
@@ -34,9 +34,10 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
     let p1_road_pieces = road_pieces & m.p1_pieces;
     let p2_road_pieces = road_pieces & m.p2_pieces;
 
-    for x in 0..N {
-        for y in 0..N {
+    for y in (0..N).rev() {
+        for x in 0..N {
             let stack = &state.board[x][y];
+
             // Top piece bonus
             if let Some(piece) = stack.last() {
                 let piece_type = match piece.piece_type() {
@@ -60,13 +61,14 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
             // Friendlies and Captives
             if stack.len() > 1 {
                 let top_piece = stack.last().unwrap();
+                let top_piece_color = top_piece.color();
                 let top_piece_type = top_piece.piece_type();
 
                 // Bonus for hard caps
                 if top_piece_type == Capstone
-                    && stack.get(stack.len() - 2).unwrap().color() == top_piece.color()
+                    && stack.get(stack.len() - 2).unwrap().color() == top_piece_color
                 {
-                    match top_piece.color() {
+                    match top_piece_color {
                         White => p1_eval += 30,
                         Black => p2_eval += 30,
                     }
@@ -95,7 +97,7 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
 
                 for neighbor in neighbors {
                     if let Some(neighbor_top) = neighbor.last() {
-                        if neighbor_top.color() == top_piece.color() {
+                        if neighbor_top.color() == top_piece_color {
                             match neighbor_top.piece_type() {
                                 Flatstone => {
                                     safety += 1;
@@ -133,17 +135,17 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
                     }
                 }
 
-                let (player_stacks, opponent_stacks) = match state.to_move() {
+                let (player_stacks, opponent_stacks) = match top_piece_color {
                     White => (&m.p1_stacks, &m.p2_stacks),
                     Black => (&m.p2_stacks, &m.p1_stacks),
                 };
 
                 let (mut captives, mut friendlies) = (
-                    player_stacks[x][y].count_ones() as EvalType - 1,
                     opponent_stacks[x][y].count_ones() as EvalType,
+                    player_stacks[x][y].count_ones() as EvalType - 1,
                 );
 
-                if mobility < 2 && top_piece_type != Flatstone {
+                if mobility < 2 && top_piece_type == Flatstone {
                     friendlies /= 2;
                 }
 
@@ -151,14 +153,14 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
                     captives *= 2;
                 }
 
-                let (captive_mul, friendly_mul) = match top_piece.piece_type() {
+                let (captive_mul, friendly_mul) = match top_piece_type {
                     Flatstone => WEIGHT.piece_mul[0],
                     StandingStone => WEIGHT.piece_mul[1],
                     Capstone => WEIGHT.piece_mul[2],
                 };
 
                 let stack_score = captives * captive_mul + friendlies * friendly_mul;
-                match top_piece.color() {
+                match top_piece_color {
                     White => p1_eval += stack_score,
                     Black => p2_eval += stack_score,
                 }
@@ -196,7 +198,10 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
         }
     }
 
-    let mut p1_group_score = match p1_road_pieces.groups().count() {
+    p1_eval -= p1_road_pieces.groups().count() as EvalType * WEIGHT.connectivity;
+    p2_eval -= p2_road_pieces.groups().count() as EvalType * WEIGHT.connectivity;
+
+    /* let mut p1_group_score = match p1_road_pieces.groups().count() {
         1 => 40,
         2 => 30,
         3 => 15,
@@ -221,14 +226,14 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
             White => p1_group_score *= 2,
             Black => p2_group_score *= 2,
         }
-    }
+    } */
 
     let p1_res = state.p1_flatstones + state.p1_capstones;
     let p2_res = state.p2_flatstones + state.p2_capstones;
-    let mul = ((p1_res + p2_res) as EvalType * 100) / 60;
+    //let mul = ((p1_res + p2_res) as EvalType * 100) / 60;
 
-    p1_eval += p1_group_score * mul / 100;
-    p2_eval += p2_group_score * mul / 100;
+    /* p1_eval += p1_group_score * mul / 100;
+    p2_eval += p2_group_score * mul / 100; */
 
     if p1_res < 10 || p2_res < 10 {
         let mut p1_flats = 2 * m.p1_flat_count as EvalType;
@@ -251,6 +256,17 @@ pub fn evaluate<const N: usize>(state: &State<N>, _start_ply: u16) -> Evaluation
         }
     }
 
+    let depth = state.ply_count - start_ply;
+    if Color::White == state.to_move() {
+        if depth % 2 == 1 {
+            p1_eval += WEIGHT.tempo_offset
+        }
+    } else {
+        if depth % 2 == 1 {
+            p2_eval += WEIGHT.tempo_offset
+        }
+    }
+
     match state.to_move() {
         White => p1_eval - p2_eval,
         Black => p2_eval - p1_eval,
@@ -261,6 +277,8 @@ struct Weights {
     pieces: [EvalType; 3],
     location: [[EvalType; 6]; 6],
     piece_mul: [(EvalType, EvalType); 3],
+    connectivity: EvalType,
+    tempo_offset: EvalType,
 }
 
 const WEIGHT: Weights = Weights {
@@ -274,7 +292,18 @@ const WEIGHT: Weights = Weights {
         [00, 05, 05, 05, 05, 00],
     ],
     piece_mul: [(-50, 60), (-30, 70), (-20, 90)],
+    connectivity: 20,
+    tempo_offset: 150,
 };
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn print_eval() {
+        let state: State<6> = "2,212221C,2,2,2C,1/1,2,1,1,2,1/12,x,1S,2S,2,1/2,2,2,x2,1/1,2212121S,2,12,1,1S/x,2,2,2,x,1 1 30".parse().unwrap();
+
+        println!("{:?}", evaluate(&state, state.ply_count - 5));
+    }
+}
