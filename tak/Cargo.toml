@@ -5,6 +5,7 @@ license = "GPL-3.0-or-later"
 edition = "2021"
 
 [features]
+default = ["fixed-rng"]
 deep-stacks = []
 fixed-rng = []
 
