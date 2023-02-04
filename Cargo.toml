@@ -5,5 +5,22 @@ members = [
     "tak",
 ]
 
-[profile.release]
+[profile.dev]
+opt-level = 3
 debug = true
+debug-assertions = true
+overflow-checks = true
+lto = "thin"
+incremental = true
+codegen-units = 256
+rpath = false
+
+[profile.release]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = "fat"
+incremental = false
+codegen-units = 16
+rpath = false
