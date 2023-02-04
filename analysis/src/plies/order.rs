@@ -327,7 +327,7 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
 
                 // Check the color of the stone that's left behind.
                 if stack.len() > carry {
-                    let revealed_color = stack.get(stack.len() - 1 - carry).unwrap().color();
+                    let revealed_color = stack.get(carry).unwrap().color();
                     if revealed_color != state.to_move() {
                         delta_fcd -= 1;
                         reveals_opponent = true;
@@ -336,11 +336,9 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                     }
                 }
 
-                let mut player_pieces = if carry < 8 {
-                    player_stacks[x as usize][y as usize] >> (stack.len().min(8) - carry)
-                } else {
-                    player_stacks[x as usize][y as usize]
-                };
+                let player_pieces = player_stacks[x as usize][y as usize];
+
+                let mut mask = 0x80 >> (8 - carry);
 
                 let (mut tx, mut ty) = (x as i8, y as i8);
                 let (dx, dy) = direction.to_offset();
@@ -369,13 +367,15 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                     }
 
                     // Check the color of the top dropped stone.
-                    player_pieces >>= drop - 1;
-                    if player_pieces & 0x01 == 1 {
+                    //player_pieces >>= drop - 1;
+                    mask >>= drop - 1;
+                    if player_pieces & mask == 1 {
                         delta_fcd += 1;
                     } else {
                         delta_fcd -= 1;
                         reveals_opponent = true;
                     }
+                    mask >>= 1;
 
                     i += 1;
                 }
