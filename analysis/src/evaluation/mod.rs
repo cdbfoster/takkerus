@@ -1,3 +1,5 @@
+#![allow(clippy::comparison_chain)]
+
 use tak::{Bitmap, Color, PieceType, Resolution, State};
 
 pub use self::types::Evaluation;
@@ -64,9 +66,7 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
                 let top_piece_type = top_piece.piece_type();
 
                 // Bonus for hard caps
-                if top_piece_type == Capstone
-                    && stack.get(1).unwrap().color() == top_piece_color
-                {
+                if top_piece_type == Capstone && stack.get(1).unwrap().color() == top_piece_color {
                     match top_piece_color {
                         White => p1_eval += 30,
                         Black => p2_eval += 30,
@@ -213,10 +213,8 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
             if state.to_move() == White {
                 p1_flats += 2;
             }
-        } else if p2_res < p1_res {
-            if state.to_move() == Black {
-                p2_flats += 2;
-            }
+        } else if p2_res < p1_res && state.to_move() == Black {
+            p2_flats += 2;
         }
 
         if p1_flats > p2_flats {
@@ -227,13 +225,10 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
     }
 
     let depth = state.ply_count - start_ply;
-    if Color::White == state.to_move() {
-        if depth % 2 == 1 {
-            p1_eval += WEIGHT.tempo_offset
-        }
-    } else {
-        if depth % 2 == 1 {
-            p2_eval += WEIGHT.tempo_offset
+    if depth % 2 == 1 {
+        match state.to_move() {
+            White => p1_eval += WEIGHT.tempo_offset,
+            Black => p2_eval += WEIGHT.tempo_offset,
         }
     }
 
@@ -254,12 +249,12 @@ struct Weights {
 const WEIGHT: Weights = Weights {
     pieces: [100, 40, 80],
     location: [
-        [00, 05, 05, 05, 05, 00],
-        [05, 10, 15, 15, 10, 05],
-        [05, 15, 20, 20, 15, 05],
-        [05, 15, 20, 20, 15, 05],
-        [05, 10, 15, 15, 10, 05],
-        [00, 05, 05, 05, 05, 00],
+        [0, 5, 5, 5, 5, 0],
+        [5, 10, 15, 15, 10, 5],
+        [5, 15, 20, 20, 15, 5],
+        [5, 15, 20, 20, 15, 5],
+        [5, 10, 15, 15, 10, 5],
+        [0, 5, 5, 5, 5, 0],
     ],
     piece_mul: [(-50, 60), (-30, 70), (-20, 90)],
     connectivity: 20,
