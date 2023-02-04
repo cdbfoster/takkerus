@@ -7,6 +7,7 @@ use self::types::EvalType;
 
 mod types;
 
+/// An evaluator that mimics Topaz's.
 pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation {
     use Color::*;
     use PieceType::*;
@@ -199,39 +200,10 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
     p1_eval -= p1_road_pieces.groups().count() as EvalType * WEIGHT.connectivity;
     p2_eval -= p2_road_pieces.groups().count() as EvalType * WEIGHT.connectivity;
 
-    /* let mut p1_group_score = match p1_road_pieces.groups().count() {
-        1 => 40,
-        2 => 30,
-        3 => 15,
-        4 => 5,
-        _ => 0,
-    };
-
-    let mut p2_group_score = match p2_road_pieces.groups().count() {
-        1 => 40,
-        2 => 30,
-        3 => 15,
-        4 => 5,
-        _ => 0,
-    };
-
-    if p1_group_score > p2_group_score {
-        p1_group_score *= 2;
-    } else if p2_group_score > p1_group_score {
-        p2_group_score *= 2;
-    } else {
-        match state.to_move() {
-            White => p1_group_score *= 2,
-            Black => p2_group_score *= 2,
-        }
-    } */
+    // XXX Road heuristic would go here.
 
     let p1_res = state.p1_flatstones + state.p1_capstones;
     let p2_res = state.p2_flatstones + state.p2_capstones;
-    //let mul = ((p1_res + p2_res) as EvalType * 100) / 60;
-
-    /* p1_eval += p1_group_score * mul / 100;
-    p2_eval += p2_group_score * mul / 100; */
 
     if p1_res < 10 || p2_res < 10 {
         let mut p1_flats = 2 * m.p1_flat_count as EvalType;
