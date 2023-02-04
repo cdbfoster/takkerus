@@ -142,7 +142,7 @@ fn generate_all_plies<const N: usize>(
 
     let empty = board_mask() ^ state.metadata.p1_pieces ^ state.metadata.p2_pieces;
 
-    if state.ply_count >= 2 {
+    if state.ply_count >= 4 {
         let player_stacks = match state.to_move() {
             White => state.metadata.p1_pieces,
             Black => state.metadata.p2_pieces,
