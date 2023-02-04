@@ -66,7 +66,7 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
 
                 // Bonus for hard caps
                 if top_piece_type == Capstone
-                    && stack.get(stack.len() - 2).unwrap().color() == top_piece_color
+                    && stack.get(1).unwrap().color() == top_piece_color
                 {
                     match top_piece_color {
                         White => p1_eval += 30,
