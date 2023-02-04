@@ -28,8 +28,6 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
     let mut p1_eval = Evaluation::ZERO;
     let mut p2_eval = Evaluation::ZERO;
 
-    let all_pieces = m.p1_pieces & m.p2_pieces;
-
     let road_pieces = m.flatstones | m.capstones;
     let p1_road_pieces = road_pieces & m.p1_pieces;
     let p2_road_pieces = road_pieces & m.p2_pieces;
