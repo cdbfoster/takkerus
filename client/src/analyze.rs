@@ -153,7 +153,7 @@ fn format_time(time: Duration) -> String {
     }
 
     let secs = total_secs as f64 + time.subsec_millis() as f64 / 1000.0;
-    write!(buffer, "{secs:.2} seconds").unwrap();
+    write!(buffer, "{secs:.4} seconds").unwrap();
 
     buffer
 }

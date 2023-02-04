@@ -181,6 +181,8 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     // Visited nodes per depth, used in calculating effective branching factor.
     let mut node_counts = vec![analysis.stats.visited.max(1)];
 
+    let search_start_time = Instant::now();
+
     for depth in start_depth..=max_depth {
         let depth_start_time = Instant::now();
 
@@ -216,7 +218,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             evaluation,
             principal_variation,
             stats: &analysis.stats + &search.stats,
-            time: total_start_time.elapsed(),
+            time: search_start_time.elapsed(),
         };
 
         let depth_time = depth_start_time.elapsed();
