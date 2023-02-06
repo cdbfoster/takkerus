@@ -469,38 +469,38 @@ mod tests {
     fn set() {
         let mut b = Bitmap::<5>::empty();
         b.set(0, 0);
-        assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_10000));
+        assert_eq!(b, 0b00000_00000_00000_00000_10000.into());
 
         let mut b = Bitmap::<5>::empty();
         b.set(1, 0);
-        assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_01000));
+        assert_eq!(b, 0b00000_00000_00000_00000_01000.into());
 
         let mut b = Bitmap::<5>::empty();
         b.set(1, 1);
-        assert_eq!(b, Bitmap::new(0b00000_00000_00000_01000_00000));
+        assert_eq!(b, 0b00000_00000_00000_01000_00000.into());
 
         let mut b = Bitmap::<5>::empty();
         b.set(4, 4);
-        assert_eq!(b, Bitmap::new(0b00001_00000_00000_00000_00000));
+        assert_eq!(b, 0b00001_00000_00000_00000_00000.into());
     }
 
     #[test]
     fn clear() {
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(0, 0);
-        assert_eq!(b, Bitmap::new(0b11111_11111_11111_11111_01111));
+        assert_eq!(b, 0b11111_11111_11111_11111_01111.into());
 
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(1, 0);
-        assert_eq!(b, Bitmap::new(0b11111_11111_11111_11111_10111));
+        assert_eq!(b, 0b11111_11111_11111_11111_10111.into());
 
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(1, 1);
-        assert_eq!(b, Bitmap::new(0b11111_11111_11111_10111_11111));
+        assert_eq!(b, 0b11111_11111_11111_10111_11111.into());
 
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(4, 4);
-        assert_eq!(b, Bitmap::new(0b11110_11111_11111_11111_11111));
+        assert_eq!(b, 0b11110_11111_11111_11111_11111.into());
     }
 
     #[test]
