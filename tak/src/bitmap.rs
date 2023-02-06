@@ -13,14 +13,18 @@ impl<const N: usize> Bitmap<N> {
         Self(value)
     }
 
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
     pub fn from_coordinates(x: usize, y: usize) -> Self {
-        let mut bit = Self::default();
+        let mut bit = Self::empty();
         bit.set(x, y);
         bit
     }
 
     pub fn is_empty(&self) -> bool {
-        *self == 0.into()
+        *self == Self::empty()
     }
 
     pub fn set(&mut self, x: usize, y: usize) {
@@ -95,7 +99,7 @@ impl<const N: usize> Bitmap<N> {
 
     pub fn width(self) -> usize {
         let mut row_mask = edge_masks::<N>()[Direction::North as usize];
-        let mut row_aggregate = Bitmap::default();
+        let mut row_aggregate = Bitmap::empty();
         for i in 0..N {
             let row = self & row_mask;
             row_aggregate |= row << (i * N);
@@ -106,7 +110,7 @@ impl<const N: usize> Bitmap<N> {
 
     pub fn height(self) -> usize {
         let mut column_mask = edge_masks::<N>()[Direction::West as usize];
-        let mut column_aggregate = Bitmap::default();
+        let mut column_aggregate = Bitmap::empty();
         for i in 0..N {
             let column = self & column_mask;
             column_aggregate |= column << i;

@@ -20,11 +20,11 @@ pub struct Metadata<const N: usize> {
 impl<const N: usize> Default for Metadata<N> {
     fn default() -> Self {
         Self {
-            p1_pieces: 0.into(),
-            p2_pieces: 0.into(),
-            flatstones: 0.into(),
-            standing_stones: 0.into(),
-            capstones: 0.into(),
+            p1_pieces: Bitmap::empty(),
+            p2_pieces: Bitmap::empty(),
+            flatstones: Bitmap::empty(),
+            standing_stones: Bitmap::empty(),
+            capstones: Bitmap::empty(),
             p1_flat_count: 0,
             p2_flat_count: 0,
             p1_stacks: [[0; N]; N],

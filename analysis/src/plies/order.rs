@@ -295,7 +295,7 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                     let bit = Bitmap::from_coordinates(x as usize, y as usize);
                     let neighbors = bit.dilate() ^ bit;
 
-                    if neighbors & opponent_flatstones != 0.into() {
+                    if !(neighbors & opponent_flatstones).is_empty() {
                         *score |= BLOCKER_NEAR_OPPONENT_ROAD;
 
                         if piece_type == Capstone {
