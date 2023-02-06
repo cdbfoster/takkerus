@@ -174,8 +174,12 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
             }
             println!("{info}");
 
-            let ptn: PtnPly = (*analysis.principal_variation.first().expect("no pv")).into();
-            println!("bestmove {ptn}");
+            if let Some(&ply) = analysis.principal_variation.first() {
+                let ptn: PtnPly = ply.into();
+                println!("bestmove {ptn}");
+            } else {
+                error!(?analysis, "No PV returned from search.");
+            }
         });
     }
 
