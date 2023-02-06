@@ -5,7 +5,7 @@ use std::fmt;
 use crate::ply::Direction;
 
 #[repr(transparent)]
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Bitmap<const N: usize>(u64);
 
 impl<const N: usize> Bitmap<N> {
@@ -467,19 +467,19 @@ mod tests {
 
     #[test]
     fn set() {
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(0, 0);
         assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_10000));
 
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(1, 0);
         assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_01000));
 
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(1, 1);
         assert_eq!(b, Bitmap::new(0b00000_00000_00000_01000_00000));
 
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(4, 4);
         assert_eq!(b, Bitmap::new(0b00001_00000_00000_00000_00000));
     }
