@@ -141,8 +141,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         time: Duration::ZERO,
     };
 
-    let mut state = state.clone();
-
     // Visited nodes per depth, used in calculating effective branching factor.
     let mut node_counts = vec![analysis.stats.visited.max(1)];
 
@@ -163,7 +161,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         let evaluation = minimax(
             &mut search,
-            &mut state,
+            state,
             depth,
             Evaluation::MIN,
             Evaluation::MAX,
@@ -354,7 +352,7 @@ struct SearchState<'a, const N: usize> {
 #[instrument(level = "trace", skip(search, state, null_move_allowed), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
-    state: &mut State<N>,
+    state: &State<N>,
     remaining_depth: usize,
     mut alpha: Evaluation,
     beta: Evaluation,
@@ -409,10 +407,12 @@ fn minimax<const N: usize>(
     // Null move search =========================
 
     if null_move_allowed && remaining_depth >= 3 {
+        let mut state = state.clone();
+
         // Apply a null move.
         state.ply_count += 1;
 
-        let eval = -minimax(search, state, remaining_depth - 3, -beta, -beta + 1, false);
+        let eval = -minimax(search, &state, remaining_depth - 3, -beta, -beta + 1, false);
 
         // Undo the null move.
         state.ply_count -= 1;
@@ -448,13 +448,13 @@ fn minimax<const N: usize>(
 
         let next_eval = if i == 0 {
             // On the first iteration, perform a full-window search.
-            -minimax(search, &mut state, remaining_depth - 1, -beta, -alpha, true)
+            -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
             let scout_eval = -minimax(
                 search,
-                &mut state,
+                &state,
                 remaining_depth - 1,
                 -alpha - 1,
                 -alpha,
@@ -464,7 +464,7 @@ fn minimax<const N: usize>(
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
                 // If we are inside the PV window instead, we need to re-search using the full PV window.
-                -minimax(search, &mut state, remaining_depth - 1, -beta, -alpha, true)
+                -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
             } else {
                 scout_eval
             }
