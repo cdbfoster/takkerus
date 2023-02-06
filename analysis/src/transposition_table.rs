@@ -46,6 +46,8 @@ impl<const N: usize> TranspositionTable<N> {
                 | (entry.depth as u16)
         }
 
+        let entry_score = score(&entry);
+
         while offset < MAX_PROBE_DEPTH {
             if let Some(slot) = &self.values[current_index] {
                 let slot_score = score(&slot.entry);
@@ -56,16 +58,16 @@ impl<const N: usize> TranspositionTable<N> {
                         target_index = current_index;
                         target_score = slot_score;
                     }
+                } else if entry_score >= slot_score {
+                    self.values[current_index] = Some(Slot { hash, entry });
+                    return true;
                 } else {
-                    // If a slot contains the same hash, always attempt to replace this slot.
-                    target_index = current_index;
-                    target_score = slot_score;
-                    break;
+                    return false;
                 }
             } else {
                 // Always overwrite an empty slot.
                 target_index = current_index;
-                target_score = 0;
+                self.len += 1;
                 break;
             }
 
@@ -73,17 +75,9 @@ impl<const N: usize> TranspositionTable<N> {
             current_index = self.next_index(current_index);
         }
 
-        // Only replace an old entry if we're actually improving things.
-        let insert = target_score < score(&entry);
-        if insert {
-            // Only increase the len if we're not replacing an old entry.
-            if self.values[target_index].is_none() {
-                self.len += 1;
-            }
+        self.values[target_index] = Some(Slot { hash, entry });
 
-            self.values[target_index] = Some(Slot { hash, entry });
-        }
-        insert
+        true
     }
 
     pub fn get(&self, hash: ZobristHash) -> Option<&TranspositionTableEntry<N>> {

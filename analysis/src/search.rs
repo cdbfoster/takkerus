@@ -142,48 +142,13 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     };
 
     let mut state = state.clone();
-    let mut start_depth = 1;
-
-    // Attempt to pull an initial pv from the table.
-    if let Some(entry) = persistent_state
-        .transposition_table
-        .get(state.metadata.hash)
-    {
-        analysis.stats.tt_hits += 1;
-
-        if entry.bound == Bound::Exact {
-            analysis.stats.visited = entry.node_count as u64;
-            analysis.stats.tt_saves += 1;
-
-            let (principal_variation, final_state) = fetch_pv(
-                &state,
-                &persistent_state.transposition_table,
-                entry.depth as usize,
-            );
-
-            analysis = Analysis {
-                depth: entry.depth as u32,
-                final_state,
-                evaluation: entry.evaluation,
-                principal_variation,
-                stats: analysis.stats,
-                time: total_start_time.elapsed(),
-            };
-
-            if !entry.evaluation.is_terminal() {
-                start_depth = entry.depth as usize + 1;
-            } else {
-                start_depth = entry.depth as usize;
-            }
-        }
-    }
 
     // Visited nodes per depth, used in calculating effective branching factor.
     let mut node_counts = vec![analysis.stats.visited.max(1)];
 
     let search_start_time = Instant::now();
 
-    for depth in start_depth..=max_depth {
+    for depth in 1..=max_depth {
         let depth_start_time = Instant::now();
 
         let mut search = SearchState {
@@ -277,7 +242,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         // Treat even and odd depths separately (if there are enough data points), to account for alpha-beta's quirk.
         let branching_factor = if node_counts.len() <= 2 {
             effective_branching_factor(node_counts.iter().copied())
-        } else if depth % 2 == start_depth % 2 {
+        } else if depth % 2 == 1 {
             effective_branching_factor(node_counts.iter().copied().skip(1).step_by(2))
         } else {
             effective_branching_factor(node_counts.iter().copied().step_by(2))
@@ -419,7 +384,7 @@ fn minimax<const N: usize>(
 
         let is_save = entry.depth as usize >= remaining_depth
             && match entry.bound {
-                Bound::Exact => true,
+                Bound::Exact => false, // Search exact nodes to avoid cutting the PV short.
                 Bound::Upper => entry.evaluation <= alpha,
                 Bound::Lower => entry.evaluation >= beta,
             };
@@ -436,9 +401,9 @@ fn minimax<const N: usize>(
                     Bound::Lower => return beta,
                 }
             }
-        } else {
-            tt_ply = Some(entry.ply);
         }
+
+        tt_ply = Some(entry.ply);
     }
 
     // Null move search =========================
