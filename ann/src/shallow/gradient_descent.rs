@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::gradient_descent::{Adam, GradientDescent, SimpleGradientDescent};
 use crate::linear_algebra::{MatrixColumnMajor, Vector};
 
@@ -17,7 +19,7 @@ pub trait ShallowGradientDescent<const I: usize, const H: usize, const O: usize>
     );
 }
 
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct ShallowAdam<const I: usize, const H: usize, const O: usize> {
     hidden: Adam<I, H>,
     output: Adam<H, O>,

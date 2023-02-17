@@ -3,13 +3,17 @@ use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
 
-use super::{Value, ValueType, Vector};
+use serde::{Deserialize, Serialize};
+
+use super::{array_serde, Value, ValueType, Vector};
 
 macro_rules! matrix_impl {
     ($matrix:ident, $major:ident, $minor:ident) => {
         #[repr(transparent)]
-        #[derive(Clone, Copy, PartialEq)]
-        pub struct $matrix<const R: usize, const C: usize>([Vector<$minor>; $major]);
+        #[derive(Clone, Copy, Deserialize, PartialEq, Serialize)]
+        pub struct $matrix<const R: usize, const C: usize>(
+            #[serde(with = "array_serde")] [Vector<$minor>; $major],
+        );
 
         impl<const R: usize, const C: usize> $matrix<R, C> {
             pub const fn zeros() -> Self {
@@ -20,7 +24,7 @@ macro_rules! matrix_impl {
                 Self([Vector::ones(); $major])
             }
 
-            pub fn new(values: [Vector<$minor>; $major]) -> Self {
+            pub const fn new(values: [Vector<$minor>; $major]) -> Self {
                 Self(values)
             }
 

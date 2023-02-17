@@ -1,6 +1,7 @@
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
 use rand_distr::Normal;
+use serde::{Deserialize, Serialize};
 
 use crate::activation::{relu, relu_prime, tanh, tanh_prime};
 use crate::layer::{
@@ -10,7 +11,7 @@ use crate::linear_algebra::{MatrixColumnMajor, MatrixRowMajor, Vector};
 
 use super::ShallowGradientDescent;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShallowAnn<const I: usize, const H: usize, const O: usize> {
     pub hidden_weights: MatrixColumnMajor<I, H>,
     pub hidden_biases: Vector<H>,

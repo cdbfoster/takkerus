@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::linear_algebra::{MatrixColumnMajor, Vector};
 
 pub trait GradientDescent<const I: usize, const O: usize> {
@@ -12,6 +14,7 @@ pub trait GradientDescent<const I: usize, const O: usize> {
     );
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Adam<const I: usize, const O: usize> {
     beta1: f32,
     beta2: f32,
@@ -90,7 +93,7 @@ impl<const I: usize, const O: usize> GradientDescent<I, O> for Adam<I, O> {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct SimpleGradientDescent;
 
 impl<const I: usize, const O: usize> GradientDescent<I, O> for SimpleGradientDescent {

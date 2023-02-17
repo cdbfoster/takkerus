@@ -3,11 +3,13 @@ use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
 
-use super::{Value, ValueType};
+use serde::{Deserialize, Serialize};
+
+use super::{array_serde, Value, ValueType};
 
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq)]
-pub struct Vector<const N: usize>([Value; N]);
+#[derive(Clone, Copy, Deserialize, PartialEq, Serialize)]
+pub struct Vector<const N: usize>(#[serde(with = "array_serde")] [Value; N]);
 
 impl<const N: usize> Vector<N> {
     pub const fn zeros() -> Self {
@@ -18,7 +20,7 @@ impl<const N: usize> Vector<N> {
         Self([Value::ONE; N])
     }
 
-    pub fn new(values: [Value; N]) -> Self {
+    pub const fn new(values: [Value; N]) -> Self {
         Self(values)
     }
 
