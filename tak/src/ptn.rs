@@ -74,6 +74,14 @@ impl PtnGame {
         }
     }
 
+    pub fn get_ply_len(&self) -> usize {
+        self.turns
+            .iter()
+            .flat_map(|t| [&t.p1_move, &t.p2_move])
+            .filter_map(|p| p.ply.as_ref())
+            .count()
+    }
+
     pub fn get_plies<const N: usize>(&self) -> Result<Vec<Ply<N>>, PtnError> {
         self.turns
             .iter()
@@ -149,6 +157,26 @@ impl PtnGame {
     pub fn validate<const N: usize>(&self) -> Result<(), PtnError> {
         let _state: State<N> = self.clone().try_into()?;
         Ok(())
+    }
+
+    pub fn get_state_at_ply<const N: usize>(&self, ply: usize) -> Result<State<N>, PtnError> {
+        if ply > self.get_ply_len() {
+            return Err(PtnError::OutOfBounds(
+                "Ply index is out of bounds.".to_owned(),
+            ));
+        }
+
+        let mut game = self.clone();
+        let turn_number = if ply % 2 == 1 { ply / 2 + 1 } else { ply / 2 };
+        game.turns.truncate(turn_number);
+
+        if ply % 2 == 1 {
+            if let Some(turn) = game.turns.last_mut() {
+                turn.p2_move.ply = None;
+            }
+        }
+
+        game.try_into()
     }
 }
 
