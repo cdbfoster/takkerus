@@ -148,6 +148,12 @@ impl From<EvalType> for Evaluation {
     }
 }
 
+impl From<Evaluation> for EvalType {
+    fn from(value: Evaluation) -> Self {
+        value.0
+    }
+}
+
 impl fmt::Display for Evaluation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)

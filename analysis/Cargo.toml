@@ -30,3 +30,7 @@ harness = false
 [[bin]]
 name = "extract_states"
 required-features = ["tools"]
+
+[[bin]]
+name = "evaluate_positions"
+required-features = ["tools"]

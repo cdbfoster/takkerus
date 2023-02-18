@@ -50,6 +50,12 @@ fn get_tps_at_ply_sized<const N: usize>(game: &PtnGame, ply: usize) -> Option<St
     }
 
     let state: State<N> = game.get_state_at_ply(ply).expect("could not get state");
+
+    // Skip terminal positions.
+    if state.resolution().is_some() {
+        return None;
+    }
+
     let tps: Tps = state.into();
 
     Some(tps.to_string())
