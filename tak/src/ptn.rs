@@ -47,7 +47,7 @@ impl PtnGame {
             .or_else(|| {
                 self.get_header("TPS")
                     .and_then(|tps| tps.parse_value::<Tps>().ok())
-                    .map(|tps| tps.board.len())
+                    .map(|tps| tps.size())
             })
     }
 
