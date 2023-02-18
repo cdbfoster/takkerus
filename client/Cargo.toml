@@ -3,6 +3,7 @@ name = "client"
 version = "0.1.0"
 license = "GPL-3.0-or-later"
 edition = "2021"
+default-run = "takkerus"
 
 [features]
 deep-stacks = ["analysis/deep-stacks", "tak/deep-stacks"]

@@ -5,7 +5,7 @@ use std::fmt;
 use crate::ply::Direction;
 
 #[repr(transparent)]
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Bitmap<const N: usize>(u64);
 
 impl<const N: usize> Bitmap<N> {
@@ -13,14 +13,18 @@ impl<const N: usize> Bitmap<N> {
         Self(value)
     }
 
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
     pub fn from_coordinates(x: usize, y: usize) -> Self {
-        let mut bit = Self::default();
+        let mut bit = Self::empty();
         bit.set(x, y);
         bit
     }
 
     pub fn is_empty(&self) -> bool {
-        *self == 0.into()
+        *self == Self::empty()
     }
 
     pub fn set(&mut self, x: usize, y: usize) {
@@ -95,7 +99,7 @@ impl<const N: usize> Bitmap<N> {
 
     pub fn width(self) -> usize {
         let mut row_mask = edge_masks::<N>()[Direction::North as usize];
-        let mut row_aggregate = Bitmap::default();
+        let mut row_aggregate = Bitmap::empty();
         for i in 0..N {
             let row = self & row_mask;
             row_aggregate |= row << (i * N);
@@ -106,7 +110,7 @@ impl<const N: usize> Bitmap<N> {
 
     pub fn height(self) -> usize {
         let mut column_mask = edge_masks::<N>()[Direction::West as usize];
-        let mut column_aggregate = Bitmap::default();
+        let mut column_aggregate = Bitmap::empty();
         for i in 0..N {
             let column = self & column_mask;
             column_aggregate |= column << i;
@@ -463,40 +467,40 @@ mod tests {
 
     #[test]
     fn set() {
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(0, 0);
-        assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_10000));
+        assert_eq!(b, 0b00000_00000_00000_00000_10000.into());
 
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(1, 0);
-        assert_eq!(b, Bitmap::new(0b00000_00000_00000_00000_01000));
+        assert_eq!(b, 0b00000_00000_00000_00000_01000.into());
 
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(1, 1);
-        assert_eq!(b, Bitmap::new(0b00000_00000_00000_01000_00000));
+        assert_eq!(b, 0b00000_00000_00000_01000_00000.into());
 
-        let mut b = Bitmap::<5>::default();
+        let mut b = Bitmap::<5>::empty();
         b.set(4, 4);
-        assert_eq!(b, Bitmap::new(0b00001_00000_00000_00000_00000));
+        assert_eq!(b, 0b00001_00000_00000_00000_00000.into());
     }
 
     #[test]
     fn clear() {
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(0, 0);
-        assert_eq!(b, Bitmap::new(0b11111_11111_11111_11111_01111));
+        assert_eq!(b, 0b11111_11111_11111_11111_01111.into());
 
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(1, 0);
-        assert_eq!(b, Bitmap::new(0b11111_11111_11111_11111_10111));
+        assert_eq!(b, 0b11111_11111_11111_11111_10111.into());
 
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(1, 1);
-        assert_eq!(b, Bitmap::new(0b11111_11111_11111_10111_11111));
+        assert_eq!(b, 0b11111_11111_11111_10111_11111.into());
 
         let mut b = Bitmap::<5>::new(0b11111_11111_11111_11111_11111);
         b.clear(4, 4);
-        assert_eq!(b, Bitmap::new(0b11110_11111_11111_11111_11111));
+        assert_eq!(b, 0b11110_11111_11111_11111_11111.into());
     }
 
     #[test]

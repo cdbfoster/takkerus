@@ -141,49 +141,12 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         time: Duration::ZERO,
     };
 
-    let mut state = state.clone();
-    let mut start_depth = 1;
-
-    // Attempt to pull an initial pv from the table.
-    if let Some(entry) = persistent_state
-        .transposition_table
-        .get(state.metadata.hash)
-    {
-        analysis.stats.tt_hits += 1;
-
-        if entry.bound == Bound::Exact {
-            analysis.stats.visited = entry.node_count as u64;
-            analysis.stats.tt_saves += 1;
-
-            let (principal_variation, final_state) = fetch_pv(
-                &state,
-                &persistent_state.transposition_table,
-                entry.depth as usize,
-            );
-
-            analysis = Analysis {
-                depth: entry.depth as u32,
-                final_state,
-                evaluation: entry.evaluation,
-                principal_variation,
-                stats: analysis.stats,
-                time: total_start_time.elapsed(),
-            };
-
-            if !entry.evaluation.is_terminal() {
-                start_depth = entry.depth as usize + 1;
-            } else {
-                start_depth = entry.depth as usize;
-            }
-        }
-    }
-
     // Visited nodes per depth, used in calculating effective branching factor.
     let mut node_counts = vec![analysis.stats.visited.max(1)];
 
     let search_start_time = Instant::now();
 
-    for depth in start_depth..=max_depth {
+    for depth in 1..=max_depth {
         let depth_start_time = Instant::now();
 
         let mut search = SearchState {
@@ -198,7 +161,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         let evaluation = minimax(
             &mut search,
-            &mut state,
+            state,
             depth,
             Evaluation::MIN,
             Evaluation::MAX,
@@ -277,7 +240,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         // Treat even and odd depths separately (if there are enough data points), to account for alpha-beta's quirk.
         let branching_factor = if node_counts.len() <= 2 {
             effective_branching_factor(node_counts.iter().copied())
-        } else if depth % 2 == start_depth % 2 {
+        } else if depth % 2 == 1 {
             effective_branching_factor(node_counts.iter().copied().skip(1).step_by(2))
         } else {
             effective_branching_factor(node_counts.iter().copied().step_by(2))
@@ -287,7 +250,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         debug!(
             branch = %format!("{:.2}", branching_factor),
-            rate = %format!("{} nodes/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
+            rate = %format!("{}n/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
             next_depth_prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
             "Search:",
         );
@@ -389,7 +352,7 @@ struct SearchState<'a, const N: usize> {
 #[instrument(level = "trace", skip(search, state, null_move_allowed), fields(scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
-    state: &mut State<N>,
+    state: &State<N>,
     remaining_depth: usize,
     mut alpha: Evaluation,
     beta: Evaluation,
@@ -419,7 +382,7 @@ fn minimax<const N: usize>(
 
         let is_save = entry.depth as usize >= remaining_depth
             && match entry.bound {
-                Bound::Exact => true,
+                Bound::Exact => false, // Search exact nodes to avoid cutting the PV short.
                 Bound::Upper => entry.evaluation <= alpha,
                 Bound::Lower => entry.evaluation >= beta,
             };
@@ -436,18 +399,20 @@ fn minimax<const N: usize>(
                     Bound::Lower => return beta,
                 }
             }
-        } else {
-            tt_ply = Some(entry.ply);
         }
+
+        tt_ply = Some(entry.ply);
     }
 
     // Null move search =========================
 
     if null_move_allowed && remaining_depth >= 3 {
+        let mut state = state.clone();
+
         // Apply a null move.
         state.ply_count += 1;
 
-        let eval = -minimax(search, state, remaining_depth - 3, -beta, -beta + 1, false);
+        let eval = -minimax(search, &state, remaining_depth - 3, -beta, -beta + 1, false);
 
         // Undo the null move.
         state.ply_count -= 1;
@@ -483,13 +448,13 @@ fn minimax<const N: usize>(
 
         let next_eval = if i == 0 {
             // On the first iteration, perform a full-window search.
-            -minimax(search, &mut state, remaining_depth - 1, -beta, -alpha, true)
+            -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
             let scout_eval = -minimax(
                 search,
-                &mut state,
+                &state,
                 remaining_depth - 1,
                 -alpha - 1,
                 -alpha,
@@ -499,7 +464,7 @@ fn minimax<const N: usize>(
             if scout_eval > alpha && scout_eval < beta {
                 search.stats.re_searched += 1;
                 // If we are inside the PV window instead, we need to re-search using the full PV window.
-                -minimax(search, &mut state, remaining_depth - 1, -beta, -alpha, true)
+                -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
             } else {
                 scout_eval
             }

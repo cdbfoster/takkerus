@@ -142,16 +142,29 @@ fn generate_all_plies<const N: usize>(
 
     let empty = board_mask() ^ state.metadata.p1_pieces ^ state.metadata.p2_pieces;
 
+    let reserve_flatstones = match state.to_move() {
+        White => state.p1_flatstones,
+        Black => state.p2_flatstones,
+    };
+
     if state.ply_count >= 4 {
         let player_stacks = match state.to_move() {
             White => state.metadata.p1_pieces,
             Black => state.metadata.p2_pieces,
         };
 
-        // Standing stones and spreads.
+        // Standing stones.
+        if reserve_flatstones > 0 {
+            plies.extend(
+                generation::placements(empty, StandingStone)
+                    .filter(|ply| !used_plies.contains(ply))
+                    .map(|ply| ScoredPly { score: 0, ply }),
+            );
+        }
+
+        // Spreads.
         plies.extend(
-            generation::placements(empty, StandingStone)
-                .chain(generation::spreads(state, player_stacks))
+            generation::spreads(state, player_stacks)
                 .filter(|ply| !used_plies.contains(ply))
                 .map(|ply| ScoredPly { score: 0, ply }),
         );
@@ -172,11 +185,13 @@ fn generate_all_plies<const N: usize>(
     }
 
     // Flatstones.
-    plies.extend(
-        generation::placements(empty, Flatstone)
-            .filter(|ply| !used_plies.contains(ply))
-            .map(|ply| ScoredPly { score: 0, ply }),
-    );
+    if reserve_flatstones > 0 {
+        plies.extend(
+            generation::placements(empty, Flatstone)
+                .filter(|ply| !used_plies.contains(ply))
+                .map(|ply| ScoredPly { score: 0, ply }),
+        );
+    }
 
     plies
 }
@@ -295,7 +310,7 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                     let bit = Bitmap::from_coordinates(x as usize, y as usize);
                     let neighbors = bit.dilate() ^ bit;
 
-                    if neighbors & opponent_flatstones != 0.into() {
+                    if !(neighbors & opponent_flatstones).is_empty() {
                         *score |= BLOCKER_NEAR_OPPONENT_ROAD;
 
                         if piece_type == Capstone {

@@ -17,6 +17,12 @@ pub struct Tps {
     pub turn: u32,
 }
 
+impl Tps {
+    pub fn size(&self) -> usize {
+        self.board.len()
+    }
+}
+
 impl FromStr for Tps {
     type Err = TpsError;
 
@@ -102,10 +108,10 @@ impl<const N: usize> TryFrom<Tps> for State<N> {
     fn try_from(tps: Tps) -> Result<Self, Self::Error> {
         let mut state = Self::default();
 
-        if tps.board.len() != N {
+        if tps.size() != N {
             return Err(TpsError::Dimensions(format!(
                 "TPS board size doesn't match state board size: {} != {N}",
-                tps.board.len()
+                tps.size()
             )));
         }
 
@@ -179,7 +185,7 @@ impl<const N: usize> From<State<N>> for Tps {
 
 impl fmt::Display for Tps {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for y in 0..self.board.len() {
+        for y in 0..self.size() {
             if y != 0 {
                 write!(f, "/")?;
             }
