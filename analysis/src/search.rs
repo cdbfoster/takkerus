@@ -250,7 +250,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         debug!(
             branch = %format!("{:.2}", branching_factor),
-            rate = %format!("{} nodes/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
+            rate = %format!("{}n/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
             next_depth_prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
             "Search:",
         );
