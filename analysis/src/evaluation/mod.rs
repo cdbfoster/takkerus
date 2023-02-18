@@ -86,7 +86,7 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
                 }
 
                 let neighbors = {
-                    let mut bit = Bitmap::<N>::default();
+                    let mut bit = Bitmap::<N>::empty();
                     bit.set(x, y);
                     (bit.dilate() ^ bit)
                         .bits()
