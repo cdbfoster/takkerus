@@ -6,10 +6,13 @@ edition = "2021"
 
 [features]
 deep-stacks = ["tak/deep-stacks"]
+tools = ["rand", "serde_json"]
 
 [dependencies]
 ann = { path = "../ann" }
 once_cell = "1.16"
+rand = { version = "0.8", optional = true }
+serde_json = { version = "*", optional = true }
 tak = { path = "../tak" }
 tracing = "0.1"
 
@@ -26,3 +29,4 @@ harness = false
 
 [[bin]]
 name = "extract_states"
+required-features = ["tools"]

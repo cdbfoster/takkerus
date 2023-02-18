@@ -18,6 +18,8 @@ dependencies = [
  "ann",
  "criterion",
  "once_cell",
+ "rand",
+ "serde_json",
  "tak",
  "tracing",
  "tracing-subscriber",

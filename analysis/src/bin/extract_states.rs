@@ -27,18 +27,7 @@ fn main() {
         }
     }
 
-    // Write the output as JSON.
-    println!("[");
-    for (i, state) in tps.iter().enumerate() {
-        print!("  {state:?}");
-
-        if i == tps.len() - 1 {
-            println!();
-        } else {
-            println!(",");
-        }
-    }
-    println!("]");
+    println!("{}", serde_json::to_string_pretty(&tps).unwrap());
 }
 
 fn get_tps_at_ply(game: &PtnGame, ply: usize) -> Option<String> {
