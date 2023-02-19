@@ -42,7 +42,7 @@ use self::GameEnd as GameEndType;
 #[derive(Debug)]
 pub enum GameEnd {
     Resolution(Resolution),
-    Resignation(Color),
+    //Resignation(Color),
 }
 
 pub fn run_game(mut config: PlayConfig) {
