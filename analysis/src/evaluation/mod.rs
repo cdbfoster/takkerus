@@ -1,6 +1,6 @@
 #![allow(clippy::comparison_chain)]
 
-use tak::{Bitmap, Color, PieceType, Resolution, State};
+use tak::{board_mask, edge_masks, Bitmap, Color, Direction, PieceType, Resolution, State};
 
 pub use self::types::Evaluation;
 pub(crate) use crate::util::placement_threat_map;
@@ -34,6 +34,7 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
     let road_pieces = m.flatstones | m.capstones;
     let p1_road_pieces = road_pieces & m.p1_pieces;
     let p2_road_pieces = road_pieces & m.p2_pieces;
+    let empty_spaces = board_mask() ^ m.p1_pieces ^ m.p2_pieces;
 
     for y in (0..N).rev() {
         for x in 0..N {
@@ -168,17 +169,17 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
     }
 
     let p1_caps = m.capstones & m.p1_pieces;
-    if p1_caps != 0.into() {
-        let neighbors = p1_caps.dilate() & (m.flatstones | m.standing_stones);
-        if neighbors == 0.into() {
+    if !p1_caps.is_empty() {
+        let neighbors = (p1_caps.dilate() ^ p1_caps) & (m.flatstones | m.standing_stones);
+        if neighbors.is_empty() {
             p2_eval += 30;
         }
     }
 
-    let p2_caps = m.capstones & m.p1_pieces;
-    if p2_caps != 0.into() {
-        let neighbors = p2_caps.dilate() & (m.flatstones | m.standing_stones);
-        if neighbors == 0.into() {
+    let p2_caps = m.capstones & m.p2_pieces;
+    if !p2_caps.is_empty() {
+        let neighbors = (p2_caps.dilate() ^ p2_caps) & (m.flatstones | m.standing_stones);
+        if neighbors.is_empty() {
             p1_eval += 30;
         }
     }
@@ -200,10 +201,39 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
     p1_eval -= p1_road_pieces.groups().count() as EvalType * WEIGHT.connectivity;
     p2_eval -= p2_road_pieces.groups().count() as EvalType * WEIGHT.connectivity;
 
-    // XXX Road heuristic would go here.
+    let mut white_road_score = match road_heuristic(p1_road_pieces, empty_spaces) {
+        1 => 40,
+        2 => 30,
+        3 => 15,
+        4 => 5,
+        _ => 0,
+    };
+    let mut black_road_score = match road_heuristic(p2_road_pieces, empty_spaces) {
+        1 => 40,
+        2 => 30,
+        3 => 15,
+        4 => 5,
+        _ => 0,
+    };
+
+    if white_road_score > black_road_score {
+        white_road_score *= 2;
+    } else if black_road_score > white_road_score {
+        black_road_score *= 2;
+    } else {
+        match state.to_move() {
+            Color::White => white_road_score *= 2,
+            Color::Black => black_road_score *= 2,
+        }
+    }
 
     let p1_res = state.p1_flatstones + state.p1_capstones;
     let p2_res = state.p2_flatstones + state.p2_capstones;
+
+    let mul = ((p1_res + p2_res) as EvalType * 100) / 60;
+
+    p1_eval += (white_road_score * mul) / 100;
+    p2_eval += (black_road_score * mul) / 100;
 
     if p1_res < 10 || p2_res < 10 {
         let mut p1_flats = 2 * m.p1_flat_count as EvalType;
@@ -236,6 +266,61 @@ pub fn evaluate<const N: usize>(state: &State<N>, start_ply: u16) -> Evaluation 
         White => p1_eval - p2_eval,
         Black => p2_eval - p1_eval,
     }
+}
+
+/// This won't return the same value as Topaz's due to Topaz's weird `adjacent` method's self-inclusions.
+fn road_heuristic<const N: usize>(
+    player_road_pieces: Bitmap<N>,
+    empty_spaces: Bitmap<N>,
+) -> EvalType {
+    let mut best = usize::MAX;
+
+    let top = edge_masks()[Direction::North as usize].flood_fill(player_road_pieces);
+    let bottom = edge_masks()[Direction::South as usize].flood_fill(player_road_pieces);
+    let left = edge_masks()[Direction::West as usize].flood_fill(player_road_pieces);
+    let right = edge_masks()[Direction::East as usize].flood_fill(player_road_pieces);
+
+    for group in player_road_pieces.groups().filter(|g| g.count_ones() >= 2) {
+        let mut steps = 0;
+
+        let mut top_steps = 1000;
+        let mut bottom_steps = 1000;
+        let mut left_steps = 1000;
+        let mut right_steps = 1000;
+
+        let mut explored = group;
+        let mut previous = Bitmap::empty();
+        let mut other_neighbors = (player_road_pieces & !group).dilate() & empty_spaces;
+
+        while previous != explored {
+            if !(explored & top).is_empty() {
+                top_steps = top_steps.min(steps);
+            }
+            if !(explored & bottom).is_empty() {
+                bottom_steps = bottom_steps.min(steps);
+            }
+            if !(explored & left).is_empty() {
+                left_steps = left_steps.min(steps);
+            }
+            if !(explored & right).is_empty() {
+                right_steps = right_steps.min(steps);
+            }
+
+            previous = explored;
+            explored = explored.dilate() & empty_spaces;
+            steps += 1;
+
+            if !(explored & other_neighbors).is_empty() {
+                explored = explored.flood_fill(player_road_pieces | explored);
+                other_neighbors = (player_road_pieces & !explored).dilate() & empty_spaces;
+            }
+        }
+
+        let score = (top_steps + bottom_steps).min(left_steps + right_steps);
+        best = best.min(score);
+    }
+
+    best as EvalType
 }
 
 struct Weights {
