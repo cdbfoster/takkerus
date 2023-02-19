@@ -173,7 +173,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         }
 
         let (principal_variation, final_state) =
-            fetch_pv(&state, &search.persistent_state.transposition_table, depth);
+            fetch_pv(state, &search.persistent_state.transposition_table, depth);
 
         analysis = Analysis {
             depth: depth as u32,
@@ -389,15 +389,13 @@ fn minimax<const N: usize>(
 
         let is_terminal = entry.bound == Bound::Exact && entry.evaluation.is_terminal();
 
-        if is_save || is_terminal {
-            if state.validate_ply(entry.ply).is_ok() {
-                search.stats.tt_saves += 1;
+        if is_save || is_terminal && state.validate_ply(entry.ply).is_ok() {
+            search.stats.tt_saves += 1;
 
-                match entry.bound {
-                    Bound::Exact => return entry.evaluation,
-                    Bound::Upper => return alpha,
-                    Bound::Lower => return beta,
-                }
+            match entry.bound {
+                Bound::Exact => return entry.evaluation,
+                Bound::Upper => return alpha,
+                Bound::Lower => return beta,
             }
         }
 
