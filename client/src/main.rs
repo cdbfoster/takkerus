@@ -36,6 +36,6 @@ fn main() {
 
 fn set_default_logging() {
     if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "analysis=info");
+        env::set_var("RUST_LOG", "info");
     }
 }
