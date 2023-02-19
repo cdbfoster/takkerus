@@ -10,8 +10,6 @@ pub struct Metadata<const N: usize> {
     pub flatstones: Bitmap<N>,
     pub standing_stones: Bitmap<N>,
     pub capstones: Bitmap<N>,
-    pub p1_flat_count: u8,
-    pub p2_flat_count: u8,
     pub p1_stacks: [[u8; N]; N],
     pub p2_stacks: [[u8; N]; N],
     pub hash: ZobristHash,
@@ -25,8 +23,6 @@ impl<const N: usize> Default for Metadata<N> {
             flatstones: Bitmap::empty(),
             standing_stones: Bitmap::empty(),
             capstones: Bitmap::empty(),
-            p1_flat_count: 0,
-            p2_flat_count: 0,
             p1_stacks: [[0; N]; N],
             p2_stacks: [[0; N]; N],
             hash: 0,
@@ -36,12 +32,6 @@ impl<const N: usize> Default for Metadata<N> {
 
 impl<const N: usize> Metadata<N> {
     pub(crate) fn set_stack(&mut self, stack: &Stack, x: usize, y: usize) {
-        if (self.flatstones & self.p1_pieces).get(x, y) {
-            self.p1_flat_count -= 1;
-        } else if (self.flatstones & self.p2_pieces).get(x, y) {
-            self.p2_flat_count -= 1;
-        }
-
         if let Some(piece) = stack.last() {
             if piece.color() == Color::White {
                 self.p1_pieces.set(x, y);
@@ -56,10 +46,6 @@ impl<const N: usize> Metadata<N> {
                     self.flatstones.set(x, y);
                     self.standing_stones.clear(x, y);
                     self.capstones.clear(x, y);
-                    match piece.color() {
-                        Color::White => self.p1_flat_count += 1,
-                        Color::Black => self.p2_flat_count += 1,
-                    }
                 }
                 PieceType::StandingStone => {
                     self.flatstones.clear(x, y);
@@ -97,10 +83,6 @@ impl<const N: usize> Metadata<N> {
         match piece.piece_type() {
             PieceType::Flatstone => {
                 self.flatstones.set(x, y);
-                match piece.color() {
-                    Color::White => self.p1_flat_count += 1,
-                    Color::Black => self.p2_flat_count += 1,
-                }
             }
             PieceType::StandingStone => self.standing_stones.set(x, y),
             PieceType::Capstone => self.capstones.set(x, y),

@@ -310,8 +310,8 @@ impl<const N: usize> State<N> {
             || (self.p2_flatstones + self.p2_capstones) == 0
             || (m.p1_pieces | m.p2_pieces) == board_mask()
         {
-            let p1_flat_count = m.p1_flat_count as i8;
-            let p2_flat_count = m.p2_flat_count as i8;
+            let p1_flat_count = (m.flatstones & m.p1_pieces).count_ones() as i8;
+            let p2_flat_count = (m.flatstones & m.p2_pieces).count_ones() as i8;
 
             let p1_score = 2 * p1_flat_count;
             let p2_score = 2 * p2_flat_count + self.komi.as_half_komi();
@@ -654,18 +654,9 @@ mod tests {
     #[test]
     fn metadata_updates_correctly() {
         let mut s = state::<5>("12,1,22,121211,2C/x5/x5/x5/x5 1 2");
-        assert_eq!(s.metadata.p1_flat_count, 2);
-        assert_eq!(s.metadata.p2_flat_count, 2);
-
         s.execute_ply(ply("a4")).unwrap();
-        assert_eq!(s.metadata.p1_flat_count, 3);
-
         s.execute_ply(ply("Sb4")).unwrap();
-        assert_eq!(s.metadata.p2_flat_count, 2);
-
         s.execute_ply(ply("5d5<221")).unwrap();
-        assert_eq!(s.metadata.p1_flat_count, 5);
-        assert_eq!(s.metadata.p2_flat_count, 0);
 
         assert_eq!(
             s.metadata.p1_stacks,
