@@ -135,7 +135,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     let mut analysis = Analysis {
         depth: 0,
         final_state: state.clone(),
-        evaluation: evaluate(state, state.ply_count),
+        evaluation: evaluate(state),
         principal_variation: Vec::new(),
         stats: Statistics::default(),
         time: Duration::ZERO,
@@ -362,7 +362,7 @@ fn minimax<const N: usize>(
 
     if remaining_depth == 0 || state.resolution().is_some() {
         search.stats.evaluated += 1;
-        return evaluate(state, search.start_ply);
+        return evaluate(state);
     }
 
     if alpha + 1 == beta {

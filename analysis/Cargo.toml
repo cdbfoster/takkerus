@@ -6,13 +6,13 @@ edition = "2021"
 
 [features]
 deep-stacks = ["tak/deep-stacks"]
-tools = ["rand", "serde_json"]
+tools = ["rand"]
 
 [dependencies]
 ann = { path = "../ann" }
 once_cell = "1.16"
 rand = { version = "0.8", optional = true }
-serde_json = { version = "*", optional = true }
+serde_json = { version = "1.0"}
 tak = { path = "../tak" }
 tracing = "0.1"
 

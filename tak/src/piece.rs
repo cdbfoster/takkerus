@@ -9,6 +9,15 @@ pub enum PieceType {
     Capstone = 0x40,
 }
 
+impl PieceType {
+    /// 0 - Flatstone
+    /// 1 - Standing stone
+    /// 2 - Capstone
+    pub const fn ordinal(self) -> usize {
+        (self as usize) >> 5
+    }
+}
+
 impl TryFrom<u8> for PieceType {
     type Error = &'static str;
 

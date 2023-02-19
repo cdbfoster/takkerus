@@ -339,9 +339,21 @@ impl<const C: usize> From<Vector<C>> for MatrixRowMajor<1, C> {
     }
 }
 
+impl<const C: usize> From<&Vector<C>> for &MatrixRowMajor<1, C> {
+    fn from(values: &Vector<C>) -> Self {
+        unsafe { std::mem::transmute(values) }
+    }
+}
+
 impl<const R: usize> From<Vector<R>> for MatrixColumnMajor<R, 1> {
     fn from(values: Vector<R>) -> Self {
         Self([values])
+    }
+}
+
+impl<const R: usize> From<&Vector<R>> for &MatrixColumnMajor<R, 1> {
+    fn from(values: &Vector<R>) -> Self {
+        unsafe { std::mem::transmute(values) }
     }
 }
 

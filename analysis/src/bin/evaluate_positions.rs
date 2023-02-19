@@ -37,5 +37,5 @@ fn evaluate_tps(tps: Tps) -> Evaluation {
 
 fn evaluate_tps_sized<const N: usize>(tps: Tps) -> Evaluation {
     let state: State<N> = tps.try_into().expect("could not create state from tps");
-    evaluate(&state, state.ply_count)
+    evaluate(&state)
 }

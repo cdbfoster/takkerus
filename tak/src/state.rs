@@ -479,6 +479,10 @@ impl Komi {
     pub fn as_half_komi(&self) -> i8 {
         self.0
     }
+
+    pub fn as_f32(&self) -> f32 {
+        self.as_half_komi() as f32 / 2.0
+    }
 }
 
 impl FromStr for Komi {
