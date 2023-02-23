@@ -90,7 +90,7 @@ macro_rules! features_impl {
 
                     let m = &self.metadata;
 
-                    let all_pieces = m.p1_pieces & m.p2_pieces;
+                    let all_pieces = m.p1_pieces | m.p2_pieces;
 
                     let p1_flatstones = m.flatstones & m.p1_pieces;
                     let p2_flatstones = m.flatstones & m.p2_pieces;
@@ -343,7 +343,7 @@ fn gather_lines_occupied<const N: usize>(player_pieces: Bitmap<N>) -> f32 {
             rows |= column << i;
         }
 
-        mask >>= i;
+        mask >>= 1;
     }
 
     lines += rows.count_ones(); // Count the horizontal lines occupied.
@@ -376,5 +376,52 @@ mod tests {
 
             println!("State<{n}>: {count} features");
         }
+    }
+
+    #[test]
+    fn correct_features() {
+        let state: State<6> = "2,1221122,1,1,1,2S/1,1,1,x,1C,1111212/x2,2,212,2C,11/2,2,x2,1,1/x3,1,1,x/x2,2,21,x,112S 2 32".parse().unwrap();
+        let f = state.gather_features();
+        let c: Vector<{ <State<6> as GatherFeatures>::FEATURES }> = [
+            6.3,  // Ply count / 10
+            0.0,  // White to move
+            -4.0, // FCD
+            8.0, 0.0, // Reserves
+            1.0, 0.0, -3.0, -2.0, -2.0, 2.0, // Flatstone positions
+            2.0, 0.0, 0.0, 0.0, 0.0, 0.0, // Standing stone positions
+            0.0, 0.0, 0.0, -1.0, 1.0, 0.0, // Capstone positions
+            -6.0, 1.0, 0.0, -1.0, -1.0, -1.0, // Flatstone adjacency
+            1.0, 0.0, 0.0, 1.0, 0.0, 0.0, // Standing stone adjacency
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, // Capstone adjacency
+            8.0, 2.0, 0.0, // Captives
+            4.0, 0.0, 0.0,  // Friendlies
+            -1.0, // Lines occupied
+            3.0,  // Road groups
+            0.0,  // Critical squares
+        ]
+        .into();
+        assert_eq!(f.as_vector(), &c);
+
+        let state: State<7> = "2,2,21S,2,1,1,1/2,1,x,2,1,x,1/2,2,2,2,21112C,121S,x/x2,1112C,2,1,1112S,x/121,22211C,1S,1,1,121,1221C/x,2,2,2,1,12,2/2,x3,1,122,x 2 50".parse().unwrap();
+        let f = state.gather_features();
+        let c: Vector<{ <State<7> as GatherFeatures>::FEATURES }> = [
+            9.9, // Ply count / 10
+            0.0, // White to move
+            4.0, // FCD
+            3.0, 0.0, // Reserves
+            1.0, 2.0, -2.0, 1.0, 1.0, -1.0, 2.0, 0.0, -1.0, 1.0, // Flatstone positions
+            0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 1.0, -1.0, 0.0, 0.0, // Standing stone positions
+            0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 1.0, 1.0, 0.0, // Capstone positions
+            5.0, -1.0, 1.0, 1.0, 1.0, 0.0, // Flatstone adjacency
+            -1.0, 0.0, -1.0, -1.0, 0.0, -2.0, // Standing stone adjacency
+            0.0, -1.0, 0.0, -1.0, 2.0, 0.0, // Capstone adjacency
+            0.0, 1.0, 1.0, // Captives
+            -1.0, -1.0, -1.0, // Friendlies
+            1.0,  // Lines occupied
+            0.0,  // Road groups
+            0.0,  // Critical squares
+        ]
+        .into();
+        assert_eq!(f.as_vector(), &c);
     }
 }
