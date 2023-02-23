@@ -3,7 +3,7 @@ use rand::Rng;
 use rand_distr::Normal;
 use serde::{Deserialize, Serialize};
 
-use crate::activation::{relu, relu_prime, tanh, tanh_prime};
+use crate::activation::{leaky_relu, leaky_relu_prime, tanh, tanh_prime};
 use crate::layer::{
     activation_backward, activation_forward, fully_connected_backward, fully_connected_forward,
 };
@@ -51,7 +51,7 @@ impl<const I: usize, const H: usize, const O: usize> ShallowAnn<I, H, O> {
         inputs: &MatrixRowMajor<B, I>,
     ) -> MatrixRowMajor<B, O> {
         let mut hidden_layer = inputs * self.hidden_weights + self.hidden_biases;
-        hidden_layer.values_mut().for_each(|x| *x = relu(*x));
+        hidden_layer.values_mut().for_each(|x| *x = leaky_relu(*x));
 
         let mut output_layer = hidden_layer * self.output_weights + self.output_biases;
         output_layer.values_mut().for_each(|x| *x = tanh(*x));
@@ -59,21 +59,23 @@ impl<const I: usize, const H: usize, const O: usize> ShallowAnn<I, H, O> {
         output_layer
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn train_batch<const B: usize>(
         &mut self,
         t: usize,
-        rate: f32,
         inputs: &MatrixRowMajor<B, I>,
         labels: &MatrixRowMajor<B, O>,
         loss_prime: impl Fn(&MatrixRowMajor<B, O>, &MatrixRowMajor<B, O>) -> MatrixRowMajor<B, O>,
         gradient_descent: &mut impl ShallowGradientDescent<I, H, O>,
+        rate: f32,
+        l2_reg: f32,
     ) {
         // Propagate forward ====================
 
         let hidden_fully_connected =
             fully_connected_forward(inputs, &self.hidden_weights, &self.hidden_biases);
 
-        let hidden_activation = activation_forward(&hidden_fully_connected, relu);
+        let hidden_activation = activation_forward(&hidden_fully_connected, leaky_relu);
 
         let output_fully_connected = fully_connected_forward(
             &hidden_activation,
@@ -103,7 +105,7 @@ impl<const I: usize, const H: usize, const O: usize> ShallowAnn<I, H, O> {
         let hidden_fully_connected_gradients = activation_backward(
             &hidden_fully_connected,
             &hidden_activation_gradients,
-            relu_prime,
+            leaky_relu_prime,
         );
 
         let (hidden_weight_gradients, hidden_bias_gradients, _input_gradients) =
@@ -117,12 +119,13 @@ impl<const I: usize, const H: usize, const O: usize> ShallowAnn<I, H, O> {
 
         gradient_descent.descend_shallow(
             t,
-            rate,
             self,
             &hidden_weight_gradients,
             &hidden_bias_gradients,
             &output_weight_gradients,
             &output_bias_gradients,
+            rate,
+            l2_reg,
         );
     }
 }
@@ -143,7 +146,7 @@ mod tests {
         let mut adam = ShallowAdam::default();
 
         for t in 1..=1000 {
-            ann.train_batch(t, 0.01, &inputs, &labels, mse_prime, &mut adam);
+            ann.train_batch(t, &inputs, &labels, mse_prime, &mut adam, 0.01, 0.0);
         }
 
         let outputs = ann.propagate_forward(&inputs);

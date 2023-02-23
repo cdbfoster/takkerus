@@ -3,14 +3,16 @@ use serde::{Deserialize, Serialize};
 use crate::linear_algebra::{MatrixColumnMajor, Vector};
 
 pub trait GradientDescent<const I: usize, const O: usize> {
+    #[allow(clippy::too_many_arguments)]
     fn descend(
         &mut self,
         t: usize,
-        rate: f32,
         weight_gradients: &MatrixColumnMajor<I, O>,
         bias_gradients: &Vector<O>,
         weights: &mut MatrixColumnMajor<I, O>,
         biases: &mut Vector<O>,
+        rate: f32,
+        l2_reg: f32,
     );
 }
 
@@ -49,12 +51,17 @@ impl<const I: usize, const O: usize> GradientDescent<I, O> for Adam<I, O> {
     fn descend(
         &mut self,
         t: usize,
-        rate: f32,
         weight_gradients: &MatrixColumnMajor<I, O>,
         bias_gradients: &Vector<O>,
         weights: &mut MatrixColumnMajor<I, O>,
         biases: &mut Vector<O>,
+        rate: f32,
+        l2_reg: f32,
     ) {
+        // L2 regularization ====================
+
+        let weight_gradients = weight_gradients + *weights * l2_reg;
+
         // Momentum update ======================
 
         self.weight_momentum *= self.beta1;
@@ -65,7 +72,7 @@ impl<const I: usize, const O: usize> GradientDescent<I, O> for Adam<I, O> {
 
         // RMS update ===========================
 
-        let mut weight_gradients_squared = *weight_gradients;
+        let mut weight_gradients_squared = weight_gradients;
         weight_gradients_squared.values_mut().for_each(|x| *x *= *x);
         self.weight_rms *= self.beta2;
         self.weight_rms += weight_gradients_squared * (1.0 - self.beta2);
@@ -100,13 +107,14 @@ impl<const I: usize, const O: usize> GradientDescent<I, O> for SimpleGradientDes
     fn descend(
         &mut self,
         _t: usize,
-        rate: f32,
         weight_gradients: &MatrixColumnMajor<I, O>,
         bias_gradients: &Vector<O>,
         weights: &mut MatrixColumnMajor<I, O>,
         biases: &mut Vector<O>,
+        rate: f32,
+        l2_reg: f32,
     ) {
-        *weights -= weight_gradients * rate;
+        *weights -= (weight_gradients + *weights * l2_reg) * rate;
         *biases -= bias_gradients * rate;
     }
 }
@@ -132,11 +140,12 @@ mod tests {
 
             adam.descend(
                 t,
-                0.01,
                 &gradient,
                 &Vector::zeros(),
                 &mut w,
                 &mut Vector::zeros(),
+                0.01,
+                0.0,
             );
         }
 
@@ -161,11 +170,12 @@ mod tests {
 
             simple.descend(
                 t,
-                0.01,
                 &gradient,
                 &Vector::zeros(),
                 &mut w,
                 &mut Vector::zeros(),
+                0.01,
+                0.0,
             );
         }
 

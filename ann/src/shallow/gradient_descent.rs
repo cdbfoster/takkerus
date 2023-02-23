@@ -10,12 +10,13 @@ pub trait ShallowGradientDescent<const I: usize, const H: usize, const O: usize>
     fn descend_shallow(
         &mut self,
         t: usize,
-        rate: f32,
         ann: &mut ShallowAnn<I, H, O>,
         hidden_weight_gradients: &MatrixColumnMajor<I, H>,
         hidden_bias_gradients: &Vector<H>,
         output_weight_gradients: &MatrixColumnMajor<H, O>,
         output_bias_gradients: &Vector<O>,
+        rate: f32,
+        l2_reg: f32,
     );
 }
 
@@ -40,29 +41,32 @@ impl<const I: usize, const H: usize, const O: usize> ShallowGradientDescent<I, H
     fn descend_shallow(
         &mut self,
         t: usize,
-        rate: f32,
         ann: &mut ShallowAnn<I, H, O>,
         hidden_weight_gradients: &MatrixColumnMajor<I, H>,
         hidden_bias_gradients: &Vector<H>,
         output_weight_gradients: &MatrixColumnMajor<H, O>,
         output_bias_gradients: &Vector<O>,
+        rate: f32,
+        l2_reg: f32,
     ) {
         self.hidden.descend(
             t,
-            rate,
             hidden_weight_gradients,
             hidden_bias_gradients,
             &mut ann.hidden_weights,
             &mut ann.hidden_biases,
+            rate,
+            l2_reg,
         );
 
         self.output.descend(
             t,
-            rate,
             output_weight_gradients,
             output_bias_gradients,
             &mut ann.output_weights,
             &mut ann.output_biases,
+            rate,
+            l2_reg,
         );
     }
 }
@@ -73,29 +77,32 @@ impl<const I: usize, const H: usize, const O: usize> ShallowGradientDescent<I, H
     fn descend_shallow(
         &mut self,
         t: usize,
-        rate: f32,
         ann: &mut ShallowAnn<I, H, O>,
         hidden_weight_gradients: &MatrixColumnMajor<I, H>,
         hidden_bias_gradients: &Vector<H>,
         output_weight_gradients: &MatrixColumnMajor<H, O>,
         output_bias_gradients: &Vector<O>,
+        rate: f32,
+        l2_reg: f32,
     ) {
         self.descend(
             t,
-            rate,
             hidden_weight_gradients,
             hidden_bias_gradients,
             &mut ann.hidden_weights,
             &mut ann.hidden_biases,
+            rate,
+            l2_reg,
         );
 
         self.descend(
             t,
-            rate,
             output_weight_gradients,
             output_bias_gradients,
             &mut ann.output_weights,
             &mut ann.output_biases,
+            rate,
+            l2_reg,
         );
     }
 }
