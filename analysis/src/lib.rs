@@ -1,8 +1,7 @@
-pub use self::evaluation::{evaluate, Evaluation};
 pub use self::search::{analyze, Analysis, AnalysisConfig, PersistentState, Statistics};
 pub use self::transposition_table::{TranspositionTable, TranspositionTableEntry};
 
-mod evaluation;
+pub mod evaluation;
 mod plies;
 mod search;
 mod transposition_table;

@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::File;
 
-use analysis::{evaluate, Evaluation};
+use analysis::evaluation::{evaluate, Evaluation};
 use tak::{State, Tps};
 
 fn main() {

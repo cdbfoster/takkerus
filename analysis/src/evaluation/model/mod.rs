@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 
 use ann::shallow::ShallowAnn;
 use tak::State;
@@ -6,22 +7,18 @@ use tak::State;
 use super::features::GatherFeatures;
 use super::types::{EvalType, Evaluation};
 
-pub trait Model: GatherFeatures {
-    type Model;
+pub trait Evaluator {
+    const INPUTS: usize;
+    const HIDDEN: usize;
+    const OUTPUTS: usize;
+    type State;
+    type Model: for<'a> Deserialize<'a> + Serialize;
 
     fn static_model() -> &'static Self::Model;
-    fn run_inference(&self, model: &Self::Model) -> Evaluation;
+    fn evaluate_model(model: &Self::Model, state: &Self::State) -> Evaluation;
 }
 
-pub fn evaluate_model<const N: usize>(
-    state: &State<N>,
-    model: &<State<N> as Model>::Model,
-) -> Evaluation
-where
-    State<N>: Model,
-{
-    state.run_inference(model)
-}
+pub struct Model<const N: usize>;
 
 const EVAL_SCALE: f32 = 2_000.0;
 
@@ -30,21 +27,29 @@ macro_rules! model_impl {
         mod $module {
             use super::*;
 
-            static MODEL: Lazy<ShallowAnn<{ <State<$size> as GatherFeatures>::FEATURES }, 10, 1>> =
-                Lazy::new(|| {
-                    let data = include_str!($file);
-                    serde_json::from_str(&data).expect("could not parse model data")
-                });
+            const INPUTS: usize = <State<$size> as GatherFeatures>::FEATURES;
+            const HIDDEN: usize = 10;
+            const OUTPUTS: usize = 1;
+            type ModelType = ShallowAnn<INPUTS, HIDDEN, OUTPUTS>;
 
-            impl Model for State<$size> {
-                type Model = ShallowAnn<{ <State<$size> as GatherFeatures>::FEATURES }, 10, 1>;
+            static MODEL: Lazy<ModelType> = Lazy::new(|| {
+                let data = include_str!($file);
+                serde_json::from_str(&data).expect("could not parse model data")
+            });
+
+            impl Evaluator for Model<$size> {
+                const INPUTS: usize = INPUTS;
+                const HIDDEN: usize = HIDDEN;
+                const OUTPUTS: usize = OUTPUTS;
+                type State = State<$size>;
+                type Model = ModelType;
 
                 fn static_model() -> &'static Self::Model {
                     &*MODEL
                 }
 
-                fn run_inference(&self, model: &Self::Model) -> Evaluation {
-                    let features = self.gather_features();
+                fn evaluate_model(model: &Self::Model, state: &Self::State) -> Evaluation {
+                    let features = state.gather_features();
                     let results = model.propagate_forward(features.as_vector().into());
 
                     Evaluation((results[0][0] * EVAL_SCALE) as EvalType)

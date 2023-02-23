@@ -1,18 +1,18 @@
 use tak::State;
 
+pub use self::features::GatherFeatures;
+pub use self::model::{Evaluator, Model};
 pub use self::types::Evaluation;
 
 mod features;
 mod model;
 mod types;
 
-use model::{evaluate_model, Model};
-
 pub fn evaluate<const N: usize>(state: &State<N>) -> Evaluation {
     macro_rules! evaluate_sized {
         ($n:expr) => {{
             let state = downcast_size::<N, $n>(state);
-            evaluate_model(state, <State<$n> as Model>::static_model())
+            Model::<$n>::evaluate_model(Model::<$n>::static_model(), state)
         }};
     }
 

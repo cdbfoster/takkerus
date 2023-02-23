@@ -19,6 +19,7 @@ dependencies = [
  "criterion",
  "once_cell",
  "rand",
+ "serde",
  "serde_json",
  "tak",
  "tracing",

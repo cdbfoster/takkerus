@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use analysis::evaluate;
+use analysis::evaluation::evaluate;
 use tak::State;
 
 criterion_main!(benches);
