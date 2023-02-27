@@ -1,4 +1,5 @@
 /target
+/training*
 flamegraph.svg
 perf.data*
 *.ptn

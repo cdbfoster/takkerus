@@ -98,6 +98,7 @@ async fn message_handler<const N: usize>(
                                     predict_time,
                                     interrupted,
                                     persistent_state: Some(&mut *guard),
+                                    exact_eval: false,
                                 };
 
                                 trace!("Analyzing state.");

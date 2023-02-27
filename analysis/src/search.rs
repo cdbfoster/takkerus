@@ -24,6 +24,9 @@ pub struct AnalysisConfig<'a, const N: usize> {
     /// A place to put data gathered during the search that could be
     /// useful to future searches. If none, this will be created internally.
     pub persistent_state: Option<&'a mut PersistentState<N>>,
+    /// If false, the search is allowed to use unprovable methods that may
+    /// improve playing strength at the cost of correctness.
+    pub exact_eval: bool,
 }
 
 #[derive(Debug)]
@@ -155,6 +158,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             interrupted: &config.interrupted,
             persistent_state,
             killer_moves: vec![KillerMoves::default(); depth],
+            exact_eval: config.exact_eval,
         };
 
         debug!(depth, "Beginning analysis...");
@@ -347,6 +351,7 @@ struct SearchState<'a, const N: usize> {
     interrupted: &'a AtomicBool,
     persistent_state: &'a mut PersistentState<N>,
     killer_moves: Vec<KillerMoves<N>>,
+    exact_eval: bool,
 }
 
 #[instrument(level = "trace", skip(search, state, null_move_allowed), fields(scout = alpha + 1 == beta))]
@@ -404,7 +409,7 @@ fn minimax<const N: usize>(
 
     // Null move search =========================
 
-    if null_move_allowed && remaining_depth >= 3 {
+    if !search.exact_eval && null_move_allowed && remaining_depth >= 3 {
         let mut state = state.clone();
 
         // Apply a null move.
