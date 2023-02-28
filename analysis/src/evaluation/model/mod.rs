@@ -1,24 +1,26 @@
+use std::ops::{Deref, DerefMut};
+
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 use ann::shallow::ShallowAnn;
-use tak::State;
+use tak::{Resolution, State};
 
+use super::Evaluator;
 use super::features::GatherFeatures;
 use super::types::{EvalType, Evaluation};
 
-pub trait Evaluator {
+pub trait AnnEvaluator<const N: usize> {
     const INPUTS: usize;
     const HIDDEN: usize;
     const OUTPUTS: usize;
-    type State;
-    type Model: for<'a> Deserialize<'a> + Serialize;
+    type Evaluator: for<'a> Deserialize<'a> + Serialize + Evaluator<N>;
+    type Model;
 
-    fn static_model() -> &'static Self::Model;
-    fn evaluate_model(model: &Self::Model, state: &Self::State) -> Evaluation;
+    fn static_evaluator() -> &'static Self::Evaluator;
 }
 
-pub struct Model<const N: usize>;
+pub struct AnnModel<const N: usize>;
 
 const EVAL_SCALE: f32 = 2_000.0;
 
@@ -30,29 +32,67 @@ macro_rules! model_impl {
             const INPUTS: usize = <State<$size> as GatherFeatures>::FEATURES;
             const HIDDEN: usize = 10;
             const OUTPUTS: usize = 1;
-            type ModelType = ShallowAnn<INPUTS, HIDDEN, OUTPUTS>;
 
-            static MODEL: Lazy<ModelType> = Lazy::new(|| {
+            type InnerModel = ShallowAnn<INPUTS, HIDDEN, OUTPUTS>;
+
+            #[derive(Deserialize, Serialize)]
+            pub struct Model(InnerModel);
+
+            static MODEL: Lazy<Model> = Lazy::new(|| {
                 let data = include_str!($file);
-                serde_json::from_str(&data).expect("could not parse model data")
+                Model(serde_json::from_str(&data).expect("could not parse model data"))
             });
 
-            impl Evaluator for Model<$size> {
+            impl<const N: usize> AsRef<dyn Evaluator<N> + 'static> for Model {
+                fn as_ref(&self) -> &(dyn Evaluator<N> + 'static) {
+                    debug_assert_eq!($size, N);
+                    unsafe { std::mem::transmute(self as &dyn Evaluator<$size>) }
+                }
+            }
+
+            impl Evaluator<$size> for Model {
+                fn evaluate(&self, state: &State<$size>) -> Evaluation {
+                    match state.resolution() {
+                        None => (),
+                        Some(Resolution::Road(color)) | Some(Resolution::Flats { color, .. }) => {
+                            if color == state.to_move() {
+                                return Evaluation::WIN - state.ply_count as i32;
+                            } else {
+                                return Evaluation::LOSE + state.ply_count as i32;
+                            }
+                        }
+                        Some(Resolution::Draw) => return Evaluation::ZERO - state.ply_count as i32,
+                    }
+
+                    let features = state.gather_features();
+                    let results = self.propagate_forward(features.as_vector().into());
+
+                    Evaluation((results[0][0] * EVAL_SCALE) as EvalType)
+                }
+            }
+
+            impl Deref for Model {
+                type Target = InnerModel;
+                fn deref(&self) -> &Self::Target {
+                    &self.0
+                }
+            }
+
+            impl DerefMut for Model {
+                fn deref_mut(&mut self) -> &mut Self::Target {
+                    &mut self.0
+                }
+            }
+
+            impl AnnEvaluator<$size> for AnnModel<$size> {
                 const INPUTS: usize = INPUTS;
                 const HIDDEN: usize = HIDDEN;
                 const OUTPUTS: usize = OUTPUTS;
-                type State = State<$size>;
-                type Model = ModelType;
+                type Evaluator = Model;
+                type Model = InnerModel;
 
-                fn static_model() -> &'static Self::Model {
+                fn static_evaluator() -> &'static Self::Evaluator {
                     &*MODEL
-                }
-
-                fn evaluate_model(model: &Self::Model, state: &Self::State) -> Evaluation {
-                    let features = state.gather_features();
-                    let results = model.propagate_forward(features.as_vector().into());
-
-                    Evaluation((results[0][0] * EVAL_SCALE) as EvalType)
                 }
             }
         }

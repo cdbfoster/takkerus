@@ -9,11 +9,11 @@ use tracing::{debug, error, info, instrument, warn};
 
 use tak::{Ply, State};
 
-use crate::evaluation::{evaluate, Evaluation};
+use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
 use crate::plies::{Fallibility, KillerMoves, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
     pub depth_limit: Option<u32>,
     pub time_limit: Option<Duration>,
@@ -27,6 +27,9 @@ pub struct AnalysisConfig<'a, const N: usize> {
     /// If false, the search is allowed to use unprovable methods that may
     /// improve playing strength at the cost of correctness.
     pub exact_eval: bool,
+    /// The evaluator to use for the search. If none, a default will be
+    /// used internally.
+    pub evaluator: Option<&'a dyn Evaluator<N>>,
 }
 
 #[derive(Debug)]
@@ -135,10 +138,20 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         &mut local_persistent_state
     };
 
+    let evaluator: &dyn Evaluator<N> = config.evaluator.unwrap_or_else(|| match N {
+        3 => AnnModel::<3>::static_evaluator().as_ref(),
+        4 => AnnModel::<4>::static_evaluator().as_ref(),
+        5 => AnnModel::<5>::static_evaluator().as_ref(),
+        6 => AnnModel::<6>::static_evaluator().as_ref(),
+        7 => AnnModel::<7>::static_evaluator().as_ref(),
+        8 => AnnModel::<8>::static_evaluator().as_ref(),
+        _ => unreachable!(),
+    });
+
     let mut analysis = Analysis {
         depth: 0,
         final_state: state.clone(),
-        evaluation: evaluate(state),
+        evaluation: evaluator.evaluate(state),
         principal_variation: Vec::new(),
         stats: Statistics::default(),
         time: Duration::ZERO,
@@ -159,6 +172,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             persistent_state,
             killer_moves: vec![KillerMoves::default(); depth],
             exact_eval: config.exact_eval,
+            evaluator,
         };
 
         debug!(depth, "Beginning analysis...");
@@ -352,6 +366,7 @@ struct SearchState<'a, const N: usize> {
     persistent_state: &'a mut PersistentState<N>,
     killer_moves: Vec<KillerMoves<N>>,
     exact_eval: bool,
+    evaluator: &'a dyn Evaluator<N>,
 }
 
 #[instrument(level = "trace", skip(search, state, null_move_allowed), fields(scout = alpha + 1 == beta))]
@@ -367,7 +382,7 @@ fn minimax<const N: usize>(
 
     if remaining_depth == 0 || state.resolution().is_some() {
         search.stats.evaluated += 1;
-        return evaluate(state);
+        return search.evaluator.evaluate(state);
     }
 
     if alpha + 1 == beta {

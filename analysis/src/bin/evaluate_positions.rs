@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::File;
 
-use analysis::evaluation::{evaluate, Evaluation};
+use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
 use tak::{State, Tps};
 
 fn main() {
@@ -25,17 +25,17 @@ fn main() {
 
 fn evaluate_tps(tps: Tps) -> Evaluation {
     match tps.size() {
-        3 => evaluate_tps_sized::<3>(tps),
-        4 => evaluate_tps_sized::<4>(tps),
-        5 => evaluate_tps_sized::<5>(tps),
-        6 => evaluate_tps_sized::<6>(tps),
-        7 => evaluate_tps_sized::<7>(tps),
-        8 => evaluate_tps_sized::<8>(tps),
+        3 => evaluate_tps_sized::<3>(tps, AnnModel::<3>::static_evaluator().as_ref()),
+        4 => evaluate_tps_sized::<4>(tps, AnnModel::<4>::static_evaluator().as_ref()),
+        5 => evaluate_tps_sized::<5>(tps, AnnModel::<5>::static_evaluator().as_ref()),
+        6 => evaluate_tps_sized::<6>(tps, AnnModel::<6>::static_evaluator().as_ref()),
+        7 => evaluate_tps_sized::<7>(tps, AnnModel::<7>::static_evaluator().as_ref()),
+        8 => evaluate_tps_sized::<8>(tps, AnnModel::<8>::static_evaluator().as_ref()),
         _ => unreachable!(),
     }
 }
 
-fn evaluate_tps_sized<const N: usize>(tps: Tps) -> Evaluation {
+fn evaluate_tps_sized<const N: usize>(tps: Tps, evaluator: &dyn Evaluator<N>) -> Evaluation {
     let state: State<N> = tps.try_into().expect("could not create state from tps");
-    evaluate(&state)
+    evaluator.evaluate(&state)
 }

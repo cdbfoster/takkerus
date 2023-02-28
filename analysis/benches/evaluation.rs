@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use analysis::evaluation::evaluate;
+use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator};
 use tak::State;
 
 criterion_main!(benches);
@@ -39,7 +39,7 @@ fn bench_position(c: &mut Criterion, size: usize, key: &str, tps: &str) {
             macro_rules! iter {
                 ($size:literal) => {{
                     let state: State<$size> = tps.parse().unwrap();
-                    b.iter(|| evaluate(black_box(&state)))
+                    b.iter(|| AnnModel::<$size>::static_evaluator().evaluate(black_box(&state)))
                 }};
             }
 
