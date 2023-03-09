@@ -83,7 +83,8 @@ where
         TrainingState::<N>::new()
     };
 
-    let mut checkpoint_error = 0.0;
+    let mut checkpoint_error =
+        training_state.error * (training_state.batch % CHECKPOINT_BATCHES) as f32;
 
     while max_batches.is_none() || training_state.batch < max_batches.unwrap() {
         let batch_samples = Mutex::new(Vec::new());
