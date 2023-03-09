@@ -40,7 +40,18 @@ impl<'a, const N: usize> Iterator for PlacementWins<'a, N> {
 
         let threat_map = placement_threat_map(player_road_pieces, blocking_pieces);
 
-        generation::placements(threat_map, Flatstone)
+        let flatstone_reserves = match self.state.to_move() {
+            White => self.state.p1_flatstones,
+            Black => self.state.p2_flatstones,
+        };
+
+        let piece_type = if flatstone_reserves > 0 {
+            Flatstone
+        } else {
+            Capstone
+        };
+
+        generation::placements(threat_map, piece_type)
             .map(|ply| GeneratedPly {
                 ply,
                 fallibility: Infallible,
