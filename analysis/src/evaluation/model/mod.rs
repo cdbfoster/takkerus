@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use ann::shallow::ShallowAnn;
 use tak::{Resolution, State};
 
-use super::Evaluator;
 use super::features::GatherFeatures;
 use super::types::{EvalType, Evaluation};
+use super::Evaluator;
 
 pub trait AnnEvaluator<const N: usize> {
     const INPUTS: usize;
@@ -81,6 +81,12 @@ macro_rules! model_impl {
             impl DerefMut for Model {
                 fn deref_mut(&mut self) -> &mut Self::Target {
                     &mut self.0
+                }
+            }
+
+            impl From<InnerModel> for Model {
+                fn from(model: InnerModel) -> Model {
+                    Model(model)
                 }
             }
 

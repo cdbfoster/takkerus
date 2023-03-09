@@ -2,7 +2,7 @@ pub use self::search::{analyze, Analysis, AnalysisConfig, PersistentState, Stati
 pub use self::transposition_table::{TranspositionTable, TranspositionTableEntry};
 
 pub mod evaluation;
-mod plies;
+pub mod plies;
 mod search;
 mod transposition_table;
 mod util;

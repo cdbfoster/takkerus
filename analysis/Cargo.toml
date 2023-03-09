@@ -29,6 +29,10 @@ name = "evaluation"
 harness = false
 
 [[bin]]
+name = "train"
+required-features = ["tools"]
+
+[[bin]]
 name = "extract_states"
 required-features = ["tools"]
 

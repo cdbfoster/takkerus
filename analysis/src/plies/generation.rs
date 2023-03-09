@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use tak::{Bitmap, Direction, PieceType, Ply, State};
 
-pub(super) fn placements<const N: usize>(
+pub fn placements<const N: usize>(
     locations: Bitmap<N>,
     piece_type: PieceType,
 ) -> impl Iterator<Item = Ply<N>> {
@@ -16,7 +16,7 @@ pub(super) fn placements<const N: usize>(
         })
 }
 
-pub(super) fn spreads<const N: usize>(
+pub fn spreads<const N: usize>(
     state: &State<N>,
     locations: Bitmap<N>,
 ) -> impl Iterator<Item = Ply<N>> + '_ {
