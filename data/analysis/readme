@@ -1,0 +1,15 @@
+To get setup:
+    - Install Jupyter Notebook.
+    - Create a virtual environment:
+        `python -m venv env`
+    - Activate the environment:
+        `source env/bin/activate`
+    - Install the dependencies:
+        `pip install -r requirements.txt`
+    - Register the kernel with Jupyter:
+        `python -m ipykernel install --user --name="takkerus"
+
+To use the notebook:
+    - Run Jupyter Notebook:
+        `jupyter notebook`
+    - Navigate to the notebook in the browser.

@@ -1,5 +1,7 @@
 /target
 /training*
+/data/analysis/env
 flamegraph.svg
 perf.data*
 *.ptn
+.ipynb_checkpoints
