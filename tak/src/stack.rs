@@ -135,19 +135,18 @@ impl Stack {
         }
     }
 
-    /// Returns the positions of the top 8 pieces of the stack for each color.
-    /// The first byte is white's piece map, the second is black's.
-    /// A 1 is a piece of that color, a 0 could be the opponent's piece or an
-    /// empty space (if the stack is less than 8 pieces tall).
-    pub(crate) fn get_player_pieces(&self) -> (u8, u8) {
+    /// Returns the positions of each color's pieces in the stack. The first
+    /// value is white's piece map, the second is black's. A 1 is a piece of
+    /// that color, a 0 could be the opponent's piece or an empty space.
+    pub(crate) fn get_player_pieces(&self) -> (Bitmap, Bitmap) {
         if !self.is_empty() {
-            let mask = !(Bitmap::MAX << self.len().min(8));
+            let mask = !(Bitmap::MAX << self.len());
             let stack_segment = (self.0 >> 3) & mask;
-            let p1 = (!stack_segment & mask) as u8;
-            let p2 = stack_segment as u8;
+            let p1 = !stack_segment & mask;
+            let p2 = stack_segment;
             (p1, p2)
         } else {
-            (0x00, 0x00)
+            (0, 0)
         }
     }
 }

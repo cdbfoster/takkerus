@@ -67,8 +67,8 @@ impl<const N: usize> Metadata<N> {
         }
 
         let (p1_stack, p2_stack) = stack.get_player_pieces();
-        self.p1_stacks[x][y] = p1_stack;
-        self.p2_stacks[x][y] = p2_stack;
+        self.p1_stacks[x][y] = (p1_stack & 0xFF) as u8;
+        self.p2_stacks[x][y] = (p2_stack & 0xFF) as u8;
     }
 
     pub(crate) fn place_piece(&mut self, piece: Piece, x: usize, y: usize) {
