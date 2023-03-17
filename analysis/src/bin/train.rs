@@ -9,7 +9,7 @@ use std::time::Instant;
 use rand::{self, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 
-use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator, GatherFeatures};
+use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator, GatherFeatures, EVAL_SCALE};
 use analysis::plies::generation;
 use analysis::{analyze, AnalysisConfig, PersistentState};
 use ann::linear_algebra::MatrixRowMajor;
@@ -22,7 +22,14 @@ const BATCHES_PER_UPDATE: usize = 4;
 const CHECKPOINT_BATCHES: usize = 1000;
 
 const GATHER_THREADS: usize = 4;
-const SEARCH_DEPTH: u32 = 3;
+/// The search depth to use when building the positions the training samples are derived from.
+const SCAFFOLD_SEARCH_DEPTH: u32 = 3;
+/// The number of consecutive samples to take from one starting position.
+const SAMPLES_PER_POSITION: usize = 8;
+/// The number of plies to play when calculating the temporal difference of the evaulations.
+const TD_PLY_DEPTH: usize = 10;
+/// The search depth to use when calculating the temporal difference of the evaluations.
+const TD_SEARCH_DEPTH: u32 = 5;
 
 const TRAINING_DIR: &'static str = "training";
 const MODEL_DIR: &'static str = "models";
@@ -77,6 +84,8 @@ fn main_sized<const N: usize>(checkpoint: Option<String>, max_batches: Option<us
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
+    let mut rng = rand::thread_rng();
+
     let mut training_state = if let Some(checkpoint) = checkpoint {
         serde_json::from_str(&checkpoint).expect("could not parse checkpoint")
     } else {
@@ -87,71 +96,61 @@ where
         training_state.error * (training_state.batch % CHECKPOINT_BATCHES) as f32;
 
     while max_batches.is_none() || training_state.batch < max_batches.unwrap() {
-        let batch_samples = Mutex::new(Vec::new());
-
         print!(
-            "Generating {BATCHES_PER_UPDATE} batch{}...",
+            "Generating {BATCHES_PER_UPDATE} batch{}... ",
             if BATCHES_PER_UPDATE > 1 { "es" } else { "" }
         );
         std::io::stdout().flush().ok();
-        let gen_start = Instant::now();
 
-        thread::scope(|scope| {
-            for _ in 0..GATHER_THREADS {
-                scope.spawn(|| {
-                    let mut rng = rand::thread_rng();
+        let start_time = Instant::now();
 
-                    'gather: loop {
-                        let mut persistent_state = PersistentState::default();
-                        let evaluator = training_state.model_as_evaluator();
+        let scaffolds = build_scaffold_positions(&training_state);
+        let mut batch_samples = generate_batch_samples(&training_state, &scaffolds);
+        batch_samples.shuffle(&mut rng);
 
-                        // The state at time t.
-                        let mut s_t = Vec::new();
-                        // The reward for player 1 from time t.
-                        let mut p1_r_t = Vec::new();
-                        // The reward for player 2 from time t.
-                        let mut p2_r_t = Vec::new();
+        let start_batch = training_state.batch;
+        let average_error =
+            train_batches(&mut training_state, &batch_samples, max_batches, &mut checkpoint_error);
+        let batch_count = training_state.batch - start_batch;
 
-                        let mut player = &mut p1_r_t;
-                        let mut opponent = &mut p2_r_t;
+        let elapsed = start_time.elapsed().as_secs_f32();
+        println!(
+            "Done in {:.2}s, average: {:.2}s/batch, batches: {}, average error: {}",
+            elapsed,
+            elapsed / batch_count as f32,
+            training_state.batch,
+            average_error
+        );
+    }
+}
 
-                        // Apply a random move to the chosen starting position.
-                        let mut state = State::default();
+fn build_scaffold_positions<const N: usize>(training_state: &TrainingState<N>) -> Vec<State<N>>
+where
+    TrainingState<N>: Train<N, State = State<N>>,
+{
+    let states = Mutex::new(Vec::new());
 
-                        loop {
-                            // If other threads have completed the batch, break.
-                            if batch_samples.lock().unwrap().len()
-                                >= BATCH_SIZE * BATCHES_PER_UPDATE
-                            {
-                                break 'gather;
-                            }
+    thread::scope(|scope| {
+        for _ in 0..4 {
+            scope.spawn(|| {
+                let mut rng = rand::thread_rng();
+                let mut finished_one = false;
 
-                            // If the state is terminal, reward the last two moves and break.
-                            if let Some(resolution) = state.resolution() {
-                                let reward = if let Some(color) = resolution.color() {
-                                    if color == state.to_move() {
-                                        1.0
-                                    } else {
-                                        -1.0
-                                    }
-                                } else {
-                                    0.0
-                                };
+                let mut persistent_state = PersistentState::default();
+                let evaluator = training_state.model_as_evaluator();
 
-                                // Give the opposite reward to the opponent's last move.
-                                if let Some(last_reward) = opponent.last_mut() {
-                                    *last_reward = -reward;
-                                }
+                'scaffolds: loop {
+                    let mut state = State::default();
 
-                                s_t.push(state.clone());
-                                player.push(reward);
-
-                                break;
-                            }
-
-                            // Otherwise, perform a search from the state.
+                    while state.resolution().is_none() && state.ply_count < 300 {
+                        // If the game has just started, or if a random number is below epsilon, make a random move.
+                        // Otherwise, use the principal variation from a search.
+                        if state.ply_count < 2 || rng.gen::<f32>() < training_state.epsilon {
+                            let ply = *generate_plies(&state).choose(&mut rng).unwrap();
+                            state.execute_ply(ply).expect("error executing random ply");
+                        } else {
                             let config = AnalysisConfig::<N> {
-                                depth_limit: Some(SEARCH_DEPTH),
+                                depth_limit: Some(SCAFFOLD_SEARCH_DEPTH),
                                 persistent_state: Some(&mut persistent_state),
                                 evaluator: Some(&*evaluator),
                                 exact_eval: true,
@@ -160,165 +159,239 @@ where
 
                             let analysis = analyze(config, &state);
 
-                            s_t.push(state.clone());
+                            state
+                                .execute_ply(
+                                    *analysis
+                                        .principal_variation
+                                        .first()
+                                        .expect("no principal variation"),
+                                )
+                                .expect("error executing principal variation ply");
+                        }
 
-                            // Grant a static reward for Tinuë, or use the network.
-                            if analysis.evaluation.is_terminal() {
-                                let eval = if matches!(
-                                    analysis.final_state.resolution(),
-                                    Some(Resolution::Draw { .. })
-                                ) {
-                                    0.0
-                                } else {
-                                    if analysis.evaluation > 0.into() {
-                                        1.0
-                                    } else {
-                                        -1.0
-                                    }
-                                };
+                        if finished_one
+                            && states.lock().unwrap().len() >= BATCH_SIZE * BATCHES_PER_UPDATE - 1
+                        {
+                            break 'scaffolds;
+                        }
 
-                                player.push(eval);
-                            } else {
-                                let sign = if state.to_move() == analysis.final_state.to_move() {
+                        states.lock().unwrap().push(state.clone());
+                    }
+
+                    finished_one = true;
+                }
+            });
+        }
+    });
+
+    let mut states = states.into_inner().unwrap();
+    states.push(State::default());
+    states
+}
+
+fn generate_batch_samples<const N: usize>(
+    training_state: &TrainingState<N>,
+    scaffolds: &[State<N>],
+) -> Vec<TrainingSample<State<N>>>
+where
+    TrainingState<N>: Train<N, State = State<N>>,
+{
+    let positions = Mutex::new(
+        scaffolds
+            .choose_multiple(&mut rand::thread_rng(), scaffolds.len())
+            .cloned(),
+    );
+
+    let training_samples = Mutex::new(Vec::new());
+
+    thread::scope(|scope| {
+        for _ in 0..GATHER_THREADS {
+            scope.spawn(|| {
+                'gather: loop {
+                    let mut persistent_state = PersistentState::default();
+                    let evaluator = training_state.model_as_evaluator();
+
+                    let mut state = match positions.lock().unwrap().next() {
+                        Some(state) => state,
+                        None => break,
+                    };
+
+                    // The state at time t.
+                    let mut s_t = Vec::new();
+                    // The reward for the player to move at time t.
+                    let mut r_t = Vec::new();
+
+                    for _ in 0..SAMPLES_PER_POSITION + TD_PLY_DEPTH {
+                        if training_samples.lock().unwrap().len() >= BATCH_SIZE * BATCHES_PER_UPDATE
+                        {
+                            break 'gather;
+                        }
+
+                        // If the state is terminal, reward the last two moves and break.
+                        if let Some(resolution) = state.resolution() {
+                            let reward = if let Some(color) = resolution.color() {
+                                if color == state.to_move() {
                                     1.0
                                 } else {
                                     -1.0
-                                };
-
-                                let eval = training_state.evaluate_state(&analysis.final_state);
-
-                                player.push(sign * eval);
-                            }
-
-                            // If the game has just started, or if a random number is below epsilon, make a random move.
-                            // Otherwise, use the principal variation from the search.
-                            if state.ply_count < 2 || rng.gen::<f32>() < training_state.epsilon {
-                                let ply = *generate_plies(&state).choose(&mut rng).unwrap();
-                                state.execute_ply(ply).expect("error executing random ply");
+                                }
                             } else {
-                                state
-                                    .execute_ply(
-                                        *analysis
-                                            .principal_variation
-                                            .first()
-                                            .expect("no principal variation"),
-                                    )
-                                    .expect("error executing principal variation ply");
+                                0.0
+                            };
+
+                            // Give the opposite reward to the opponent's last move.
+                            if !r_t.is_empty() {
+                                *r_t.last_mut().unwrap() = -reward;
                             }
 
-                            std::mem::swap(&mut player, &mut opponent);
+                            s_t.push(state.clone());
+                            r_t.push(reward);
+
+                            break;
                         }
 
-                        fn calculate_n_step_returns(r_t: &[f32], discount: f32) -> Vec<f32> {
-                            let mut g_t = Vec::new();
+                        // Otherwise, perform a search from the state.
+                        let config = AnalysisConfig::<N> {
+                            depth_limit: Some(TD_SEARCH_DEPTH),
+                            persistent_state: Some(&mut persistent_state),
+                            evaluator: Some(&*evaluator),
+                            exact_eval: true,
+                            ..Default::default()
+                        };
 
-                            let end_t = r_t.len();
-                            for t in 0..end_t {
-                                let g = r_t[t]
-                                    + (1..end_t - t)
-                                        .map(|n| {
-                                            discount.powi(n as i32) * (r_t[t + n] - r_t[t + n - 1])
-                                        })
-                                        .sum::<f32>();
+                        let analysis = analyze(config, &state);
 
-                                g_t.push(g);
-                            }
+                        s_t.push(state.clone());
 
-                            g_t
+                        // Grant a static reward for Tinuë, or use the network.
+                        if analysis.evaluation.is_terminal() {
+                            let eval = if matches!(
+                                analysis.final_state.resolution(),
+                                Some(Resolution::Draw { .. })
+                            ) {
+                                0.0
+                            } else {
+                                if analysis.evaluation > 0.into() {
+                                    1.0
+                                } else {
+                                    -1.0
+                                }
+                            };
+
+                            r_t.push(eval);
+                        } else {
+                            r_t.push(analysis.evaluation.into_f32() / EVAL_SCALE);
                         }
 
-                        fn calculate_lambda_returns(g_t: &[f32], lambda: f32) -> Vec<f32> {
-                            // λ-return for time t.
-                            let mut g_l_t = Vec::new();
-
-                            let end_t = g_t.len();
-                            for t in 0..end_t {
-                                let g = (1.0 - lambda)
-                                    * (0..end_t - t - 1)
-                                        .map(|n| lambda.powi(n as i32) * g_t[t])
-                                        .sum::<f32>()
-                                    + lambda.powi((end_t - t - 1) as i32) * g_t[end_t - 1];
-
-                                g_l_t.push(g);
-                            }
-
-                            g_l_t
-                        }
-
-                        let p1_g_t = calculate_n_step_returns(&p1_r_t, training_state.discount);
-                        let p2_g_t = calculate_n_step_returns(&p2_r_t, training_state.discount);
-
-                        let p1_g_l_t = calculate_lambda_returns(&p1_g_t, training_state.lambda);
-                        let p2_g_l_t = calculate_lambda_returns(&p2_g_t, training_state.lambda);
-
-                        let end_t = s_t.len();
-
-                        let mut batch_samples = batch_samples.lock().unwrap();
-
-                        batch_samples.extend(
-                            s_t.into_iter()
-                                .zip((0..end_t).map(|t| {
-                                    if t % 2 == 0 {
-                                        p1_g_l_t[t / 2]
-                                    } else {
-                                        p2_g_l_t[t / 2]
-                                    }
-                                }))
-                                .map(|(input, label)| TrainingSample { input, label }),
-                        );
+                        state
+                            .execute_ply(
+                                *analysis
+                                    .principal_variation
+                                    .first()
+                                    .expect("no principal variation"),
+                            )
+                            .expect("error executing principal variation ply");
                     }
-                });
-            }
-        });
 
-        println!(" Done in {:.2}s", gen_start.elapsed().as_secs_f32());
+                    let g_t = calculate_n_step_returns(&r_t, training_state.discount);
 
-        let mut batch_samples = batch_samples.lock().unwrap();
+                    let new_samples = s_t
+                        .into_iter()
+                        .zip(g_t)
+                        .map(|(input, label)| TrainingSample { input, label });
 
-        batch_samples.shuffle(&mut rand::thread_rng());
+                    // Add new samples one by one so we don't add too many.
+                    for sample in new_samples {
+                        let mut training_samples = training_samples.lock().unwrap();
 
-        let mut remaining_samples = batch_samples.as_slice();
-        for _ in 0..BATCHES_PER_UPDATE.min(max_batches.unwrap_or(usize::MAX) - training_state.batch)
-        {
-            let (batch, new_remaining) = remaining_samples.split_at(BATCH_SIZE);
+                        if training_samples.len() >= BATCH_SIZE * BATCHES_PER_UPDATE {
+                            break 'gather;
+                        }
 
-            let error = training_state.train_batch(batch);
-            println!("Batch {} MSE: {error}", training_state.batch);
-
-            checkpoint_error += error;
-
-            if training_state.batch % CHECKPOINT_BATCHES == 0 {
-                training_state.error = checkpoint_error / CHECKPOINT_BATCHES as f32;
-
-                save_training_state(
-                    &training_state,
-                    format!(
-                        "{TRAINING_DIR}/{MODEL_DIR}/model_{N}s_{:06}.json",
-                        training_state.batch
-                    ),
-                    format!(
-                        "{TRAINING_DIR}/{CHECKPOINT_DIR}/checkpoint_{N}s_{:06}.json",
-                        training_state.batch
-                    ),
-                );
-
-                checkpoint_error = 0.0;
-            }
-
-            remaining_samples = new_remaining;
+                        training_samples.push(sample);
+                    }
+                }
+            });
         }
+    });
 
-        // Save the latest checkpoint/model too.
-        if training_state.batch % CHECKPOINT_BATCHES != 0 {
-            training_state.error =
-                checkpoint_error / (training_state.batch % CHECKPOINT_BATCHES) as f32;
-        }
-        save_training_state(
-            &training_state,
-            format!("{TRAINING_DIR}/{MODEL_DIR}/latest.json"),
-            format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest.json"),
-        );
+    training_samples.into_inner().unwrap()
+}
+
+fn calculate_n_step_returns(r_t: &[f32], discount: f32) -> Vec<f32> {
+    let mut g_t = Vec::new();
+
+    let end_t = r_t.len();
+    for t in 0..end_t {
+        let g = r_t[t]
+            + (1..end_t - t)
+                .map(|n| {
+                    let sign = if n % 2 != 0 { -1.0 } else { 1.0 };
+                    let delta = sign * (r_t[t + n] + r_t[t + n - 1]);
+                    discount.powi(n as i32) * delta
+                })
+                .sum::<f32>();
+
+        g_t.push(g);
     }
+
+    g_t
+}
+
+fn train_batches<const N: usize>(
+    training_state: &mut TrainingState<N>,
+    mut batch_samples: &[TrainingSample<State<N>>],
+    max_batches: Option<usize>,
+    checkpoint_error: &mut f32,
+) -> f32
+where
+    TrainingState<N>: Train<N, State = State<N>>,
+{
+    let mut error_sum = 0.0;
+    let batch_count = BATCHES_PER_UPDATE.min(max_batches.unwrap_or(usize::MAX) - training_state.batch);
+
+    assert!(batch_count * BATCH_SIZE <= batch_samples.len());
+
+    for _ in 0..batch_count {
+        let (batch, remaining) = batch_samples.split_at(BATCH_SIZE);
+
+        let error = training_state.train_batch(batch);
+        error_sum += error;
+        *checkpoint_error += error;
+
+        if training_state.batch % CHECKPOINT_BATCHES == 0 {
+            training_state.error = *checkpoint_error / CHECKPOINT_BATCHES as f32;
+
+            save_training_state(
+                &training_state,
+                format!(
+                    "{TRAINING_DIR}/{MODEL_DIR}/model_{N}s_{:06}.json",
+                    training_state.batch
+                ),
+                format!(
+                    "{TRAINING_DIR}/{CHECKPOINT_DIR}/checkpoint_{N}s_{:06}.json",
+                    training_state.batch
+                ),
+            );
+
+            *checkpoint_error = 0.0;
+        }
+
+        batch_samples = remaining;
+    }
+
+    // Save the latest checkpoint/model too.
+    if training_state.batch % CHECKPOINT_BATCHES != 0 {
+        training_state.error =
+            *checkpoint_error / (training_state.batch % CHECKPOINT_BATCHES) as f32;
+    }
+    save_training_state(
+        &training_state,
+        format!("{TRAINING_DIR}/{MODEL_DIR}/latest.json"),
+        format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest.json"),
+    );
+
+    error_sum / batch_count as f32
 }
 
 struct TrainingSample<T> {
@@ -334,7 +407,6 @@ trait Train<const N: usize> {
 
     fn new() -> Self;
     fn model_as_evaluator<const M: usize>(&self) -> Box<dyn Evaluator<M>>;
-    fn evaluate_state(&self, state: &Self::State) -> f32;
     fn train_batch(&mut self, samples: &[TrainingSample<Self::State>]) -> f32;
 }
 
@@ -383,13 +455,6 @@ macro_rules! train_impl {
             fn model_as_evaluator<const N: usize>(&self) -> Box<dyn Evaluator<N>> {
                 let evaluator: Box<Self::Evaluator> = Box::new(self.model.clone().into());
                 unsafe { std::mem::transmute(evaluator as Box<dyn Evaluator<$s>>) }
-            }
-
-            fn evaluate_state(&self, state: &Self::State) -> f32 {
-                let features = state.gather_features();
-                let results = self.model.propagate_forward(features.as_vector().into());
-
-                results[0][0]
             }
 
             fn train_batch(&mut self, samples: &[TrainingSample<Self::State>]) -> f32 {
