@@ -17,7 +17,7 @@ fn main() {
 
     let evaluations: Vec<i32> = tps
         .into_iter()
-        .map(|tps| evaluate_tps(tps).into())
+        .map(|tps| evaluate_tps(tps).into_i32())
         .collect::<Vec<_>>();
 
     println!("{}", serde_json::to_string_pretty(&evaluations).unwrap());

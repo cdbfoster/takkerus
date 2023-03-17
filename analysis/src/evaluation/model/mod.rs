@@ -22,7 +22,7 @@ pub trait AnnEvaluator<const N: usize> {
 
 pub struct AnnModel<const N: usize>;
 
-const EVAL_SCALE: f32 = 2_000.0;
+pub const EVAL_SCALE: f32 = 50_000.0;
 
 macro_rules! model_impl {
     (size: $size:expr, module: $module:ident, model: $file:expr) => {

@@ -16,6 +16,14 @@ impl Evaluation {
     pub fn is_terminal(self) -> bool {
         self.0.abs() > WIN_THRESHOLD
     }
+
+    pub fn into_i32(self) -> i32 {
+        self.0
+    }
+
+    pub fn into_f32(self) -> f32 {
+        self.0 as f32
+    }
 }
 
 pub(super) type EvalType = i32;
@@ -145,12 +153,6 @@ mod ops {
 impl From<EvalType> for Evaluation {
     fn from(value: EvalType) -> Self {
         Self(value)
-    }
-}
-
-impl From<Evaluation> for EvalType {
-    fn from(value: Evaluation) -> Self {
-        value.0
     }
 }
 

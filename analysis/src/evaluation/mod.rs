@@ -1,7 +1,7 @@
 use tak::State;
 
 pub use self::features::GatherFeatures;
-pub use self::model::{AnnEvaluator, AnnModel};
+pub use self::model::{AnnEvaluator, AnnModel, EVAL_SCALE};
 pub use self::types::Evaluation;
 
 mod features;
