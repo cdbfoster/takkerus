@@ -280,7 +280,7 @@ mod tests {
         assert_eq!(stack.get_player_pieces(), (0b100101, 0b011010));
 
         let stack = Stack(0b101101001101001);
-        assert_eq!(stack.get_player_pieces(), (0b10110010, 0b01001101));
+        assert_eq!(stack.get_player_pieces(), (0b10010110010, 0b01101001101));
 
         let stack = Stack(0b1000);
         assert_eq!(stack.get_player_pieces(), (0, 0));
