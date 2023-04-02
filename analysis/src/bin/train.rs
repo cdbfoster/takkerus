@@ -18,18 +18,18 @@ use ann::shallow::ShallowAdam;
 use tak::{board_mask, Color, PieceType, Ply, Resolution, State};
 
 const BATCH_SIZE: usize = 128;
-const BATCHES_PER_UPDATE: usize = 4;
+const BATCHES_PER_UPDATE: usize = 8;
 const CHECKPOINT_BATCHES: usize = 1000;
 
-const GATHER_THREADS: usize = 4;
+const GATHER_THREADS: usize = 8;
 /// The search depth to use when building the positions the training samples are derived from.
 const SCAFFOLD_SEARCH_DEPTH: u32 = 3;
 /// The number of consecutive samples to take from one starting position.
-const SAMPLES_PER_POSITION: usize = 8;
+const SAMPLES_PER_POSITION: usize = 10;
 /// The number of plies to play when calculating the temporal difference of the evaulations.
 const TD_PLY_DEPTH: usize = 10;
 /// The search depth to use when calculating the temporal difference of the evaluations.
-const TD_SEARCH_DEPTH: u32 = 5;
+const TD_SEARCH_DEPTH: u32 = 3;
 
 const TRAINING_DIR: &'static str = "training";
 const MODEL_DIR: &'static str = "models";
@@ -267,7 +267,7 @@ where
 
                         s_t.push(state.clone());
 
-                        // Grant a static reward for Tinuë, or use the network.
+                        // Grant a static reward for Tinuë, or use the network's output.
                         if analysis.evaluation.is_terminal() {
                             let eval = if matches!(
                                 analysis.final_state.resolution(),
@@ -425,7 +425,6 @@ where
     gradient_descent: <Self as Train<N>>::GradientDescent,
     epsilon: f32,
     discount: f32,
-    lambda: f32,
     learning_rate: f32,
     l2_reg: f32,
     error: f32,
@@ -449,8 +448,7 @@ macro_rules! train_impl {
                     model: Self::Model::random(&mut rand::thread_rng()),
                     gradient_descent: Self::GradientDescent::default(),
                     epsilon: 0.05,
-                    discount: 0.7,
-                    lambda: 0.8,
+                    discount: 0.85,
                     learning_rate: 0.001,
                     l2_reg: 0.0001,
                     error: 0.0,
