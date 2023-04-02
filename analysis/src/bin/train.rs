@@ -109,8 +109,12 @@ where
         batch_samples.shuffle(&mut rng);
 
         let start_batch = training_state.batch;
-        let average_error =
-            train_batches(&mut training_state, &batch_samples, max_batches, &mut checkpoint_error);
+        let average_error = train_batches(
+            &mut training_state,
+            &batch_samples,
+            max_batches,
+            &mut checkpoint_error,
+        );
         let batch_count = training_state.batch - start_batch;
 
         let elapsed = start_time.elapsed().as_secs_f32();
@@ -131,7 +135,7 @@ where
     let states = Mutex::new(Vec::new());
 
     thread::scope(|scope| {
-        for _ in 0..4 {
+        for _ in 0..GATHER_THREADS.min(BATCHES_PER_UPDATE) {
             scope.spawn(|| {
                 let mut rng = rand::thread_rng();
                 let mut finished_one = false;
@@ -348,7 +352,8 @@ where
     TrainingState<N>: Train<N, State = State<N>>,
 {
     let mut error_sum = 0.0;
-    let batch_count = BATCHES_PER_UPDATE.min(max_batches.unwrap_or(usize::MAX) - training_state.batch);
+    let batch_count =
+        BATCHES_PER_UPDATE.min(max_batches.unwrap_or(usize::MAX) - training_state.batch);
 
     assert!(batch_count * BATCH_SIZE <= batch_samples.len());
 

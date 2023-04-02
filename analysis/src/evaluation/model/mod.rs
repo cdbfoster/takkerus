@@ -36,7 +36,7 @@ macro_rules! model_impl {
             type InnerModel = ShallowAnn<INPUTS, HIDDEN, OUTPUTS>;
 
             #[derive(Deserialize, Serialize)]
-            pub struct Model(InnerModel);
+            pub struct Model(pub(crate) InnerModel);
 
             static MODEL: Lazy<Model> = Lazy::new(|| {
                 let data = include_str!($file);

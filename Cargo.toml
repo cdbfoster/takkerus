@@ -3,6 +3,7 @@ members = [
     "analysis",
     "ann",
     "client",
+    "lime",
     "tak",
 ]
 

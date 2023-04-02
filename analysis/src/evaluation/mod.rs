@@ -4,6 +4,9 @@ pub use self::features::GatherFeatures;
 pub use self::model::{AnnEvaluator, AnnModel, EVAL_SCALE};
 pub use self::types::Evaluation;
 
+#[cfg(feature = "tools")]
+pub mod explanation;
+
 mod features;
 mod model;
 mod types;

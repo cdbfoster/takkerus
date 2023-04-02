@@ -1,6 +1,7 @@
 /target
 /training*
 /data/analysis/env
+/data/analysis/analysis.so
 flamegraph.svg
 perf.data*
 *.ptn
