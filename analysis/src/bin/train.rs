@@ -22,7 +22,7 @@ const BATCHES_PER_UPDATE: usize = 8;
 const CHECKPOINT_BATCHES: usize = 1000;
 
 // Capped at the number of batches per update.
-const GATHER_THREADS: usize = 8;
+const GATHER_THREADS: usize = 4;
 /// The search depth to use when calculating the temporal difference of the evaluations.
 const TD_SEARCH_DEPTH: u32 = 3;
 
