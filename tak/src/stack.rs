@@ -138,7 +138,7 @@ impl Stack {
     /// Returns the positions of each color's pieces in the stack. The first
     /// value is white's piece map, the second is black's. A 1 is a piece of
     /// that color, a 0 could be the opponent's piece or an empty space.
-    pub(crate) fn get_player_pieces(&self) -> (Bitmap, Bitmap) {
+    pub fn get_player_pieces(&self) -> (Bitmap, Bitmap) {
         if !self.is_empty() {
             let mask = !(Bitmap::MAX << self.len());
             let stack_segment = (self.0 >> 3) & mask;

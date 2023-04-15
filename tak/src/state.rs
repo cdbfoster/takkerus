@@ -33,15 +33,7 @@ pub struct State<const N: usize> {
 
 impl<const N: usize> Default for State<N> {
     fn default() -> Self {
-        let (flatstones, capstones) = match N {
-            3 => (10, 0),
-            4 => (15, 0),
-            5 => (21, 1),
-            6 => (30, 1),
-            7 => (40, 2),
-            8 => (50, 2),
-            _ => panic!("invalid board size"),
-        };
+        let (flatstones, capstones) = Self::reserves();
 
         Self {
             p1_flatstones: flatstones,
@@ -57,6 +49,20 @@ impl<const N: usize> Default for State<N> {
 }
 
 impl<const N: usize> State<N> {
+    /// Returns the starting number of flatstones and capstones
+    /// for this size of board.
+    pub fn reserves() -> (u8, u8) {
+        match N {
+            3 => (10, 0),
+            4 => (15, 0),
+            5 => (21, 1),
+            6 => (30, 1),
+            7 => (40, 2),
+            8 => (50, 2),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn to_move(&self) -> Color {
         if self.ply_count % 2 == 0 {
             Color::White
