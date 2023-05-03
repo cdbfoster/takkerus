@@ -23,6 +23,12 @@ const CHECKPOINT_BATCHES: usize = 1000;
 
 // Capped at the number of batches per update.
 const GATHER_THREADS: usize = 4;
+/// The search depth to use when building the positions the training samples are derived from.
+const SCAFFOLD_SEARCH_DEPTH: u32 = 3;
+/// The number of consecutive samples to take from one starting position.
+const SAMPLES_PER_POSITION: usize = 10;
+/// The number of plies to play when calculating the temporal difference of the evaulations.
+const TD_PLY_DEPTH: usize = 10;
 /// The search depth to use when calculating the temporal difference of the evaluations.
 const TD_SEARCH_DEPTH: u32 = 3;
 
@@ -99,7 +105,8 @@ where
 
         let start_time = Instant::now();
 
-        let mut batch_samples = generate_batch_samples(&training_state);
+        let scaffolds = build_scaffold_positions(&training_state);
+        let mut batch_samples = generate_batch_samples(&training_state, &scaffolds);
         batch_samples.shuffle(&mut rng);
 
         let start_batch = training_state.batch;
@@ -122,8 +129,54 @@ where
     }
 }
 
+fn build_scaffold_positions<const N: usize>(training_state: &TrainingState<N>) -> Vec<State<N>>
+where
+    TrainingState<N>: Train<N, State = State<N>>,
+{
+    let mut rng = rand::thread_rng();
+
+    let mut states = Vec::new();
+    let mut persistent_state = PersistentState::default();
+    let evaluator = training_state.model_as_evaluator();
+
+    let mut state = State::default();
+
+    while state.resolution().is_none() && state.ply_count < 300 {
+        states.push(state.clone());
+
+        // If the game has just started, or if a random number is below epsilon, make a random move.
+        // Otherwise, use the principal variation from a search.
+        if state.ply_count < 2 || rng.gen::<f32>() < training_state.epsilon {
+            let ply = *generate_plies(&state).choose(&mut rng).unwrap();
+            state.execute_ply(ply).expect("error executing random ply");
+        } else {
+            let config = AnalysisConfig::<N> {
+                depth_limit: Some(SCAFFOLD_SEARCH_DEPTH),
+                persistent_state: Some(&mut persistent_state),
+                evaluator: Some(&*evaluator),
+                exact_eval: true,
+                ..Default::default()
+            };
+
+            let analysis = analyze(config, &state);
+
+            state
+                .execute_ply(
+                    *analysis
+                        .principal_variation
+                        .first()
+                        .expect("no principal variation"),
+                )
+                .expect("error executing principal variation ply");
+        }
+    }
+
+    states
+}
+
 fn generate_batch_samples<const N: usize>(
     training_state: &TrainingState<N>,
+    scaffolds: &[State<N>],
 ) -> Vec<TrainingSample<State<N>>>
 where
     TrainingState<N>: Train<N, State = State<N>>,
@@ -134,20 +187,26 @@ where
         for _ in 0..GATHER_THREADS.min(BATCHES_PER_UPDATE) {
             scope.spawn(|| {
                 let mut rng = rand::thread_rng();
-                let mut finished_one = false;
 
                 let mut persistent_state = PersistentState::default();
                 let evaluator = training_state.model_as_evaluator();
 
                 'gather: loop {
-                    let mut state = State::default();
+                    let mut state = scaffolds.choose(&mut rng).cloned().unwrap();
+                    let ply = *generate_plies(&state).choose(&mut rng).unwrap();
+                    state.execute_ply(ply).expect("error executing random ply");
 
                     // The state at time t.
                     let mut s_t = Vec::new();
                     // The reward for the player to move at time t.
                     let mut r_t = Vec::new();
 
-                    while state.resolution().is_none() && state.ply_count < 300 {
+                    for _ in 0..SAMPLES_PER_POSITION + TD_PLY_DEPTH {
+                        let count = training_samples.lock().unwrap().len();
+                        if count >= BATCH_SIZE * BATCHES_PER_UPDATE {
+                            break 'gather;
+                        }
+
                         // If the state is terminal, reward the last two moves and break.
                         if let Some(resolution) = state.resolution() {
                             let reward = if let Some(color) = resolution.color() {
@@ -161,8 +220,8 @@ where
                             };
 
                             // Give the opposite reward to the opponent's last move.
-                            if !r_t.is_empty() {
-                                *r_t.last_mut().unwrap() = -reward;
+                            if let Some(last) = r_t.last_mut() {
+                                *last = -reward;
                             }
 
                             s_t.push(state.clone());
@@ -204,28 +263,14 @@ where
                             r_t.push(analysis.evaluation.into_f32() / EVAL_SCALE);
                         }
 
-                        // If the game has just started, or if a random number is below epsilon, make a random move.
-                        // Otherwise, use the principal variation from the search.
-                        if state.ply_count < 2 || rng.gen::<f32>() < training_state.epsilon {
-                            let ply = *generate_plies(&state).choose(&mut rng).unwrap();
-                            state.execute_ply(ply).expect("error executing random ply");
-                        } else {
-                            state
-                                .execute_ply(
-                                    *analysis
-                                        .principal_variation
-                                        .first()
-                                        .expect("no principal variation"),
-                                )
-                                .expect("error executing principal variation ply");
-                        }
-
-                        if finished_one
-                            && training_samples.lock().unwrap().len()
-                                >= BATCH_SIZE * BATCHES_PER_UPDATE
-                        {
-                            break 'gather;
-                        }
+                        state
+                            .execute_ply(
+                                *analysis
+                                    .principal_variation
+                                    .first()
+                                    .expect("no principal variation"),
+                            )
+                            .expect("error executing principal variation ply");
                     }
 
                     let g_t = calculate_n_step_returns(&r_t, training_state.discount);
@@ -238,8 +283,6 @@ where
 
                     let mut training_samples = training_samples.lock().unwrap();
                     training_samples.extend(new_samples);
-
-                    finished_one = true;
                 }
             });
         }
