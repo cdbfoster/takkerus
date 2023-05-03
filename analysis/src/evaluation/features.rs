@@ -3,8 +3,6 @@
 use ann::linear_algebra::Vector;
 use tak::{edge_masks, Bitmap, Color, Direction, State};
 
-use crate::util::placement_threat_map;
-
 use Color::*;
 use Direction::*;
 
@@ -26,6 +24,7 @@ macro_rules! features_impl {
 
             const FEATURES: usize = 1   // White to move
                 + 1                     // Flat count differential
+                + 1                     // Center of mass distance
                 + 4                     // Reserves (flatsones and capstones)
                 + 2 * 3                 // Friendlies under each piece type
                 + 2 * 3                 // Captives under each piece type
@@ -33,9 +32,10 @@ macro_rules! features_impl {
                 + 2 * POSITIONS         // Capstones in each position
                 + 2                     // Road groups
                 + 2                     // Lines occupied
-                + 2                     // Critical squares
                 + 2                     // Enemy flatstones next to our standing stones
                 + 2                     // Enemy flatstones next to our capstones
+                + 2                     // Unblocked road completion
+                + 2                     // Soft-blocked road completion
                 ;
 
             #[repr(C)]
@@ -49,9 +49,10 @@ macro_rules! features_impl {
                 pub capstone_positions: [f32; POSITIONS],
                 pub road_groups: f32,
                 pub lines_occupied: f32,
-                pub critical_squares: f32,
                 pub standing_stone_surroundings: f32,
                 pub capstone_surroundings: f32,
+                pub unblocked_road_completion: f32,
+                pub softblocked_road_completion: f32,
             }
 
             #[repr(C)]
@@ -59,6 +60,7 @@ macro_rules! features_impl {
             pub struct Features {
                 pub white_to_move: f32,
                 pub fcd: f32,
+                pub center_distance: f32,
                 pub player: PlayerFeatures,
                 pub opponent: PlayerFeatures,
             }
@@ -122,27 +124,32 @@ macro_rules! features_impl {
                     p1.lines_occupied = gather_lines_occupied(p1_road_pieces);
                     p2.lines_occupied = gather_lines_occupied(p2_road_pieces);
 
-                    p1.critical_squares =
-                        gather_critical_squares(p1_road_pieces, all_pieces & !p1_road_pieces);
-                    p2.critical_squares =
-                        gather_critical_squares(p2_road_pieces, all_pieces & !p2_road_pieces);
-
                     p1.standing_stone_surroundings = (p1_standing_stones.dilate() & p2_flatstones).count_ones() as f32;
                     p2.standing_stone_surroundings = (p2_standing_stones.dilate() & p1_flatstones).count_ones() as f32;
 
                     p1.capstone_surroundings = (p1_capstones.dilate() & p2_flatstones).count_ones() as f32;
                     p2.capstone_surroundings = (p2_capstones.dilate() & p1_flatstones).count_ones() as f32;
 
+                    p1.unblocked_road_completion = gather_road_steps(p1_road_pieces, all_pieces & !p1_road_pieces);
+                    p2.unblocked_road_completion = gather_road_steps(p2_road_pieces, all_pieces & !p2_road_pieces);
+
+                    p1.softblocked_road_completion = gather_road_steps(p1_road_pieces, p1_standing_stones | p2_standing_stones | p2_capstones);
+                    p2.softblocked_road_completion = gather_road_steps(p2_road_pieces, p2_standing_stones | p1_standing_stones | p1_capstones);
+
+                    let center_distance = gather_center_distance(p1_road_pieces, p2_road_pieces);
+
                     match self.to_move() {
                         White => Features {
                             white_to_move: 1.0,
                             fcd: p1_flat_count - p2_flat_count,
+                            center_distance,
                             player: p1,
                             opponent: p2,
                         },
                         Black => Features {
                             white_to_move: 0.0,
                             fcd: p2_flat_count - p1_flat_count,
+                            center_distance,
                             player: p2,
                             opponent: p1,
                         },
@@ -158,9 +165,9 @@ features_impl!(
     module: features_3s,
     symmetries: 3,
     maps: [
-        Bitmap::new(0b000_010_000),
-        Bitmap::new(0b010_101_010),
         Bitmap::new(0b101_000_101),
+        Bitmap::new(0b010_101_010),
+        Bitmap::new(0b000_010_000),
     ]
 );
 
@@ -169,65 +176,73 @@ features_impl!(
     module: features_4s,
     symmetries: 3,
     maps: [
-        Bitmap::new(0b0000_0110_0110_0000),
-        Bitmap::new(0b0110_1001_1001_0110),
         Bitmap::new(0b1001_0000_0000_1001),
+        Bitmap::new(0b0110_1001_1001_0110),
+        Bitmap::new(0b0000_0110_0110_0000),
     ]
 );
 
 features_impl!(
     size: 5,
     module: features_5s,
-    symmetries: 5,
+    symmetries: 6,
     maps: [
-        Bitmap::new(0b00000_00000_00100_00000_00000),
-        Bitmap::new(0b00000_00100_01010_00100_00000),
-        Bitmap::new(0b00100_01010_10001_01010_00100),
-        Bitmap::new(0b01010_10001_00000_10001_01010),
         Bitmap::new(0b10001_00000_00000_00000_10001),
+        Bitmap::new(0b01010_10001_00000_10001_01010),
+        Bitmap::new(0b00100_00000_10001_00000_00100),
+        Bitmap::new(0b00000_01010_00000_01010_00000),
+        Bitmap::new(0b00000_00100_01010_00100_00000),
+        Bitmap::new(0b00000_00000_00100_00000_00000),
     ]
 );
 
 features_impl!(
     size: 6,
     module: features_6s,
-    symmetries: 5,
+    symmetries: 6,
     maps: [
-        Bitmap::new(0b000000_000000_001100_001100_000000_000000),
-        Bitmap::new(0b000000_001100_010010_010010_001100_000000),
-        Bitmap::new(0b001100_010010_100001_100001_010010_001100),
-        Bitmap::new(0b010010_100001_000000_000000_100001_010010),
         Bitmap::new(0b100001_000000_000000_000000_000000_100001),
+        Bitmap::new(0b010010_100001_000000_000000_100001_010010),
+        Bitmap::new(0b001100_000000_100001_100001_000000_001100),
+        Bitmap::new(0b000000_010010_000000_000000_010010_000000),
+        Bitmap::new(0b000000_001100_010010_010010_001100_000000),
+        Bitmap::new(0b000000_000000_001100_001100_000000_000000),
     ]
 );
 
 features_impl!(
     size: 7,
     module: features_7s,
-    symmetries: 7,
+    symmetries: 10,
     maps: [
-        Bitmap::new(0b0000000_0000000_0000000_0001000_0000000_0000000_0000000),
-        Bitmap::new(0b0000000_0000000_0001000_0010100_0001000_0000000_0000000),
-        Bitmap::new(0b0000000_0001000_0010100_0100010_0010100_0001000_0000000),
-        Bitmap::new(0b0001000_0010100_0100010_1000001_0100010_0010100_0001000),
-        Bitmap::new(0b0010100_0100010_1000001_0000000_1000001_0100010_0010100),
-        Bitmap::new(0b0100010_1000001_0000000_0000000_0000000_1000001_0100010),
         Bitmap::new(0b1000001_0000000_0000000_0000000_0000000_0000000_1000001),
+        Bitmap::new(0b0100010_1000001_0000000_0000000_0000000_1000001_0100010),
+        Bitmap::new(0b0010100_0000000_1000001_0000000_1000001_0000000_0010100),
+        Bitmap::new(0b0001000_0000000_0000000_1000001_0000000_0000000_0001000),
+        Bitmap::new(0b0000000_0100010_0000000_0000000_0000000_0100010_0000000),
+        Bitmap::new(0b0000000_0010100_0100010_0000000_0100010_0010100_0000000),
+        Bitmap::new(0b0000000_0001000_0000000_0100010_0000000_0001000_0000000),
+        Bitmap::new(0b0000000_0000000_0010100_0000000_0010100_0000000_0000000),
+        Bitmap::new(0b0000000_0000000_0001000_0010100_0001000_0000000_0000000),
+        Bitmap::new(0b0000000_0000000_0000000_0001000_0000000_0000000_0000000),
     ]
 );
 
 features_impl!(
     size: 8,
     module: features_8s,
-    symmetries: 7,
+    symmetries: 10,
     maps: [
-        Bitmap::new(0b00000000_00000000_00000000_00011000_00011000_00000000_00000000_00000000),
-        Bitmap::new(0b00000000_00000000_00011000_00100100_00100100_00011000_00000000_00000000),
-        Bitmap::new(0b00000000_00011000_00100100_01000010_01000010_00100100_00011000_00000000),
-        Bitmap::new(0b00011000_00100100_01000010_10000001_10000001_01000010_00100100_00011000),
-        Bitmap::new(0b00100100_01000010_10000001_00000000_00000000_10000001_01000010_00100100),
-        Bitmap::new(0b01000010_10000001_00000000_00000000_00000000_00000000_10000001_01000010),
         Bitmap::new(0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_10000001),
+        Bitmap::new(0b01000010_10000001_00000000_00000000_00000000_00000000_10000001_01000010),
+        Bitmap::new(0b00100100_00000000_10000001_00000000_00000000_10000001_00000000_00100100),
+        Bitmap::new(0b00011000_00000000_00000000_10000001_10000001_00000000_00000000_00011000),
+        Bitmap::new(0b00000000_01000010_00000000_00000000_00000000_00000000_01000010_00000000),
+        Bitmap::new(0b00000000_00100100_01000010_00000000_00000000_01000010_00100100_00000000),
+        Bitmap::new(0b00000000_00011000_00000000_01000010_01000010_00000000_00011000_00000000),
+        Bitmap::new(0b00000000_00000000_00100100_00000000_00000000_00100100_00000000_00000000),
+        Bitmap::new(0b00000000_00000000_00011000_00100100_00100100_00011000_00000000_00000000),
+        Bitmap::new(0b00000000_00000000_00000000_00011000_00011000_00000000_00000000_00000000),
     ]
 );
 
@@ -296,11 +311,104 @@ fn gather_lines_occupied<const N: usize>(player_pieces: Bitmap<N>) -> f32 {
     lines as f32
 }
 
-fn gather_critical_squares<const N: usize>(
+const UNREACHABLE: usize = 100;
+
+/// Calculates the number of road contributing pieces that are required to complete
+/// a road. Returns `0` if there's already a road, and [UNREACHABLE] if a road is impossible.
+fn calculate_road_steps<const N: usize>(
+    player_road_pieces: Bitmap<N>,
+    blocking_pieces: Bitmap<N>,
+) -> usize {
+    let edge = edge_masks();
+    let north = edge[North as usize].flood_fill(player_road_pieces);
+    let south = edge[South as usize].flood_fill(player_road_pieces);
+    let east = edge[East as usize].flood_fill(player_road_pieces);
+    let west = edge[West as usize].flood_fill(player_road_pieces);
+
+    if !(north & south).is_empty() || !(east & west).is_empty() {
+        return 0;
+    }
+
+    // Take the first step
+    let north = (north.dilate() | edge[North as usize]) & !blocking_pieces;
+    let south = (south.dilate() | edge[South as usize]) & !blocking_pieces;
+    let east = (east.dilate() | edge[East as usize]) & !blocking_pieces;
+    let west = (west.dilate() | edge[West as usize]) & !blocking_pieces;
+
+    fn get_path_steps<const M: usize>(
+        start: Bitmap<M>,
+        end: Bitmap<M>,
+        mut roads: Bitmap<M>,
+        blocks: Bitmap<M>,
+    ) -> Option<usize> {
+        roads &= !(start | end);
+
+        let mut explored = Bitmap::empty();
+        let mut next = start;
+        let mut steps = 1;
+
+        loop {
+            if !(next & end).is_empty() {
+                return Some(steps);
+            }
+
+            if next.is_empty() {
+                return None;
+            }
+
+            explored |= next;
+            next = next.dilate() & !(explored | blocks);
+            steps += 1;
+
+            if !(next & roads).is_empty() {
+                let island = next.flood_fill(roads);
+                next = next | (island.dilate() & !(explored | blocks));
+                roads &= !next;
+            }
+        }
+    }
+
+    let vertical_steps =
+        get_path_steps(north, south, player_road_pieces, blocking_pieces).unwrap_or(UNREACHABLE);
+    let horizontal_steps =
+        get_path_steps(east, west, player_road_pieces, blocking_pieces).unwrap_or(UNREACHABLE);
+
+    vertical_steps.min(horizontal_steps)
+}
+
+/// Calculates a road-completion heuristic that is higher when a road is nearing completion, range [0.0, 1.0].
+fn gather_road_steps<const N: usize>(
     player_road_pieces: Bitmap<N>,
     blocking_pieces: Bitmap<N>,
 ) -> f32 {
-    placement_threat_map(player_road_pieces, blocking_pieces).count_ones() as f32
+    let completion = N as f32 - calculate_road_steps(player_road_pieces, blocking_pieces) as f32;
+    (completion / N as f32).max(0.0)
+}
+
+/// Calculates the distance between each player's center of mass.
+fn gather_center_distance<const N: usize>(
+    p1_road_pieces: Bitmap<N>,
+    p2_road_pieces: Bitmap<N>,
+) -> f32 {
+    fn calculate_center<const M: usize>(pieces: Bitmap<M>) -> (f32, f32) {
+        let mut x = 0.0;
+        let mut y = 0.0;
+
+        for piece in pieces.bits() {
+            let coords = piece.coordinates();
+            x += coords.0 as f32;
+            y += coords.1 as f32;
+        }
+
+        let count = pieces.count_ones() as f32;
+        (x / count, y / count)
+    }
+
+    let p1_center = calculate_center(p1_road_pieces);
+    let p2_center = calculate_center(p2_road_pieces);
+    let distance = (p1_center.0 - p2_center.0, p1_center.1 - p2_center.1);
+
+    (distance.0.powi(2) + distance.1.powi(2)).sqrt()
 }
 
 #[cfg(test)]
@@ -325,37 +433,97 @@ mod tests {
     }
 
     #[test]
+    fn road_steps() {
+        let p: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        assert_eq!(calculate_road_steps(p, b), 6);
+
+        let p: Bitmap<6> = 0b100000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        assert_eq!(calculate_road_steps(p, b), 5);
+
+        let p: Bitmap<6> = 0b110000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        assert_eq!(calculate_road_steps(p, b), 4);
+
+        let p: Bitmap<6> = 0b000000_000000_001000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        assert_eq!(calculate_road_steps(p, b), 5);
+
+        let p: Bitmap<6> = 0b000000_000000_110101_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        assert_eq!(calculate_road_steps(p, b), 2);
+
+        let p: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000001_000001_000001_000001_000001_111111.into();
+        assert_eq!(calculate_road_steps(p, b), UNREACHABLE);
+
+        let p: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000001_000001_000001_000001_000001_110111.into();
+        assert_eq!(calculate_road_steps(p, b), 6);
+
+        let p: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b001001_000001_000001_000001_000001_110111.into();
+        assert_eq!(calculate_road_steps(p, b), 7);
+
+        let p: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b001001_001001_000001_000001_000001_110111.into();
+        assert_eq!(calculate_road_steps(p, b), 7);
+
+        let p: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b000001_000001_000001_000001_001001_110111.into();
+        assert_eq!(calculate_road_steps(p, b), UNREACHABLE);
+
+        let p: Bitmap<6> = 0b000000_000000_000000_000000_000000_000000.into();
+        let b: Bitmap<6> = 0b101111_101000_101010_101010_100010_111110.into();
+        assert_eq!(calculate_road_steps(p, b), 16);
+
+        let p: Bitmap<6> = 0b001110_111010_000001_000011_000110_000100.into();
+        let b: Bitmap<6> = 0b110001_000001_001110_110000_000000_001001.into();
+        assert_eq!(calculate_road_steps(p, b), 3);
+    }
+
+    #[test]
     fn correct_features() {
         let state: State<6> = "2,1221122,1,1,1,2S/1,1,1,x,1C,1111212/x2,2,212,2C,11/2,2,x2,1,1/x3,1,1,x/x2,2,21,x,112S 1 32".parse().unwrap();
         let f = state.gather_features();
         let c = features_6s::Features {
             white_to_move: 1.0,
             fcd: 4.0,
+            center_distance: {
+                let p1_x = (0 + 1 + 2 + 2 + 3 + 3 + 3 + 4 + 4 + 4 + 4 + 5 + 5) as f32 / 13.0;
+                let p1_y = (0 + 1 + 1 + 2 + 2 + 3 + 4 + 4 + 4 + 4 + 5 + 5 + 5) as f32 / 13.0;
+                let p2_x = (0 + 0 + 1 + 1 + 2 + 2 + 3 + 4 + 5) as f32 / 9.0;
+                let p2_y = (0 + 2 + 2 + 3 + 3 + 3 + 4 + 5 + 5) as f32 / 9.0;
+                ((p1_x - p2_x).powi(2) + (p1_y - p2_y).powi(2)).sqrt()
+            },
             player: features_6s::PlayerFeatures {
                 reserve_flatstones: 6.0 / 30.0,
                 reserve_capstones: 0.0,
                 friendlies: [1.0, 0.0, 0.0],
                 captives: [1.0, 0.0, 0.0],
-                flatstone_positions: [0.0, 3.0, 7.0, 2.0, 0.0],
-                capstone_positions: [0.0, 0.0, 1.0, 0.0, 0.0],
+                flatstone_positions: [0.0, 2.0, 5.0, 2.0, 3.0, 0.0],
+                capstone_positions: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 road_groups: 2.0,
                 lines_occupied: 12.0,
-                critical_squares: 0.0,
                 standing_stone_surroundings: 0.0,
                 capstone_surroundings: 1.0,
+                unblocked_road_completion: 3.0 / 6.0,
+                softblocked_road_completion: 5.0 / 6.0,
             },
             opponent: features_6s::PlayerFeatures {
                 reserve_flatstones: 14.0 / 30.0,
                 reserve_capstones: 0.0,
                 friendlies: [5.0, 0.0, 0.0],
                 captives: [9.0, 2.0, 0.0],
-                flatstone_positions: [2.0, 1.0, 2.0, 2.0, 1.0],
-                capstone_positions: [0.0, 1.0, 0.0, 0.0, 0.0],
+                flatstone_positions: [1.0, 2.0, 2.0, 0.0, 1.0, 2.0],
+                capstone_positions: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 road_groups: 5.0,
                 lines_occupied: 11.0,
-                critical_squares: 0.0,
                 standing_stone_surroundings: 1.0,
                 capstone_surroundings: 2.0,
+                unblocked_road_completion: 0.0 / 6.0,
+                softblocked_road_completion: 4.0 / 6.0,
             },
         };
         assert_eq!(f, c);
@@ -365,31 +533,41 @@ mod tests {
         let c = features_7s::Features {
             white_to_move: 0.0,
             fcd: 4.0,
+            #[rustfmt::skip]
+            center_distance: {
+                let p1_x = (0 + 1 + 1 + 3 + 4 + 4 + 4 + 4 + 4 + 4 + 5 + 5 + 6 + 6 + 6) as f32 / 15.0;
+                let p1_y = (0 + 1 + 2 + 2 + 2 + 2 + 2 + 2 + 3 + 5 + 5 + 5 + 6 + 6 + 6) as f32 / 15.0;
+                let p2_x = (0 + 0 + 0 + 0 + 1 + 1 + 1 + 2 + 2 + 2 + 3 + 3 + 3 + 3 + 3 + 4 + 5 + 5 + 6) as f32 / 19.0;
+                let p2_y = (0 + 0 + 1 + 1 + 1 + 1 + 1 + 3 + 3 + 4 + 4 + 4 + 4 + 4 + 5 + 5 + 6 + 6 + 6) as f32 / 19.0;
+                ((p1_x - p2_x).powi(2) + (p1_y - p2_y).powi(2)).sqrt()
+            },
             player: features_7s::PlayerFeatures {
                 reserve_flatstones: 11.0 / 40.0,
                 reserve_capstones: 0.0,
                 friendlies: [1.0, 0.0, 1.0],
                 captives: [2.0, 3.0, 6.0],
-                flatstone_positions: [1.0, 1.0, 3.0, 3.0, 3.0, 4.0, 2.0],
-                capstone_positions: [0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                flatstone_positions: [2.0, 4.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0],
+                capstone_positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
                 road_groups: 4.0,
                 lines_occupied: 13.0,
-                critical_squares: 0.0,
                 standing_stone_surroundings: 2.0,
                 capstone_surroundings: 2.0,
+                unblocked_road_completion: 0.0 / 7.0,
+                softblocked_road_completion: 5.0 / 7.0,
             },
             opponent: features_7s::PlayerFeatures {
                 reserve_flatstones: 8.0 / 40.0,
                 reserve_capstones: 0.0,
                 friendlies: [2.0, 1.0, 2.0],
                 captives: [2.0, 2.0, 5.0],
-                flatstone_positions: [0.0, 2.0, 1.0, 3.0, 4.0, 2.0, 1.0],
-                capstone_positions: [0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0],
+                flatstone_positions: [1.0, 2.0, 3.0, 0.0, 1.0, 3.0, 0.0, 1.0, 2.0, 0.0],
+                capstone_positions: [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 road_groups: 4.0,
                 lines_occupied: 12.0,
-                critical_squares: 0.0,
                 standing_stone_surroundings: 3.0,
                 capstone_surroundings: 2.0,
+                unblocked_road_completion: 5.0 / 7.0,
+                softblocked_road_completion: 5.0 / 7.0,
             },
         };
         assert_eq!(f, c);
