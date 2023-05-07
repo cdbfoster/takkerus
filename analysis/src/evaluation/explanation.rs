@@ -16,7 +16,6 @@ impl Explainer for Model6sExplainer {
         [
             "White to move",
             "Flat count differential",
-            "Center of mass distance",
             "Player: Reserve flatstones",
             "Player: Reserve capstones",
             "Player: Friendlies under flatstones",

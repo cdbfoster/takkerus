@@ -24,7 +24,6 @@ macro_rules! features_impl {
 
             const FEATURES: usize = 1   // White to move
                 + 1                     // Flat count differential
-                + 1                     // Center of mass distance
                 + 4                     // Reserves (flatsones and capstones)
                 + 2 * 3                 // Friendlies under each piece type
                 + 2 * 3                 // Captives under each piece type
@@ -60,7 +59,6 @@ macro_rules! features_impl {
             pub struct Features {
                 pub white_to_move: f32,
                 pub fcd: f32,
-                pub center_distance: f32,
                 pub player: PlayerFeatures,
                 pub opponent: PlayerFeatures,
             }
@@ -136,20 +134,16 @@ macro_rules! features_impl {
                     p1.softblocked_road_completion = gather_road_steps(p1_road_pieces, p1_standing_stones | p2_standing_stones | p2_capstones);
                     p2.softblocked_road_completion = gather_road_steps(p2_road_pieces, p2_standing_stones | p1_standing_stones | p1_capstones);
 
-                    let center_distance = gather_center_distance(p1_road_pieces, p2_road_pieces);
-
                     match self.to_move() {
                         White => Features {
                             white_to_move: 1.0,
                             fcd: p1_flat_count - p2_flat_count,
-                            center_distance,
                             player: p1,
                             opponent: p2,
                         },
                         Black => Features {
                             white_to_move: 0.0,
                             fcd: p2_flat_count - p1_flat_count,
-                            center_distance,
                             player: p2,
                             opponent: p1,
                         },
@@ -385,32 +379,6 @@ fn gather_road_steps<const N: usize>(
     (completion / N as f32).max(0.0)
 }
 
-/// Calculates the distance between each player's center of mass.
-fn gather_center_distance<const N: usize>(
-    p1_road_pieces: Bitmap<N>,
-    p2_road_pieces: Bitmap<N>,
-) -> f32 {
-    fn calculate_center<const M: usize>(pieces: Bitmap<M>) -> (f32, f32) {
-        let mut x = 0.0;
-        let mut y = 0.0;
-
-        for piece in pieces.bits() {
-            let coords = piece.coordinates();
-            x += coords.0 as f32;
-            y += coords.1 as f32;
-        }
-
-        let count = pieces.count_ones() as f32;
-        (x / count, y / count)
-    }
-
-    let p1_center = calculate_center(p1_road_pieces);
-    let p2_center = calculate_center(p2_road_pieces);
-    let distance = (p1_center.0 - p2_center.0, p1_center.1 - p2_center.1);
-
-    (distance.0.powi(2) + distance.1.powi(2)).sqrt()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,13 +458,6 @@ mod tests {
         let c = features_6s::Features {
             white_to_move: 1.0,
             fcd: 4.0,
-            center_distance: {
-                let p1_x = (0 + 1 + 2 + 2 + 3 + 3 + 3 + 4 + 4 + 4 + 4 + 5 + 5) as f32 / 13.0;
-                let p1_y = (0 + 1 + 1 + 2 + 2 + 3 + 4 + 4 + 4 + 4 + 5 + 5 + 5) as f32 / 13.0;
-                let p2_x = (0 + 0 + 1 + 1 + 2 + 2 + 3 + 4 + 5) as f32 / 9.0;
-                let p2_y = (0 + 2 + 2 + 3 + 3 + 3 + 4 + 5 + 5) as f32 / 9.0;
-                ((p1_x - p2_x).powi(2) + (p1_y - p2_y).powi(2)).sqrt()
-            },
             player: features_6s::PlayerFeatures {
                 reserve_flatstones: 6.0 / 30.0,
                 reserve_capstones: 0.0,
@@ -533,14 +494,6 @@ mod tests {
         let c = features_7s::Features {
             white_to_move: 0.0,
             fcd: 4.0,
-            #[rustfmt::skip]
-            center_distance: {
-                let p1_x = (0 + 1 + 1 + 3 + 4 + 4 + 4 + 4 + 4 + 4 + 5 + 5 + 6 + 6 + 6) as f32 / 15.0;
-                let p1_y = (0 + 1 + 2 + 2 + 2 + 2 + 2 + 2 + 3 + 5 + 5 + 5 + 6 + 6 + 6) as f32 / 15.0;
-                let p2_x = (0 + 0 + 0 + 0 + 1 + 1 + 1 + 2 + 2 + 2 + 3 + 3 + 3 + 3 + 3 + 4 + 5 + 5 + 6) as f32 / 19.0;
-                let p2_y = (0 + 0 + 1 + 1 + 1 + 1 + 1 + 3 + 3 + 4 + 4 + 4 + 4 + 4 + 5 + 5 + 6 + 6 + 6) as f32 / 19.0;
-                ((p1_x - p2_x).powi(2) + (p1_y - p2_y).powi(2)).sqrt()
-            },
             player: features_7s::PlayerFeatures {
                 reserve_flatstones: 11.0 / 40.0,
                 reserve_capstones: 0.0,
