@@ -32,6 +32,9 @@ const TD_PLY_DEPTH: usize = 10;
 /// The search depth to use when calculating the temporal difference of the evaluations.
 const TD_SEARCH_DEPTH: u32 = 3;
 
+const LEARNING_RATE_SCHEDULE: [(usize, f32); 3] =
+    [(0, 0.001), (100_000, 0.0001), (200_000, 0.00001)];
+
 const TRAINING_DIR: &'static str = "training";
 const MODEL_DIR: &'static str = "models";
 const CHECKPOINT_DIR: &'static str = "checkpoints";
@@ -120,10 +123,11 @@ where
 
         let elapsed = start_time.elapsed().as_secs_f32();
         println!(
-            "b: {}, t: {:.2}s, avg b t: {:.2}s/b, avg b err: {:.3}, avg chkpt err: {:.3}",
+            "b: {}, t: {:.2}s, avg b t: {:.2}s/b, lr: {}, avg b err: {:.3}, avg chkpt err: {:.3}",
             training_state.batch,
             elapsed,
             elapsed / batch_count as f32,
+            training_state.learning_rate,
             average_error,
             training_state.error,
         );
@@ -351,6 +355,13 @@ where
 
     for _ in 0..batch_count {
         let (batch, remaining) = batch_samples.split_at(BATCH_SIZE);
+
+        let (_, learning_rate) = LEARNING_RATE_SCHEDULE
+            .iter()
+            .rev()
+            .find(|(b, _)| *b <= training_state.batch)
+            .unwrap();
+        training_state.learning_rate = *learning_rate;
 
         let error = training_state.train_batch(batch);
         error_sum += error;

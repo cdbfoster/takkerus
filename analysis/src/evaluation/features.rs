@@ -255,10 +255,7 @@ fn gather_stack_composition<const N: usize>(
 ) -> StackComposition {
     let mut white = StackComposition::default();
 
-    for (i, pieces) in player_pieces
-        .into_iter()
-        .enumerate()
-    {
+    for (i, pieces) in player_pieces.into_iter().enumerate() {
         for (w, b) in pieces
             .bits()
             .map(|b| b.coordinates())
@@ -287,13 +284,11 @@ fn gather_stack_composition<const N: usize>(
 
     match color {
         White => white,
-        Black => {
-            StackComposition {
-                shallow_friendlies: white.shallow_captives,
-                shallow_captives: white.shallow_friendlies,
-                deep_friendlies: white.deep_captives,
-                deep_captives: white.deep_friendlies,
-            }
+        Black => StackComposition {
+            shallow_friendlies: white.shallow_captives,
+            shallow_captives: white.shallow_friendlies,
+            deep_friendlies: white.deep_captives,
+            deep_captives: white.deep_friendlies,
         },
     }
 }
