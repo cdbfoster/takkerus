@@ -22,11 +22,12 @@ macro_rules! features_impl {
 
             const POSITION_MAPS: [Bitmap<$size>; POSITIONS] = $maps;
 
-            const FEATURES: usize = 1   // White to move
-                + 1                     // Flat count differential
-                + 4                     // Reserves (flatsones and capstones)
-                + 2 * 3                 // Friendlies under each piece type
-                + 2 * 3                 // Captives under each piece type
+            const FEATURES: usize = 1   // Flat count differential
+                + 2                     // Flatstone reserves
+                + 2 * 3                 // Shallow friendlies under each piece type
+                + 2 * 3                 // Shallow captives under each piece type
+                + 2 * 3                 // Deep friendlies under each piece type
+                + 2 * 3                 // Deep captives under each piece type
                 + 2 * POSITIONS         // Flatstones in each position
                 + 2 * POSITIONS         // Capstones in each position
                 + 2                     // Road groups
@@ -41,9 +42,7 @@ macro_rules! features_impl {
             #[derive(Debug, Default, PartialEq)]
             pub struct PlayerFeatures {
                 pub reserve_flatstones: f32,
-                pub reserve_capstones: f32,
-                pub friendlies: [f32; 3],
-                pub captives: [f32; 3],
+                pub stack_composition: StackComposition,
                 pub flatstone_positions: [f32; POSITIONS],
                 pub capstone_positions: [f32; POSITIONS],
                 pub road_groups: f32,
@@ -57,7 +56,6 @@ macro_rules! features_impl {
             #[repr(C)]
             #[derive(Debug, Default, PartialEq)]
             pub struct Features {
-                pub white_to_move: f32,
                 pub fcd: f32,
                 pub player: PlayerFeatures,
                 pub opponent: PlayerFeatures,
@@ -94,21 +92,13 @@ macro_rules! features_impl {
                     let p1_flat_count = gather_flat_count(p1_flatstones, 0.0);
                     let p2_flat_count = gather_flat_count(p2_flatstones, self.komi.as_f32());
 
-                    let (starting_flatstones, starting_capstones) = Self::reserves();
+                    let (starting_flatstones, _starting_capstones) = Self::reserves();
 
                     p1.reserve_flatstones = self.p1_flatstones as f32 / starting_flatstones as f32;
                     p2.reserve_flatstones = self.p2_flatstones as f32 / starting_flatstones as f32;
 
-                    p1.reserve_capstones = self.p1_capstones as f32 / starting_capstones as f32;
-                    p2.reserve_capstones = self.p2_capstones as f32 / starting_capstones as f32;
-
-                    let (friendlies, captives) = gather_stack_composition([p1_flatstones, p1_standing_stones, p1_capstones], self, White);
-                    p1.friendlies = friendlies;
-                    p1.captives = captives;
-
-                    let (friendlies, captives) = gather_stack_composition([p2_flatstones, p2_standing_stones, p2_capstones], self, Black);
-                    p2.friendlies = friendlies;
-                    p2.captives = captives;
+                    p1.stack_composition = gather_stack_composition([p1_flatstones, p1_standing_stones, p1_capstones], self, White);
+                    p2.stack_composition = gather_stack_composition([p2_flatstones, p2_standing_stones, p2_capstones], self, Black);
 
                     p1.flatstone_positions = gather_positions(p1_flatstones, POSITION_MAPS);
                     p2.flatstone_positions = gather_positions(p2_flatstones, POSITION_MAPS);
@@ -136,13 +126,11 @@ macro_rules! features_impl {
 
                     match self.to_move() {
                         White => Features {
-                            white_to_move: 1.0,
                             fcd: p1_flat_count - p2_flat_count,
                             player: p1,
                             opponent: p2,
                         },
                         Black => Features {
-                            white_to_move: 0.0,
                             fcd: p2_flat_count - p1_flat_count,
                             player: p2,
                             opponent: p1,
@@ -251,36 +239,62 @@ fn gather_positions<const N: usize, const P: usize>(
     maps.map(|map| (player_pieces & map).count_ones() as f32)
 }
 
+#[repr(C)]
+#[derive(Debug, Default, PartialEq)]
+pub struct StackComposition {
+    pub shallow_friendlies: [f32; 3],
+    pub shallow_captives: [f32; 3],
+    pub deep_friendlies: [f32; 3],
+    pub deep_captives: [f32; 3],
+}
+
 fn gather_stack_composition<const N: usize>(
     player_pieces: [Bitmap<N>; 3],
     state: &State<N>,
     color: Color,
-) -> ([f32; 3], [f32; 3]) {
-    let mut white = [0.0; 3];
-    let mut black = [0.0; 3];
+) -> StackComposition {
+    let mut white = StackComposition::default();
 
-    for (pieces, (w_sum, b_sum)) in player_pieces
+    for (i, pieces) in player_pieces
         .into_iter()
-        .zip(white.iter_mut().zip(black.iter_mut()))
+        .enumerate()
     {
         for (w, b) in pieces
             .bits()
             .map(|b| b.coordinates())
             .map(|(x, y)| state.board[x][y].get_player_pieces())
         {
-            *w_sum += w.count_ones() as f32;
-            *b_sum += b.count_ones() as f32;
+            #[cfg(not(feature = "deep-stacks"))]
+            type StackBitmap = u32;
+
+            #[cfg(feature = "deep-stacks")]
+            type StackBitmap = u128;
+
+            let shallow = !(StackBitmap::MAX << N);
+            let deep = StackBitmap::MAX & !shallow;
+
+            white.shallow_friendlies[i] += (w & shallow).count_ones() as f32;
+            white.shallow_captives[i] += (b & shallow).count_ones() as f32;
+            white.deep_friendlies[i] += (w & deep).count_ones() as f32;
+            white.deep_captives[i] += (b & deep).count_ones() as f32;
         }
 
         match color {
-            White => *w_sum -= pieces.count_ones() as f32,
-            Black => *b_sum -= pieces.count_ones() as f32,
+            White => white.shallow_friendlies[i] -= pieces.count_ones() as f32,
+            Black => white.shallow_captives[i] -= pieces.count_ones() as f32,
         }
     }
 
     match color {
-        White => (white, black),
-        Black => (black, white),
+        White => white,
+        Black => {
+            StackComposition {
+                shallow_friendlies: white.shallow_captives,
+                shallow_captives: white.shallow_friendlies,
+                deep_friendlies: white.deep_captives,
+                deep_captives: white.deep_friendlies,
+            }
+        },
     }
 }
 
@@ -456,13 +470,15 @@ mod tests {
         let state: State<6> = "2,1221122,1,1,1,2S/1,1,1,x,1C,1111212/x2,2,212,2C,11/2,2,x2,1,1/x3,1,1,x/x2,2,21,x,112S 1 32".parse().unwrap();
         let f = state.gather_features();
         let c = features_6s::Features {
-            white_to_move: 1.0,
             fcd: 4.0,
             player: features_6s::PlayerFeatures {
                 reserve_flatstones: 6.0 / 30.0,
-                reserve_capstones: 0.0,
-                friendlies: [1.0, 0.0, 0.0],
-                captives: [1.0, 0.0, 0.0],
+                stack_composition: StackComposition {
+                    shallow_friendlies: [1.0, 0.0, 0.0],
+                    shallow_captives: [1.0, 0.0, 0.0],
+                    deep_friendlies: [0.0, 0.0, 0.0],
+                    deep_captives: [0.0, 0.0, 0.0],
+                },
                 flatstone_positions: [0.0, 2.0, 5.0, 2.0, 3.0, 0.0],
                 capstone_positions: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 road_groups: 2.0,
@@ -474,9 +490,12 @@ mod tests {
             },
             opponent: features_6s::PlayerFeatures {
                 reserve_flatstones: 14.0 / 30.0,
-                reserve_capstones: 0.0,
-                friendlies: [5.0, 0.0, 0.0],
-                captives: [9.0, 2.0, 0.0],
+                stack_composition: StackComposition {
+                    shallow_friendlies: [5.0, 0.0, 0.0],
+                    shallow_captives: [7.0, 2.0, 0.0],
+                    deep_friendlies: [0.0, 0.0, 0.0],
+                    deep_captives: [2.0, 0.0, 0.0],
+                },
                 flatstone_positions: [1.0, 2.0, 2.0, 0.0, 1.0, 2.0],
                 capstone_positions: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 road_groups: 5.0,
@@ -492,13 +511,15 @@ mod tests {
         let state: State<7> = "2,2,21S,2,1,1,1/2,1,x,2,1,x,1/2,2,2,2,21112C,121S,x/x2,1112C,2,1,1112S,x/121,22211C,1S,1,1,121,1221C/x,2,2,2,1,12,2/2,x3,1,122,x 2 50".parse().unwrap();
         let f = state.gather_features();
         let c = features_7s::Features {
-            white_to_move: 0.0,
             fcd: 4.0,
             player: features_7s::PlayerFeatures {
                 reserve_flatstones: 11.0 / 40.0,
-                reserve_capstones: 0.0,
-                friendlies: [1.0, 0.0, 1.0],
-                captives: [2.0, 3.0, 6.0],
+                stack_composition: StackComposition {
+                    shallow_friendlies: [1.0, 0.0, 1.0],
+                    shallow_captives: [2.0, 3.0, 6.0],
+                    deep_friendlies: [0.0, 0.0, 0.0],
+                    deep_captives: [0.0, 0.0, 0.0],
+                },
                 flatstone_positions: [2.0, 4.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0],
                 capstone_positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
                 road_groups: 4.0,
@@ -510,9 +531,12 @@ mod tests {
             },
             opponent: features_7s::PlayerFeatures {
                 reserve_flatstones: 8.0 / 40.0,
-                reserve_capstones: 0.0,
-                friendlies: [2.0, 1.0, 2.0],
-                captives: [2.0, 2.0, 5.0],
+                stack_composition: StackComposition {
+                    shallow_friendlies: [2.0, 1.0, 2.0],
+                    shallow_captives: [2.0, 2.0, 5.0],
+                    deep_friendlies: [0.0, 0.0, 0.0],
+                    deep_captives: [0.0, 0.0, 0.0],
+                },
                 flatstone_positions: [1.0, 2.0, 3.0, 0.0, 1.0, 3.0, 0.0, 1.0, 2.0, 0.0],
                 capstone_positions: [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 road_groups: 4.0,
