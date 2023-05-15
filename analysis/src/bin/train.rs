@@ -93,14 +93,14 @@ where
         TrainingState::<N>::new()
     };
 
+    let mut iteration = training_state.batch / BATCHES_PER_UPDATE;
     let mut checkpoint_error =
         training_state.error * (training_state.batch % CHECKPOINT_BATCHES) as f32;
 
     while max_batches.is_none() || training_state.batch < max_batches.unwrap() {
-        print!(
-            "Generating {BATCHES_PER_UPDATE} batch{}... ",
-            if BATCHES_PER_UPDATE > 1 { "es" } else { "" }
-        );
+        iteration += 1;
+
+        print!("Iteration {iteration}... ");
         std::io::stdout().flush().ok();
 
         let start_time = Instant::now();
@@ -120,11 +120,12 @@ where
 
         let elapsed = start_time.elapsed().as_secs_f32();
         println!(
-            "Done in {:.2}s, average: {:.2}s/batch, batches: {}, average error: {}",
+            "b: {}, t: {:.2}s, avg b t: {:.2}s/b, avg b err: {:.3}, avg chkpt err: {:.3}",
+            training_state.batch,
             elapsed,
             elapsed / batch_count as f32,
-            training_state.batch,
-            average_error
+            average_error,
+            training_state.error,
         );
     }
 }
