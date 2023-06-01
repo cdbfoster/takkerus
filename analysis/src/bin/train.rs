@@ -30,10 +30,9 @@ const SAMPLES_PER_POSITION: usize = 10;
 /// The number of plies to play when calculating the temporal difference of the evaulations.
 const TD_PLY_DEPTH: usize = 10;
 /// The search depth to use when calculating the temporal difference of the evaluations.
-const TD_SEARCH_DEPTH: u32 = 3;
+const TD_SEARCH_DEPTH: u32 = 4;
 
-const LEARNING_RATE_SCHEDULE: [(usize, f32); 3] =
-    [(0, 0.001), (100_000, 0.0001), (200_000, 0.00001)];
+const LEARNING_RATE_SCHEDULE: [(usize, f32); 2] = [(0, 0.0001), (100_000, 0.00001)];
 
 const TRAINING_DIR: &'static str = "training";
 const MODEL_DIR: &'static str = "models";
@@ -109,7 +108,7 @@ where
         let start_time = Instant::now();
 
         let scaffolds = build_scaffold_positions(&training_state);
-        let mut batch_samples = generate_batch_samples(&training_state, &scaffolds);
+        let mut batch_samples = generate_batch_samples(&training_state, scaffolds);
         batch_samples.shuffle(&mut rng);
 
         let start_batch = training_state.batch;
@@ -181,11 +180,12 @@ where
 
 fn generate_batch_samples<const N: usize>(
     training_state: &TrainingState<N>,
-    scaffolds: &[State<N>],
+    scaffolds: Vec<State<N>>,
 ) -> Vec<TrainingSample<State<N>>>
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
+    let scaffolds = Mutex::new(scaffolds);
     let training_samples = Mutex::new(Vec::new());
 
     thread::scope(|scope| {
@@ -197,9 +197,16 @@ where
                 let evaluator = training_state.model_as_evaluator();
 
                 'gather: loop {
-                    let mut state = scaffolds.choose(&mut rng).cloned().unwrap();
-                    let ply = *generate_plies(&state).choose(&mut rng).unwrap();
-                    state.execute_ply(ply).expect("error executing random ply");
+                    let mut state = {
+                        let mut guard = scaffolds.lock().unwrap();
+
+                        let mut state = guard.choose(&mut rng).cloned().unwrap();
+                        let ply = *generate_plies(&state).choose(&mut rng).unwrap();
+                        state.execute_ply(ply).expect("error executing random ply");
+
+                        guard.push(state.clone());
+                        state
+                    };
 
                     // The state at time t.
                     let mut s_t = Vec::new();
@@ -454,7 +461,7 @@ macro_rules! train_impl {
                     epsilon: 0.05,
                     discount: 0.85,
                     lambda: 0.8,
-                    learning_rate: 0.001,
+                    learning_rate: 0.0001,
                     l2_reg: 0.0001,
                     error: 0.0,
                 }
