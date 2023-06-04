@@ -27,7 +27,7 @@ pub fn spreads<const N: usize>(
         .map(|b| b.coordinates())
         .flat_map(move |(x, y)| {
             let stack = &state.board[x][y];
-            let top_piece = stack.last().unwrap();
+            let top_piece = stack.top().unwrap();
 
             [
                 Direction::North,
@@ -52,7 +52,7 @@ pub fn spreads<const N: usize>(
                     }
 
                     distance += 1;
-                    let target_type = state.board[tx as usize][ty as usize].last_piece_type();
+                    let target_type = state.board[tx as usize][ty as usize].top_piece_type();
 
                     if matches!(target_type, Some(StandingStone | Capstone)) {
                         break;
@@ -66,7 +66,7 @@ pub fn spreads<const N: usize>(
                     .filter_map(move |combo| {
                         let tx = x as i8 + combo.len() as i8 * dx;
                         let ty = y as i8 + combo.len() as i8 * dy;
-                        let target_type = state.board[tx as usize][ty as usize].last_piece_type();
+                        let target_type = state.board[tx as usize][ty as usize].top_piece_type();
 
                         // Allow this drop combo if the target is a flatstone or empty.
                         let unblocked = target_type.is_none() || target_type == Some(Flatstone);

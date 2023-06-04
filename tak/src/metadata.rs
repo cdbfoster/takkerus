@@ -32,7 +32,7 @@ impl<const N: usize> Default for Metadata<N> {
 
 impl<const N: usize> Metadata<N> {
     pub(crate) fn set_stack(&mut self, stack: &Stack, x: usize, y: usize) {
-        if let Some(piece) = stack.last() {
+        if let Some(piece) = stack.top() {
             if piece.color() == Color::White {
                 self.p1_pieces.set(x, y);
                 self.p2_pieces.clear(x, y);

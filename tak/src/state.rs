@@ -125,7 +125,7 @@ impl<const N: usize> State<N> {
                 }
 
                 // Stack must be controlled by this player.
-                let top_piece = stack.last().unwrap();
+                let top_piece = stack.top().unwrap();
                 if top_piece.color() != player_color {
                     return Err(StateError::InvalidSpread(
                         "Cannot move an opponent's piece.",
@@ -149,7 +149,7 @@ impl<const N: usize> State<N> {
                     tx += dx;
                     ty += dy;
 
-                    match self.board[tx as usize][ty as usize].last_piece_type() {
+                    match self.board[tx as usize][ty as usize].top_piece_type() {
                         Some(Flatstone) | None => (),
                         Some(Capstone) => {
                             return Err(StateError::InvalidSpread(

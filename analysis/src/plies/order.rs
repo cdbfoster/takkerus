@@ -342,7 +342,7 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                 let mut carry = drops.iter().sum::<u8>() as usize;
                 let stack = &state.board[x as usize][y as usize];
 
-                match stack.last_piece_type() {
+                match stack.top_piece_type() {
                     Some(Capstone) => *score |= SPREAD_CAPSTONE,
                     Some(StandingStone) => *score |= SPREAD_STANDING_STONE,
                     _ => (),
@@ -374,7 +374,7 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                     // Check the color of the stone we're covering.
                     tx += dx;
                     ty += dy;
-                    let covered_piece = state.board[tx as usize][ty as usize].last();
+                    let covered_piece = state.board[tx as usize][ty as usize].top();
                     if let Some(piece) = covered_piece {
                         if piece.piece_type() == Flatstone {
                             if piece.color() == state.to_move() {

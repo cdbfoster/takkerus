@@ -43,7 +43,7 @@ impl Stack {
         self.0 == 0b1000
     }
 
-    pub fn last(&self) -> Option<Piece> {
+    pub fn top(&self) -> Option<Piece> {
         if self.is_empty() {
             None
         } else {
@@ -51,12 +51,12 @@ impl Stack {
         }
     }
 
-    pub fn last_piece_type(&self) -> Option<PieceType> {
-        self.last().map(|p| p.piece_type())
+    pub fn top_piece_type(&self) -> Option<PieceType> {
+        self.top().map(|p| p.piece_type())
     }
 
-    pub fn last_color(&self) -> Option<Color> {
-        self.last().map(|p| p.color())
+    pub fn top_color(&self) -> Option<Color> {
+        self.top().map(|p| p.color())
     }
 
     /// Returns the piece at the given position on the stack, indexed top to bottom.

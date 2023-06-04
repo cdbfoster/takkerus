@@ -147,7 +147,7 @@ fn zobrist_hash_stack_sized<const N: usize>(
 
     let stack = state.board[x][y];
 
-    if let Some(top_piece) = stack.last() {
+    if let Some(top_piece) = stack.top() {
         hash ^= keys.top_pieces[x][y][piece_index(top_piece)];
         hash ^= keys.stack_heights[x][y][stack.len()];
         hash ^= keys.stack_pieces[x][y][state.metadata.p2_stacks[x][y] as usize];
