@@ -314,6 +314,15 @@ fn gather_lines_occupied<const N: usize>(player_pieces: Bitmap<N>) -> f32 {
     lines as f32
 }
 
+/// Calculates a road-completion heuristic that is higher when a road is nearing completion, range [0.0, 1.0].
+fn gather_road_steps<const N: usize>(
+    player_road_pieces: Bitmap<N>,
+    blocking_pieces: Bitmap<N>,
+) -> f32 {
+    let completion = N as f32 - calculate_road_steps(player_road_pieces, blocking_pieces) as f32;
+    (completion / N as f32).max(0.0)
+}
+
 const UNREACHABLE: usize = 100;
 
 /// Calculates the number of road contributing pieces that are required to complete
@@ -377,15 +386,6 @@ fn calculate_road_steps<const N: usize>(
         get_path_steps(east, west, player_road_pieces, blocking_pieces).unwrap_or(UNREACHABLE);
 
     vertical_steps.min(horizontal_steps)
-}
-
-/// Calculates a road-completion heuristic that is higher when a road is nearing completion, range [0.0, 1.0].
-fn gather_road_steps<const N: usize>(
-    player_road_pieces: Bitmap<N>,
-    blocking_pieces: Bitmap<N>,
-) -> f32 {
-    let completion = N as f32 - calculate_road_steps(player_road_pieces, blocking_pieces) as f32;
-    (completion / N as f32).max(0.0)
 }
 
 #[cfg(test)]
