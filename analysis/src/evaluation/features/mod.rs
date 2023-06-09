@@ -117,19 +117,30 @@ fn gather_positions<const N: usize, const P: usize>(
 }
 
 #[repr(C)]
-#[derive(Debug, Default, PartialEq)]
-pub struct StackComposition {
-    pub shallow_friendlies: [f32; 3],
-    pub shallow_captives: [f32; 3],
-    pub deep_friendlies: [f32; 3],
-    pub deep_captives: [f32; 3],
+#[derive(Debug, PartialEq)]
+pub struct StackComposition<const C: usize> {
+    pub shallow_friendlies: [f32; C],
+    pub shallow_captives: [f32; C],
+    pub deep_friendlies: [f32; C],
+    pub deep_captives: [f32; C],
 }
 
-fn gather_stack_composition<const N: usize>(
-    player_pieces: [Bitmap<N>; 3],
+impl<const C: usize> Default for StackComposition<C> {
+    fn default() -> Self {
+        Self {
+            shallow_friendlies: [0.0; C],
+            shallow_captives: [0.0; C],
+            deep_friendlies: [0.0; C],
+            deep_captives: [0.0; C],
+        }
+    }
+}
+
+fn gather_stack_composition<const N: usize, const C: usize>(
+    player_pieces: [Bitmap<N>; C],
     state: &State<N>,
     color: Color,
-) -> StackComposition {
+) -> StackComposition<C> {
     let mut white = StackComposition::default();
 
     for (i, pieces) in player_pieces.into_iter().enumerate() {
@@ -265,32 +276,7 @@ fn calculate_road_steps<const N: usize>(
     vertical_steps.min(horizontal_steps)
 }
 
-#[repr(C)]
-#[derive(Debug, Default, PartialEq)]
-pub struct StackBlockage {
-    /// Blockage by standing stones against [flatstone, standing stone] stacks.
-    pub standing_stone: [f32; 2],
-    /// Blockage by capstones against [flatstone, standing stone, capstone] stacks.
-    pub capstone: [f32; 3],
-}
-
-fn gather_stack_blockage<const N: usize>(
-    player_capstones: Bitmap<N>,
-    player_standing_stones: Bitmap<N>,
-    opponent_pieces: [Bitmap<N>; 3],
-    state: &State<N>,
-) -> StackBlockage {
-    StackBlockage {
-        standing_stone: calculate_blockage(
-            player_standing_stones,
-            [opponent_pieces[0], opponent_pieces[1]],
-            state,
-        ),
-        capstone: calculate_blockage(player_capstones, opponent_pieces, state),
-    }
-}
-
-fn calculate_blockage<const N: usize, const C: usize>(
+fn gather_stack_blockage<const N: usize, const C: usize>(
     player_pieces: Bitmap<N>,
     opponent_pieces: [Bitmap<N>; C],
     state: &State<N>,
@@ -424,10 +410,8 @@ mod tests {
                 lines_occupied: 12.0,
                 unblocked_road_completion: 3.0 / 6.0,
                 softblocked_road_completion: 5.0 / 6.0,
-                stack_blockage: StackBlockage {
-                    standing_stone: [0.0, 0.0],
-                    capstone: [5.0, 0.0, 1.0],
-                },
+                standing_stone_blockage: [0.0, 0.0],
+                capstone_blockage: [5.0, 0.0, 1.0],
             },
             opponent: features_6s::PlayerFeatures {
                 reserve_flatstones: 14.0 / 30.0,
@@ -443,10 +427,8 @@ mod tests {
                 lines_occupied: 11.0,
                 unblocked_road_completion: 0.0 / 6.0,
                 softblocked_road_completion: 4.0 / 6.0,
-                stack_blockage: StackBlockage {
-                    standing_stone: [1.0, 0.0],
-                    capstone: [3.0, 0.0, 1.0],
-                },
+                standing_stone_blockage: [1.0, 0.0],
+                capstone_blockage: [3.0, 0.0, 1.0],
             },
         };
         assert_eq!(f, c);
@@ -469,10 +451,8 @@ mod tests {
                 lines_occupied: 13.0,
                 unblocked_road_completion: 0.0 / 7.0,
                 softblocked_road_completion: 5.0 / 7.0,
-                stack_blockage: StackBlockage {
-                    standing_stone: [4.0, 3.0],
-                    capstone: [2.0, 4.0, 0.0],
-                },
+                standing_stone_blockage: [4.0, 3.0],
+                capstone_blockage: [2.0, 4.0, 0.0],
             },
             opponent: features_7s::PlayerFeatures {
                 reserve_flatstones: 8.0 / 40.0,
@@ -488,10 +468,8 @@ mod tests {
                 lines_occupied: 12.0,
                 unblocked_road_completion: 5.0 / 7.0,
                 softblocked_road_completion: 5.0 / 7.0,
-                stack_blockage: StackBlockage {
-                    standing_stone: [3.0, 3.0],
-                    capstone: [2.0, 0.0, 0.0],
-                },
+                standing_stone_blockage: [3.0, 3.0],
+                capstone_blockage: [2.0, 0.0, 0.0],
             },
         };
         assert_eq!(f, c);

@@ -11,10 +11,10 @@ macro_rules! features_small_impl {
 
             const FEATURES: usize = 1   // Flat count differential
                 + 2                     // Flatstone reserves
-                + 2 * 3                 // Shallow friendlies under each piece type
-                + 2 * 3                 // Shallow captives under each piece type
-                + 2 * 3                 // Deep friendlies under each piece type
-                + 2 * 3                 // Deep captives under each piece type
+                + 2 * 2                 // Shallow friendlies under each piece type
+                + 2 * 2                 // Shallow captives under each piece type
+                + 2 * 2                 // Deep friendlies under each piece type
+                + 2 * 2                 // Deep captives under each piece type
                 + 2 * POSITIONS         // Flatstones in each position
                 + 2 * POSITIONS         // Capstones in each position
                 + 2                     // Road groups
@@ -22,21 +22,20 @@ macro_rules! features_small_impl {
                 + 2                     // Unblocked road completion
                 + 2                     // Soft-blocked road completion
                 + 2 * 2                 // Standing stone blockage of standing stone and flatstone stacks
-                + 2 * 3                 // Capstone blockage of stacks for each piece type
                 ;
 
             #[repr(C)]
             #[derive(Debug, Default, PartialEq)]
             pub struct PlayerFeatures {
                 pub reserve_flatstones: f32,
-                pub stack_composition: StackComposition,
+                pub stack_composition: StackComposition<2>,
                 pub flatstone_positions: [f32; POSITIONS],
                 pub capstone_positions: [f32; POSITIONS],
                 pub road_groups: f32,
                 pub lines_occupied: f32,
                 pub unblocked_road_completion: f32,
                 pub softblocked_road_completion: f32,
-                pub stack_blockage: StackBlockage,
+                pub standing_stone_blockage: [f32; 2],
             }
 
             #[repr(C)]
@@ -83,8 +82,8 @@ macro_rules! features_small_impl {
                     p1.reserve_flatstones = self.p1_flatstones as f32 / starting_flatstones as f32;
                     p2.reserve_flatstones = self.p2_flatstones as f32 / starting_flatstones as f32;
 
-                    p1.stack_composition = gather_stack_composition([p1_flatstones, p1_standing_stones, p1_capstones], self, White);
-                    p2.stack_composition = gather_stack_composition([p2_flatstones, p2_standing_stones, p2_capstones], self, Black);
+                    p1.stack_composition = gather_stack_composition([p1_flatstones, p1_standing_stones], self, White);
+                    p2.stack_composition = gather_stack_composition([p2_flatstones, p2_standing_stones], self, Black);
 
                     p1.flatstone_positions = gather_positions(p1_flatstones, POSITION_MAPS);
                     p2.flatstone_positions = gather_positions(p2_flatstones, POSITION_MAPS);
@@ -104,8 +103,8 @@ macro_rules! features_small_impl {
                     p1.softblocked_road_completion = gather_road_steps(p1_road_pieces, p1_standing_stones | p2_standing_stones | p2_capstones);
                     p2.softblocked_road_completion = gather_road_steps(p2_road_pieces, p2_standing_stones | p1_standing_stones | p1_capstones);
 
-                    p1.stack_blockage = gather_stack_blockage(p1_capstones, p1_standing_stones, [p2_flatstones, p2_standing_stones, p2_capstones], self);
-                    p2.stack_blockage = gather_stack_blockage(p2_capstones, p2_standing_stones, [p1_flatstones, p1_standing_stones, p1_capstones], self);
+                    p1.standing_stone_blockage = gather_stack_blockage(p1_standing_stones, [p2_flatstones, p2_standing_stones], self);
+                    p2.standing_stone_blockage = gather_stack_blockage(p2_standing_stones, [p1_flatstones, p1_standing_stones], self);
 
                     match self.to_move() {
                         White => Features {

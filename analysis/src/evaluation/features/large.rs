@@ -29,14 +29,15 @@ macro_rules! features_large_impl {
             #[derive(Debug, Default, PartialEq)]
             pub struct PlayerFeatures {
                 pub reserve_flatstones: f32,
-                pub stack_composition: StackComposition,
+                pub stack_composition: StackComposition<3>,
                 pub flatstone_positions: [f32; POSITIONS],
                 pub capstone_positions: [f32; POSITIONS],
                 pub road_groups: f32,
                 pub lines_occupied: f32,
                 pub unblocked_road_completion: f32,
                 pub softblocked_road_completion: f32,
-                pub stack_blockage: StackBlockage,
+                pub standing_stone_blockage: [f32; 2],
+                pub capstone_blockage: [f32; 3],
             }
 
             #[repr(C)]
@@ -104,8 +105,11 @@ macro_rules! features_large_impl {
                     p1.softblocked_road_completion = gather_road_steps(p1_road_pieces, p1_standing_stones | p2_standing_stones | p2_capstones);
                     p2.softblocked_road_completion = gather_road_steps(p2_road_pieces, p2_standing_stones | p1_standing_stones | p1_capstones);
 
-                    p1.stack_blockage = gather_stack_blockage(p1_capstones, p1_standing_stones, [p2_flatstones, p2_standing_stones, p2_capstones], self);
-                    p2.stack_blockage = gather_stack_blockage(p2_capstones, p2_standing_stones, [p1_flatstones, p1_standing_stones, p1_capstones], self);
+                    p1.standing_stone_blockage = gather_stack_blockage(p1_standing_stones, [p2_flatstones, p2_standing_stones], self);
+                    p2.standing_stone_blockage = gather_stack_blockage(p2_standing_stones, [p1_flatstones, p1_standing_stones], self);
+
+                    p1.capstone_blockage = gather_stack_blockage(p1_capstones, [p2_flatstones, p2_standing_stones, p2_capstones], self);
+                    p2.capstone_blockage = gather_stack_blockage(p2_capstones, [p1_flatstones, p1_standing_stones, p1_capstones], self);
 
                     match self.to_move() {
                         White => Features {
