@@ -13,7 +13,7 @@ impl Explainer for Model6sExplainer {
     type Feature = String;
 
     fn gather_features(&self, input: &Self::Input) -> Vec<Self::Feature> {
-        [
+        let feature_names = [
             "Flat count differential",
             "Player: Reserve flatstones",
             "Player: Shallow friendlies under flatstones",
@@ -42,10 +42,13 @@ impl Explainer for Model6sExplainer {
             "Player: Capstones in c3 symmetries",
             "Player: Road groups",
             "Player: Lines occupied",
-            "Player: Enemy flatstones next to our standing stones",
-            "Player: Enemy flatstones next to our capstones",
             "Player: Unblocked road completion",
             "Player: Soft-blocked road completion",
+            "Player: Standing stone blockage of enemy flatstones",
+            "Player: Standing stone blockage of enemy standing stones",
+            "Player: Capstone blockage of enemy flatstones",
+            "Player: Capstone blockage of enemy standing stones",
+            "Player: Capstone blockage of enemy capstones",
             "Opponent: Reserve flatstones",
             "Opponent: Shallow friendlies under flatstones",
             "Opponent: Shallow friendlies under standing stones",
@@ -73,16 +76,25 @@ impl Explainer for Model6sExplainer {
             "Opponent: Capstones in c3 symmetries",
             "Opponent: Road groups",
             "Opponent: Lines occupied",
-            "Opponent: Enemy flatstones next to our standing stones",
-            "Opponent: Enemy flatstones next to our capstones",
             "Opponent: Unblocked road completion",
             "Opponent: Soft-blocked road completion",
-        ]
-        .into_iter()
-        .zip(input.as_vector())
-        .filter(|(_, &x)| x != 0.0)
-        .map(|(name, _)| name.to_owned())
-        .collect()
+            "Opponent: Standing stone blockage of enemy flatstones",
+            "Opponent: Standing stone blockage of enemy standing stones",
+            "Opponent: Capstone blockage of enemy flatstones",
+            "Opponent: Capstone blockage of enemy standing stones",
+            "Opponent: Capstone blockage of enemy capstones",
+        ];
+
+        let input_vector = input.as_vector();
+
+        assert_eq!(input_vector.len(), feature_names.len());
+
+        feature_names
+            .into_iter()
+            .zip(input_vector)
+            .filter(|(_, &x)| x != 0.0)
+            .map(|(name, _)| name.to_owned())
+            .collect()
     }
 
     fn baseline(&self, input: &Self::Input) -> Sample {

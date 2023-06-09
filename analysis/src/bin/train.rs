@@ -32,7 +32,7 @@ const TD_PLY_DEPTH: usize = 10;
 /// The search depth to use when calculating the temporal difference of the evaluations.
 const TD_SEARCH_DEPTH: u32 = 4;
 
-const LEARNING_RATE_SCHEDULE: [(usize, f32); 2] = [(0, 0.0001), (100_000, 0.00001)];
+const LEARNING_RATE_SCHEDULE: [(usize, f32); 3] = [(0, 0.001), (128, 0.0001), (100_000, 0.00001)];
 
 const TRAINING_DIR: &'static str = "training";
 const MODEL_DIR: &'static str = "models";
@@ -461,7 +461,7 @@ macro_rules! train_impl {
                     epsilon: 0.05,
                     discount: 0.85,
                     lambda: 0.8,
-                    learning_rate: 0.0001,
+                    learning_rate: 0.001,
                     l2_reg: 0.0001,
                     error: 0.0,
                 }

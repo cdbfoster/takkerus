@@ -32,10 +32,10 @@ macro_rules! features_impl {
                 + 2 * POSITIONS         // Capstones in each position
                 + 2                     // Road groups
                 + 2                     // Lines occupied
-                + 2                     // Enemy flatstones next to our standing stones
-                + 2                     // Enemy flatstones next to our capstones
                 + 2                     // Unblocked road completion
                 + 2                     // Soft-blocked road completion
+                + 2 * 2                 // Standing stone blockage of standing stone and flatstone stacks
+                + 2 * 3                 // Capstone blockage of stacks for each piece type
                 ;
 
             #[repr(C)]
@@ -47,10 +47,9 @@ macro_rules! features_impl {
                 pub capstone_positions: [f32; POSITIONS],
                 pub road_groups: f32,
                 pub lines_occupied: f32,
-                pub standing_stone_surroundings: f32,
-                pub capstone_surroundings: f32,
                 pub unblocked_road_completion: f32,
                 pub softblocked_road_completion: f32,
+                pub stack_blockage: StackBlockage,
             }
 
             #[repr(C)]
@@ -112,17 +111,14 @@ macro_rules! features_impl {
                     p1.lines_occupied = gather_lines_occupied(p1_road_pieces);
                     p2.lines_occupied = gather_lines_occupied(p2_road_pieces);
 
-                    p1.standing_stone_surroundings = (p1_standing_stones.dilate() & p2_flatstones).count_ones() as f32;
-                    p2.standing_stone_surroundings = (p2_standing_stones.dilate() & p1_flatstones).count_ones() as f32;
-
-                    p1.capstone_surroundings = (p1_capstones.dilate() & p2_flatstones).count_ones() as f32;
-                    p2.capstone_surroundings = (p2_capstones.dilate() & p1_flatstones).count_ones() as f32;
-
                     p1.unblocked_road_completion = gather_road_steps(p1_road_pieces, all_pieces & !p1_road_pieces);
                     p2.unblocked_road_completion = gather_road_steps(p2_road_pieces, all_pieces & !p2_road_pieces);
 
                     p1.softblocked_road_completion = gather_road_steps(p1_road_pieces, p1_standing_stones | p2_standing_stones | p2_capstones);
                     p2.softblocked_road_completion = gather_road_steps(p2_road_pieces, p2_standing_stones | p1_standing_stones | p1_capstones);
+
+                    p1.stack_blockage = gather_stack_blockage(p1_capstones, p1_standing_stones, [p2_flatstones, p2_standing_stones, p2_capstones], self);
+                    p2.stack_blockage = gather_stack_blockage(p2_capstones, p2_standing_stones, [p1_flatstones, p1_standing_stones, p1_capstones], self);
 
                     match self.to_move() {
                         White => Features {
@@ -388,6 +384,73 @@ fn calculate_road_steps<const N: usize>(
     vertical_steps.min(horizontal_steps)
 }
 
+#[repr(C)]
+#[derive(Debug, Default, PartialEq)]
+pub struct StackBlockage {
+    /// Blockage by standing stones against [flatstone, standing stone] stacks.
+    pub standing_stone: [f32; 2],
+    /// Blockage by capstones against [flatstone, standing stone, capstone] stacks.
+    pub capstone: [f32; 3],
+}
+
+fn gather_stack_blockage<const N: usize>(
+    player_capstones: Bitmap<N>,
+    player_standing_stones: Bitmap<N>,
+    opponent_pieces: [Bitmap<N>; 3],
+    state: &State<N>,
+) -> StackBlockage {
+    StackBlockage {
+        standing_stone: calculate_blockage(
+            player_standing_stones,
+            [opponent_pieces[0], opponent_pieces[1]],
+            state,
+        ),
+        capstone: calculate_blockage(player_capstones, opponent_pieces, state),
+    }
+}
+
+fn calculate_blockage<const N: usize, const C: usize>(
+    player_pieces: Bitmap<N>,
+    opponent_pieces: [Bitmap<N>; C],
+    state: &State<N>,
+) -> [f32; C] {
+    let mut blockage = [0.0; C];
+
+    for (px, py) in player_pieces.bits().map(|b| b.coordinates()) {
+        for (i, opponent_pieces) in opponent_pieces.into_iter().enumerate() {
+            for (ox, oy) in opponent_pieces.bits().map(|b| b.coordinates()) {
+                if px == ox || py == oy {
+                    let stack_height = state.board[ox][oy].len();
+
+                    let effective_stack_height = if px == ox {
+                        if py < oy {
+                            stack_height.min(py + 1)
+                        } else {
+                            stack_height.min(N - py)
+                        }
+                    } else {
+                        if px < ox {
+                            stack_height.min(px + 1)
+                        } else {
+                            stack_height.min(N - px)
+                        }
+                    };
+
+                    let distance = if px == ox {
+                        (py as isize - oy as isize).abs() as usize - 1
+                    } else {
+                        (px as isize - ox as isize).abs() as usize - 1
+                    };
+
+                    blockage[i] += effective_stack_height.saturating_sub(distance) as f32;
+                }
+            }
+        }
+    }
+
+    blockage
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,10 +541,12 @@ mod tests {
                 capstone_positions: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 road_groups: 2.0,
                 lines_occupied: 12.0,
-                standing_stone_surroundings: 0.0,
-                capstone_surroundings: 1.0,
                 unblocked_road_completion: 3.0 / 6.0,
                 softblocked_road_completion: 5.0 / 6.0,
+                stack_blockage: StackBlockage {
+                    standing_stone: [0.0, 0.0],
+                    capstone: [5.0, 0.0, 1.0],
+                },
             },
             opponent: features_6s::PlayerFeatures {
                 reserve_flatstones: 14.0 / 30.0,
@@ -495,10 +560,12 @@ mod tests {
                 capstone_positions: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 road_groups: 5.0,
                 lines_occupied: 11.0,
-                standing_stone_surroundings: 1.0,
-                capstone_surroundings: 2.0,
                 unblocked_road_completion: 0.0 / 6.0,
                 softblocked_road_completion: 4.0 / 6.0,
+                stack_blockage: StackBlockage {
+                    standing_stone: [1.0, 0.0],
+                    capstone: [3.0, 0.0, 1.0],
+                },
             },
         };
         assert_eq!(f, c);
@@ -519,10 +586,12 @@ mod tests {
                 capstone_positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
                 road_groups: 4.0,
                 lines_occupied: 13.0,
-                standing_stone_surroundings: 2.0,
-                capstone_surroundings: 2.0,
                 unblocked_road_completion: 0.0 / 7.0,
                 softblocked_road_completion: 5.0 / 7.0,
+                stack_blockage: StackBlockage {
+                    standing_stone: [4.0, 3.0],
+                    capstone: [2.0, 4.0, 0.0],
+                },
             },
             opponent: features_7s::PlayerFeatures {
                 reserve_flatstones: 8.0 / 40.0,
@@ -536,10 +605,12 @@ mod tests {
                 capstone_positions: [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
                 road_groups: 4.0,
                 lines_occupied: 12.0,
-                standing_stone_surroundings: 3.0,
-                capstone_surroundings: 2.0,
                 unblocked_road_completion: 5.0 / 7.0,
                 softblocked_road_completion: 5.0 / 7.0,
+                stack_blockage: StackBlockage {
+                    standing_stone: [3.0, 3.0],
+                    capstone: [2.0, 0.0, 0.0],
+                },
             },
         };
         assert_eq!(f, c);
