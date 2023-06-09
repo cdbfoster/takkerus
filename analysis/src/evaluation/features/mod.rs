@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn correct_features() {
+    fn correct_features_6s() {
         let state: State<6> = "2,1221122,1,1,1,2S/1,1,1,x,1C,1111212/x2,2,212,2C,11/2,2,x2,1,1/x3,1,1,x/x2,2,21,x,112S 1 32".parse().unwrap();
         let f = state.gather_features();
         let c = features_6s::Features {
@@ -432,7 +432,10 @@ mod tests {
             },
         };
         assert_eq!(f, c);
+    }
 
+    #[test]
+    fn correct_features_7s() {
         let state: State<7> = "2,2,21S,2,1,1,1/2,1,x,2,1,x,1/2,2,2,2,21112C,121S,x/x2,1112C,2,1,1112S,x/121,22211C,1S,1,1,121,1221C/x,2,2,2,1,12,2/2,x3,1,122,x 2 50".parse().unwrap();
         let f = state.gather_features();
         let c = features_7s::Features {
