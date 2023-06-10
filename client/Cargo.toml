@@ -11,7 +11,7 @@ deep-stacks = ["analysis/deep-stacks", "tak/deep-stacks"]
 [dependencies]
 async-std = "1.12"
 analysis = { path = "../analysis"}
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 futures = "0.3"
 once_cell = "1.16"
 tak = { path = "../tak" }
