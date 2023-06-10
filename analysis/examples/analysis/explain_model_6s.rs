@@ -2,7 +2,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::fs::File;
 
-use ::analysis::evaluation::explanation::Model6sExplainer;
+use ::analysis::evaluation::explanation::model::Model6sExplainer;
 use ::analysis::evaluation::{AnnEvaluator, AnnModel, GatherFeatures};
 use lime::{Explainer, Explanation as LimeExplanation};
 use tak::State;
