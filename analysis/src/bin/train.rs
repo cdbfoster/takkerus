@@ -95,6 +95,15 @@ where
         TrainingState::<N>::new()
     };
 
+    if max_batches == Some(0) {
+        save_training_state(
+            &training_state,
+            format!("{TRAINING_DIR}/{MODEL_DIR}/latest.json"),
+            format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest.json"),
+        );
+        return;
+    }
+
     let mut iteration = training_state.batch / BATCHES_PER_UPDATE;
     let mut checkpoint_error =
         training_state.error * (training_state.batch % CHECKPOINT_BATCHES) as f32;
