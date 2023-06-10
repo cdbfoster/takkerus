@@ -64,7 +64,8 @@ macro_rules! model_explainer_impl {
                         .zip(&feature_mask)
                         .for_each(|(x, m)| *x *= m);
 
-                    let perturbed_output = self.model.propagate_forward(&perturbed_input.into())[0][0];
+                    let perturbed_output =
+                        self.model.propagate_forward(&perturbed_input.into())[0][0];
 
                     let sum = feature_mask.iter().sum::<f32>();
 
@@ -83,7 +84,7 @@ macro_rules! model_explainer_impl {
                 }
             }
         }
-    }
+    };
 }
 
 model_explainer_impl!(
