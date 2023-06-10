@@ -4,9 +4,19 @@ use tak::State;
 
 use crate::evaluation::{AnnEvaluator, AnnModel, GatherFeatures};
 
+mod features_3s;
+mod features_4s;
+mod features_5s;
 mod features_6s;
+mod features_7s;
+mod features_8s;
 
+pub use self::model_3s_explainer::Model3sExplainer;
+pub use self::model_4s_explainer::Model4sExplainer;
+pub use self::model_5s_explainer::Model5sExplainer;
 pub use self::model_6s_explainer::Model6sExplainer;
+pub use self::model_7s_explainer::Model7sExplainer;
+pub use self::model_8s_explainer::Model8sExplainer;
 
 macro_rules! model_explainer_impl {
     (size: $size:expr, struct_name: $struct_name:ident, module: $module:ident, features: $features:ident) => {
@@ -77,8 +87,43 @@ macro_rules! model_explainer_impl {
 }
 
 model_explainer_impl!(
+    size: 3,
+    struct_name: Model3sExplainer,
+    module: model_3s_explainer,
+    features: features_3s
+);
+
+model_explainer_impl!(
+    size: 4,
+    struct_name: Model4sExplainer,
+    module: model_4s_explainer,
+    features: features_4s
+);
+
+model_explainer_impl!(
+    size: 5,
+    struct_name: Model5sExplainer,
+    module: model_5s_explainer,
+    features: features_5s
+);
+
+model_explainer_impl!(
     size: 6,
     struct_name: Model6sExplainer,
     module: model_6s_explainer,
     features: features_6s
+);
+
+model_explainer_impl!(
+    size: 7,
+    struct_name: Model7sExplainer,
+    module: model_7s_explainer,
+    features: features_7s
+);
+
+model_explainer_impl!(
+    size: 8,
+    struct_name: Model8sExplainer,
+    module: model_8s_explainer,
+    features: features_8s
 );

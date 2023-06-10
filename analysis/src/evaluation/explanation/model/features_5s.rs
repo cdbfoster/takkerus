@@ -1,4 +1,4 @@
-//! The names of the features of the 6s model, in order. This must be kept up to date with `src/evaluation/features/large.rs`.
+//! The names of the features of the 5s model, in order. This must be kept up to date with `src/evaluation/features/large.rs`.
 
 pub(super) const FEATURE_NAMES: &[&str] = &[
     "Flat count differential",
@@ -20,13 +20,13 @@ pub(super) const FEATURE_NAMES: &[&str] = &[
     "Player: Flatstones at c1 symmetries",
     "Player: Flatstones at b2 symmetries",
     "Player: Flatstones at c2 symmetries",
-    "Player: Flatstones at c3 symmetries",
+    "Player: Flatstone at c3",
     "Player: Capstone at a1 symmetries",
     "Player: Capstone at b1 symmetries",
     "Player: Capstone at c1 symmetries",
     "Player: Capstone at b2 symmetries",
     "Player: Capstone at c2 symmetries",
-    "Player: Capstone at c3 symmetries",
+    "Player: Capstone at c3",
     "Player: Road groups",
     "Player: Lines occupied",
     "Player: Unblocked road completion",
@@ -54,13 +54,13 @@ pub(super) const FEATURE_NAMES: &[&str] = &[
     "Opponent: Flatstones at c1 symmetries",
     "Opponent: Flatstones at b2 symmetries",
     "Opponent: Flatstones at c2 symmetries",
-    "Opponent: Flatstones at c3 symmetries",
+    "Opponent: Flatstone at c3",
     "Opponent: Capstone at a1 symmetries",
     "Opponent: Capstone at b1 symmetries",
     "Opponent: Capstone at c1 symmetries",
     "Opponent: Capstone at b2 symmetries",
     "Opponent: Capstone at c2 symmetries",
-    "Opponent: Capstone at c3 symmetries",
+    "Opponent: Capstone at c3",
     "Opponent: Road groups",
     "Opponent: Lines occupied",
     "Opponent: Unblocked road completion",
