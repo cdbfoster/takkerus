@@ -318,6 +318,48 @@ fn gather_stack_blockage<const N: usize, const C: usize>(
     blockage
 }
 
+fn gather_board_denial<const N: usize>(
+    player_pieces: Bitmap<N>,
+    opponent_pieces: Bitmap<N>,
+) -> f32 {
+    let count = player_pieces.count_ones();
+
+    if count > 0 {
+        player_pieces.bits().filter_map(|b| {
+            let p_coords = b.coordinates();
+            opponent_pieces.bits().map(move |c| (p_coords, c.coordinates()))
+            .map(|(p, o)| {
+                let (dx, dy) = (p.0 as i32 - o.0 as i32, p.1 as i32 - o.1 as i32);
+
+                let x_denial = if dx != 0 {
+                    if dx > 0 {
+                        N - p.0
+                    } else {
+                        p.0 + 1
+                    }
+                } else {
+                    0
+                };
+
+                let y_denial = if dy != 0 {
+                    if dy > 0 {
+                        N - p.1
+                    } else {
+                        p.1 + 1
+                    }
+                } else {
+                    0
+                };
+
+                x_denial.max(y_denial)
+            })
+            .max()
+        }).sum::<usize>() as f32 / count as f32 / N as f32
+    } else {
+        0.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,7 +453,8 @@ mod tests {
                 unblocked_road_completion: 3.0 / 6.0,
                 softblocked_road_completion: 5.0 / 6.0,
                 standing_stone_blockage: [0.0, 0.0],
-                capstone_blockage: [5.0, 0.0, 1.0],
+                capstone_blockage: [5.0, 0.0],
+                capstone_board_denial: 2.0 / 6.0,
             },
             opponent: features_6s::PlayerFeatures {
                 reserve_flatstones: 14.0 / 30.0,
@@ -428,7 +471,8 @@ mod tests {
                 unblocked_road_completion: 0.0 / 6.0,
                 softblocked_road_completion: 4.0 / 6.0,
                 standing_stone_blockage: [1.0, 0.0],
-                capstone_blockage: [3.0, 0.0, 1.0],
+                capstone_blockage: [3.0, 0.0],
+                capstone_board_denial: 4.0 / 6.0,
             },
         };
         assert_eq!(f, c);
@@ -455,7 +499,8 @@ mod tests {
                 unblocked_road_completion: 0.0 / 7.0,
                 softblocked_road_completion: 5.0 / 7.0,
                 standing_stone_blockage: [4.0, 3.0],
-                capstone_blockage: [2.0, 4.0, 0.0],
+                capstone_blockage: [2.0, 4.0],
+                capstone_board_denial: (5.0 + 5.0) / 2.0 / 7.0,
             },
             opponent: features_7s::PlayerFeatures {
                 reserve_flatstones: 8.0 / 40.0,
@@ -472,7 +517,8 @@ mod tests {
                 unblocked_road_completion: 5.0 / 7.0,
                 softblocked_road_completion: 5.0 / 7.0,
                 standing_stone_blockage: [3.0, 3.0],
-                capstone_blockage: [2.0, 0.0, 0.0],
+                capstone_blockage: [2.0, 0.0],
+                capstone_board_denial: (3.0 + 3.0) / 2.0 / 7.0,
             },
         };
         assert_eq!(f, c);

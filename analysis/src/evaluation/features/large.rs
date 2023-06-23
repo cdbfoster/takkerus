@@ -22,7 +22,8 @@ macro_rules! features_large_impl {
                 + 2                     // Unblocked road completion
                 + 2                     // Soft-blocked road completion
                 + 2 * 2                 // Standing stone blockage of standing stone and flatstone stacks
-                + 2 * 3                 // Capstone blockage of stacks for each piece type
+                + 2 * 2                 // Capstone blockage of stacks for each piece type
+                + 2                     // Capstone board denial
                 ;
 
             #[repr(C)]
@@ -37,7 +38,8 @@ macro_rules! features_large_impl {
                 pub unblocked_road_completion: f32,
                 pub softblocked_road_completion: f32,
                 pub standing_stone_blockage: [f32; 2],
-                pub capstone_blockage: [f32; 3],
+                pub capstone_blockage: [f32; 2],
+                pub capstone_board_denial: f32,
             }
 
             #[repr(C)]
@@ -108,8 +110,11 @@ macro_rules! features_large_impl {
                     p1.standing_stone_blockage = gather_stack_blockage(p1_standing_stones, [p2_flatstones, p2_standing_stones], self);
                     p2.standing_stone_blockage = gather_stack_blockage(p2_standing_stones, [p1_flatstones, p1_standing_stones], self);
 
-                    p1.capstone_blockage = gather_stack_blockage(p1_capstones, [p2_flatstones, p2_standing_stones, p2_capstones], self);
-                    p2.capstone_blockage = gather_stack_blockage(p2_capstones, [p1_flatstones, p1_standing_stones, p1_capstones], self);
+                    p1.capstone_blockage = gather_stack_blockage(p1_capstones, [p2_flatstones, p2_standing_stones], self);
+                    p2.capstone_blockage = gather_stack_blockage(p2_capstones, [p1_flatstones, p1_standing_stones], self);
+
+                    p1.capstone_board_denial = gather_board_denial(p1_capstones, p2_capstones);
+                    p2.capstone_board_denial = gather_board_denial(p2_capstones, p1_capstones);
 
                     match self.to_move() {
                         White => Features {

@@ -35,7 +35,7 @@ pub(super) const FEATURE_NAMES: &[&str] = &[
     "Player: Standing stone blockage of enemy standing stones",
     "Player: Capstone blockage of enemy flatstones",
     "Player: Capstone blockage of enemy standing stones",
-    "Player: Capstone blockage of enemy capstone",
+    "Player: Capstone board denial of enemy capstone",
     "Opponent: Reserve flatstones",
     "Opponent: Shallow friendlies under flatstones",
     "Opponent: Shallow friendlies under standing stones",
@@ -69,5 +69,5 @@ pub(super) const FEATURE_NAMES: &[&str] = &[
     "Opponent: Standing stone blockage of enemy standing stones",
     "Opponent: Capstone blockage of enemy flatstones",
     "Opponent: Capstone blockage of enemy standing stones",
-    "Opponent: Capstone blockage of enemy capstone",
+    "Opponent: Capstone board denial of enemy capstone",
 ];
