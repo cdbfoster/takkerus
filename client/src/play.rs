@@ -164,18 +164,12 @@ impl PlayerToken {
     }
 }
 
-macro_rules! state {
-    ($game:expr) => {{
-        let state: State<N> = $game.clone().try_into().expect("cannot retrieve state");
-        state
-    }};
+fn state_from_game<const N: usize>(game: &PtnGame) -> State<N> {
+    game.clone().try_into().expect("cannot retrieve state")
 }
 
-macro_rules! plies {
-    ($game:expr) => {{
-        let plies: Vec<Ply<N>> = $game.get_plies().expect("cannot retrieve state");
-        plies
-    }};
+fn plies_from_game<const N: usize>(game: &PtnGame) -> Vec<Ply<N>> {
+    game.get_plies().expect("cannot retrieve plies")
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -255,7 +249,7 @@ async fn game_handler<const N: usize>(
     }
 
     {
-        let state = state!(game);
+        let state = state_from_game(&game);
 
         if let Some(resolution) = state.resolution() {
             game_resolution!(resolution);
@@ -283,7 +277,7 @@ async fn game_handler<const N: usize>(
 
         match message {
             MoveResponse(ply) => {
-                if from != player_to_move!(state!(game)) {
+                if from != player_to_move!(state_from_game::<N>(&game)) {
                     warn!("Received a move response from the wrong player.");
                     continue;
                 }
@@ -291,18 +285,18 @@ async fn game_handler<const N: usize>(
                 if handle_ply(&mut game, ply).is_ok() {
                     save_game!();
                     print_board::<N>(&game);
-                    let state = state!(game);
+                    let state = state_from_game(&game);
                     if let Some(resolution) = state.resolution() {
                         game_resolution!(resolution);
                         break;
                     }
                     send!(from.other(), MoveRequest(state));
                 } else {
-                    send!(from, MoveRequest(state!(game)));
+                    send!(from, MoveRequest(state_from_game(&game)));
                 }
             }
             UndoRequest => {
-                if plies!(game).is_empty() {
+                if plies_from_game::<N>(&game).is_empty() {
                     // No history to undo, so reject the request.
                     send!(from, UndoResponse { accept: false });
                 } else {
@@ -312,13 +306,13 @@ async fn game_handler<const N: usize>(
             UndoRequestWithdrawal => send!(from.other(), UndoRequestWithdrawal),
             UndoResponse { accept } => {
                 if accept {
-                    if plies!(game).is_empty() {
+                    if plies_from_game::<N>(&game).is_empty() {
                         error!("Undo request was accepted, but there is no more history.");
                     } else {
                         game.remove_last_ply::<N>()
                             .expect("could not remove last ply");
                         save_game!();
-                        let state = state!(game);
+                        let state = state_from_game(&game);
                         let player_to_move = player_to_move!(state);
                         send!(from.other(), message);
                         send!(player_to_move, MoveRequest(state));
@@ -372,7 +366,7 @@ fn handle_ply<const N: usize>(game: &mut PtnGame, ply: Ply<N>) -> Result<(), Sta
 }
 
 fn print_board<const N: usize>(game: &PtnGame) {
-    let state = state!(game);
+    let state = state_from_game::<N>(&game);
 
     println!("\n--------------------------------------------------");
 
