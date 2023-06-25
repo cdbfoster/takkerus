@@ -325,36 +325,43 @@ fn gather_board_denial<const N: usize>(
     let count = player_pieces.count_ones();
 
     if count > 0 {
-        player_pieces.bits().filter_map(|b| {
-            let p_coords = b.coordinates();
-            opponent_pieces.bits().map(move |c| (p_coords, c.coordinates()))
-            .map(|(p, o)| {
-                let (dx, dy) = (p.0 as i32 - o.0 as i32, p.1 as i32 - o.1 as i32);
+        player_pieces
+            .bits()
+            .filter_map(|b| {
+                let p_coords = b.coordinates();
+                opponent_pieces
+                    .bits()
+                    .map(move |c| (p_coords, c.coordinates()))
+                    .map(|(p, o)| {
+                        let (dx, dy) = (p.0 as i32 - o.0 as i32, p.1 as i32 - o.1 as i32);
 
-                let x_denial = if dx != 0 {
-                    if dx > 0 {
-                        N - p.0
-                    } else {
-                        p.0 + 1
-                    }
-                } else {
-                    0
-                };
+                        let x_denial = if dx != 0 {
+                            if dx > 0 {
+                                N - p.0
+                            } else {
+                                p.0 + 1
+                            }
+                        } else {
+                            0
+                        };
 
-                let y_denial = if dy != 0 {
-                    if dy > 0 {
-                        N - p.1
-                    } else {
-                        p.1 + 1
-                    }
-                } else {
-                    0
-                };
+                        let y_denial = if dy != 0 {
+                            if dy > 0 {
+                                N - p.1
+                            } else {
+                                p.1 + 1
+                            }
+                        } else {
+                            0
+                        };
 
-                x_denial.max(y_denial)
+                        x_denial.max(y_denial)
+                    })
+                    .max()
             })
-            .max()
-        }).sum::<usize>() as f32 / count as f32 / N as f32
+            .sum::<usize>() as f32
+            / count as f32
+            / N as f32
     } else {
         0.0
     }
