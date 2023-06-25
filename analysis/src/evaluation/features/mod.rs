@@ -1,5 +1,7 @@
 #![allow(clippy::unusual_byte_groupings)]
 
+use std::cmp::Ordering;
+
 use ann::linear_algebra::Vector;
 use tak::{edge_masks, Bitmap, Color, Direction, State};
 
@@ -262,7 +264,7 @@ fn calculate_road_steps<const N: usize>(
 
             if !(next & roads).is_empty() {
                 let island = next.flood_fill(roads);
-                next = next | (island.dilate() & !(explored | blocks));
+                next |= island.dilate() & !(explored | blocks);
                 roads &= !next;
             }
         }
@@ -289,24 +291,19 @@ fn gather_stack_blockage<const N: usize, const C: usize>(
                 if px == ox || py == oy {
                     let stack_height = state.board[ox][oy].len();
 
-                    let effective_stack_height = if px == ox {
-                        if py < oy {
-                            stack_height.min(py + 1)
-                        } else {
-                            stack_height.min(N - py)
-                        }
-                    } else {
-                        if px < ox {
-                            stack_height.min(px + 1)
-                        } else {
-                            stack_height.min(N - px)
-                        }
+                    let effective_stack_height = match px.cmp(&ox) {
+                        Ordering::Equal => match py.cmp(&oy) {
+                            Ordering::Less => stack_height.min(py + 1),
+                            _ => stack_height.min(N - py),
+                        },
+                        Ordering::Less => stack_height.min(px + 1),
+                        Ordering::Greater => stack_height.min(N - px),
                     };
 
                     let distance = if px == ox {
-                        (py as isize - oy as isize).abs() as usize - 1
+                        (py as isize - oy as isize).unsigned_abs() - 1
                     } else {
-                        (px as isize - ox as isize).abs() as usize - 1
+                        (px as isize - ox as isize).unsigned_abs() - 1
                     };
 
                     blockage[i] += effective_stack_height.saturating_sub(distance) as f32;

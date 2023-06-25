@@ -366,7 +366,7 @@ fn handle_ply<const N: usize>(game: &mut PtnGame, ply: Ply<N>) -> Result<(), Sta
 }
 
 fn print_board<const N: usize>(game: &PtnGame) {
-    let state = state_from_game::<N>(&game);
+    let state = state_from_game::<N>(game);
 
     println!("\n--------------------------------------------------");
 
