@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, trace, trace_span, warn};
 
 use tak::{Ply, State};
 
@@ -369,7 +369,7 @@ struct SearchState<'a, const N: usize> {
     evaluator: &'a dyn Evaluator<N>,
 }
 
-#[instrument(level = "trace", skip(search, state, null_move_allowed), fields(scout = alpha + 1 == beta))]
+#[instrument(level = "trace", skip_all, fields(rd = remaining_depth, %alpha, %beta, scout = alpha + 1 == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &State<N>,
@@ -381,8 +381,10 @@ fn minimax<const N: usize>(
     search.stats.visited += 1;
 
     if remaining_depth == 0 || state.resolution().is_some() {
+        let evaluation = search.evaluator.evaluate(state);
+        trace!(%evaluation, "Leaf");
         search.stats.evaluated += 1;
-        return search.evaluator.evaluate(state);
+        return evaluation;
     }
 
     if alpha + 1 == beta {
@@ -425,6 +427,7 @@ fn minimax<const N: usize>(
     // Null move search =========================
 
     if !search.exact_eval && null_move_allowed && remaining_depth >= 3 {
+        let _null_move_span = trace_span!("null_move").entered();
         let mut state = state.clone();
 
         // Apply a null move.
@@ -436,6 +439,7 @@ fn minimax<const N: usize>(
         state.ply_count -= 1;
 
         if eval >= beta {
+            trace!("Null move cutoff");
             search.stats.null_cutoff += 1;
             return beta;
         }
@@ -452,6 +456,7 @@ fn minimax<const N: usize>(
     let mut best_ply = None;
 
     for (i, (fallibility, ply)) in ply_generator.plies().enumerate() {
+        let _move_span = trace_span!("move", ?ply).entered();
         let mut state = state.clone();
 
         use Fallibility::*;
@@ -465,6 +470,7 @@ fn minimax<const N: usize>(
         }
 
         let next_eval = if i == 0 {
+            let _leftmost_span = trace_span!("leftmost").entered();
             // On the first iteration, perform a full-window search.
             -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
         } else {
@@ -480,6 +486,8 @@ fn minimax<const N: usize>(
             );
 
             if scout_eval > alpha && scout_eval < beta {
+                trace!(%alpha, %beta, %scout_eval, "Researching");
+                let _researched_span = trace_span!("researched").entered();
                 search.stats.re_searched += 1;
                 // If we are inside the PV window instead, we need to re-search using the full PV window.
                 -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
