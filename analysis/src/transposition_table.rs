@@ -37,13 +37,13 @@ impl<const N: usize> TranspositionTable<N> {
         let mut current_index = start_index;
         let mut offset = 0;
         let mut target_index = start_index;
-        let mut target_score = u16::MAX;
+        let mut target_score = u32::MAX;
 
-        fn score<const N: usize>(entry: &TranspositionTableEntry<N>) -> u16 {
+        fn score<const N: usize>(entry: &TranspositionTableEntry<N>) -> u32 {
             // Score by total ply depth, bound, and then individual search depth.
-            ((entry.depth as u16 + entry.ply_count as u16) << 10)
-                | ((entry.bound as u16) << 8)
-                | (entry.depth as u16)
+            ((entry.depth as u32 + entry.ply_count as u32) << 10)
+                | ((entry.bound as u32) << 8)
+                | (entry.depth as u32)
         }
 
         let entry_score = score(&entry);
