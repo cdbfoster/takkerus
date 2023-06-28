@@ -15,7 +15,7 @@ impl Evaluation {
     pub const MAX: Self = Self(f32::MAX);
     pub const MIN: Self = Self(f32::MIN);
     pub const WIN: Self = Self(WIN);
-    pub const LOSE: Self = Self(-WIN);
+    pub const LOSS: Self = Self(-WIN);
 
     pub fn is_terminal(self) -> bool {
         self.0.abs() > WIN_THRESHOLD

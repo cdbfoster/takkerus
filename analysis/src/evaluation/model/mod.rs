@@ -58,7 +58,7 @@ macro_rules! model_impl {
                             if color == state.to_move() {
                                 return Evaluation::WIN.next_n_down(state.ply_count as usize);
                             } else {
-                                return Evaluation::LOSE.next_n_up(state.ply_count as usize);
+                                return Evaluation::LOSS.next_n_up(state.ply_count as usize);
                             }
                         }
                         Some(Resolution::Draw) => {
