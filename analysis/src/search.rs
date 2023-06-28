@@ -382,6 +382,11 @@ fn minimax<const N: usize>(
     search.stats.visited += 1;
 
     let resolution = state.resolution();
+
+    if resolution.is_some() {
+        search.stats.terminal += 1;
+    }
+
     if remaining_depth == 0 || resolution.is_some() {
         let evaluation = search.evaluator.evaluate(state, resolution);
         trace!(%evaluation, "Leaf");
