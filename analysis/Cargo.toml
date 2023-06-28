@@ -36,14 +36,6 @@ harness = false
 name = "train"
 required-features = ["tools"]
 
-[[bin]]
-name = "extract_states"
-required-features = ["tools"]
-
-[[bin]]
-name = "evaluate_positions"
-required-features = ["tools"]
-
 # A Python module that contains various analysis functionality.
 [[example]]
 name = "analysis"
