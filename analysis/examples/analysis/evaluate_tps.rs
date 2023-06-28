@@ -25,9 +25,9 @@ pub fn evaluate_tps(tps_string: String, model_file: Option<String>) -> PyResult<
                     serde_json::from_reader(file)
                         .map_err(|_| PyValueError::new_err("could not deserialize model"))?;
 
-                evaluator.evaluate(&state)
+                evaluator.evaluate(&state, state.resolution())
             } else {
-                AnnModel::<$size>::static_evaluator().evaluate(&state)
+                AnnModel::<$size>::static_evaluator().evaluate(&state, state.resolution())
             }
         }};
     }

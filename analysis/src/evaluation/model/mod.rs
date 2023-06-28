@@ -51,8 +51,12 @@ macro_rules! model_impl {
             }
 
             impl Evaluator<$size> for Model {
-                fn evaluate(&self, state: &State<$size>) -> Evaluation {
-                    match state.resolution() {
+                fn evaluate(
+                    &self,
+                    state: &State<$size>,
+                    resolution: Option<Resolution>,
+                ) -> Evaluation {
+                    match resolution {
                         None => (),
                         Some(Resolution::Road(color)) | Some(Resolution::Flats { color, .. }) => {
                             if color == state.to_move() {

@@ -152,7 +152,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     let mut analysis = Analysis {
         depth: 0,
         final_state: state.clone(),
-        evaluation: evaluator.evaluate(state),
+        evaluation: evaluator.evaluate(state, state.resolution()),
         principal_variation: Vec::new(),
         stats: Statistics::default(),
         time: Duration::ZERO,
@@ -381,8 +381,9 @@ fn minimax<const N: usize>(
 ) -> Evaluation {
     search.stats.visited += 1;
 
-    if remaining_depth == 0 || state.resolution().is_some() {
-        let evaluation = search.evaluator.evaluate(state);
+    let resolution = state.resolution();
+    if remaining_depth == 0 || resolution.is_some() {
+        let evaluation = search.evaluator.evaluate(state, resolution);
         trace!(%evaluation, "Leaf");
         search.stats.evaluated += 1;
         return evaluation;

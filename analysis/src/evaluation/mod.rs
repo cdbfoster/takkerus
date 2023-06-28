@@ -1,4 +1,4 @@
-use tak::State;
+use tak::{Resolution, State};
 
 pub use self::features::GatherFeatures;
 pub use self::model::{AnnEvaluator, AnnModel};
@@ -12,5 +12,5 @@ mod model;
 mod types;
 
 pub trait Evaluator<const N: usize> {
-    fn evaluate(&self, state: &State<N>) -> Evaluation;
+    fn evaluate(&self, state: &State<N>, resolution: Option<Resolution>) -> Evaluation;
 }
