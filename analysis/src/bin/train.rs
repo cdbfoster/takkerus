@@ -9,7 +9,7 @@ use std::time::Instant;
 use rand::{self, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 
-use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator, GatherFeatures, EVAL_SCALE};
+use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator, GatherFeatures};
 use analysis::plies::generation;
 use analysis::{analyze, AnalysisConfig, PersistentState};
 use ann::linear_algebra::MatrixRowMajor;
@@ -272,7 +272,7 @@ where
                             ) {
                                 0.0
                             } else {
-                                if analysis.evaluation > 0.into() {
+                                if analysis.evaluation > 0.0.into() {
                                     1.0
                                 } else {
                                     -1.0
@@ -281,7 +281,7 @@ where
 
                             r_t.push(eval);
                         } else {
-                            r_t.push(analysis.evaluation.into_f32() / EVAL_SCALE);
+                            r_t.push(analysis.evaluation.into());
                         }
 
                         state

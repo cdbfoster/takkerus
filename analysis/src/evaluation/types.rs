@@ -1,32 +1,26 @@
+#![allow(unstable_name_collisions)]
+
 use std::fmt;
 
-const WIN: EvalType = 100_000;
-const WIN_THRESHOLD: EvalType = 99_000;
+use crate::util::Neighbors;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Evaluation(pub(super) EvalType);
+const WIN: f32 = 1.1;
+const WIN_THRESHOLD: f32 = 1.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct Evaluation(f32);
 
 impl Evaluation {
-    pub const ZERO: Self = Self(0);
-    pub const MAX: Self = Self(EvalType::MAX - 1);
-    pub const MIN: Self = Self(EvalType::MIN + 1);
+    pub const ZERO: Self = Self(0.0);
+    pub const MAX: Self = Self(f32::MAX);
+    pub const MIN: Self = Self(f32::MIN);
     pub const WIN: Self = Self(WIN);
     pub const LOSE: Self = Self(-WIN);
 
     pub fn is_terminal(self) -> bool {
         self.0.abs() > WIN_THRESHOLD
     }
-
-    pub fn into_i32(self) -> i32 {
-        self.0
-    }
-
-    pub fn into_f32(self) -> f32 {
-        self.0 as f32
-    }
 }
-
-pub(super) type EvalType = i32;
 
 mod ops {
     use super::*;
@@ -35,34 +29,34 @@ mod ops {
     macro_rules! impl_evaluation_binary_ops {
         ($(($op:ident, $fn:ident)),+) => {
             $(
-                impl $op<EvalType> for Evaluation {
+                impl $op<f32> for Evaluation {
                     type Output = Evaluation;
 
-                    fn $fn(self, other: EvalType) -> Self::Output {
+                    fn $fn(self, other: f32) -> Self::Output {
                         Evaluation(self.0.$fn(other))
                     }
                 }
 
-                impl $op<&EvalType> for Evaluation {
+                impl $op<&f32> for Evaluation {
                     type Output = Evaluation;
 
-                    fn $fn(self, other: &EvalType) -> Self::Output {
+                    fn $fn(self, other: &f32) -> Self::Output {
                         Evaluation(self.0.$fn(other))
                     }
                 }
 
-                impl $op<EvalType> for &Evaluation {
+                impl $op<f32> for &Evaluation {
                     type Output = Evaluation;
 
-                    fn $fn(self, other: EvalType) -> Self::Output {
+                    fn $fn(self, other: f32) -> Self::Output {
                         Evaluation(self.0.$fn(other))
                     }
                 }
 
-                impl $op<&EvalType> for &Evaluation {
+                impl $op<&f32> for &Evaluation {
                     type Output = Evaluation;
 
-                    fn $fn(self, other: &EvalType) -> Self::Output {
+                    fn $fn(self, other: &f32) -> Self::Output {
                         Evaluation(self.0.$fn(other))
                     }
                 }
@@ -107,14 +101,14 @@ mod ops {
     macro_rules! impl_evaluation_assign_ops {
         ($(($op:ident, $fn:ident)),+) => {
             $(
-                impl $op<EvalType> for Evaluation {
-                    fn $fn(&mut self, other: EvalType) {
+                impl $op<f32> for Evaluation {
+                    fn $fn(&mut self, other: f32) {
                         self.0.$fn(other)
                     }
                 }
 
-                impl $op<&EvalType> for Evaluation {
-                    fn $fn(&mut self, other: &EvalType) {
+                impl $op<&f32> for Evaluation {
+                    fn $fn(&mut self, other: &f32) {
                         self.0.$fn(other)
                     }
                 }
@@ -148,16 +142,46 @@ mod ops {
             Evaluation(-self.0)
         }
     }
+
+    impl Eq for Evaluation {}
+
+    impl Neighbors for Evaluation {
+        fn next_up(self) -> Self {
+            Self(self.0.next_up())
+        }
+
+        fn next_down(self) -> Self {
+            Self(self.0.next_down())
+        }
+    }
 }
 
-impl From<EvalType> for Evaluation {
-    fn from(value: EvalType) -> Self {
+impl From<f32> for Evaluation {
+    fn from(value: f32) -> Self {
         Self(value)
+    }
+}
+
+impl From<Evaluation> for f32 {
+    fn from(value: Evaluation) -> Self {
+        value.0
     }
 }
 
 impl fmt::Display for Evaluation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        if *self == Evaluation::MAX {
+            "max".fmt(f)
+        } else if *self == Evaluation::MIN {
+            "min".fmt(f)
+        } else if self.is_terminal() {
+            if *self > 0.0.into() {
+                "win".fmt(f)
+            } else {
+                "loss".fmt(f)
+            }
+        } else {
+            self.0.fmt(f)
+        }
     }
 }

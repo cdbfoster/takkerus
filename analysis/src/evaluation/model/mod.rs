@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use ann::shallow::ShallowAnn;
 use tak::{Resolution, State};
 
+use crate::util::Neighbors;
+
 use super::features::GatherFeatures;
-use super::types::{EvalType, Evaluation};
+use super::types::Evaluation;
 use super::Evaluator;
 
 pub trait AnnEvaluator<const N: usize> {
@@ -21,8 +23,6 @@ pub trait AnnEvaluator<const N: usize> {
 }
 
 pub struct AnnModel<const N: usize>;
-
-pub const EVAL_SCALE: f32 = 50_000.0;
 
 macro_rules! model_impl {
     (size: $size:expr, module: $module:ident, model: $file:expr) => {
@@ -56,18 +56,20 @@ macro_rules! model_impl {
                         None => (),
                         Some(Resolution::Road(color)) | Some(Resolution::Flats { color, .. }) => {
                             if color == state.to_move() {
-                                return Evaluation::WIN - state.ply_count as i32;
+                                return Evaluation::WIN.next_n_down(state.ply_count as usize);
                             } else {
-                                return Evaluation::LOSE + state.ply_count as i32;
+                                return Evaluation::LOSE.next_n_up(state.ply_count as usize);
                             }
                         }
-                        Some(Resolution::Draw) => return Evaluation::ZERO - state.ply_count as i32,
+                        Some(Resolution::Draw) => {
+                            return Evaluation::ZERO.next_n_down(state.ply_count as usize)
+                        }
                     }
 
                     let features = state.gather_features();
                     let results = self.propagate_forward(features.as_vector().into());
 
-                    Evaluation((results[0][0] * EVAL_SCALE) as EvalType)
+                    results[0][0].into()
                 }
             }
 

@@ -158,7 +158,7 @@ mod tests {
     fn test_entry<const N: usize>(value: u8) -> TranspositionTableEntry<N> {
         TranspositionTableEntry {
             bound: Bound::Exact,
-            evaluation: 0.into(),
+            evaluation: 0.0.into(),
             node_count: 0,
             depth: value,
             ply_count: 0,

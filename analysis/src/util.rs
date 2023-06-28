@@ -73,6 +73,76 @@ pub(crate) fn placement_threat_map<const N: usize>(
     (horizontal_threats | vertical_threats) & !blocking_pieces
 }
 
+/// This provides a polyfill for f32::next_up() and f32::next_down() until those
+/// become stable in the std.
+pub(crate) trait Neighbors {
+    fn next_up(self) -> Self;
+    fn next_down(self) -> Self;
+
+    fn next_n_up(mut self, n: usize) -> Self
+    where
+        Self: Sized,
+    {
+        for _ in 0..n {
+            self = self.next_up();
+        }
+        self
+    }
+
+    fn next_n_down(mut self, n: usize) -> Self
+    where
+        Self: Sized,
+    {
+        for _ in 0..n {
+            self = self.next_down();
+        }
+        self
+    }
+}
+
+/// These implementations come from the reference implementations in https://rust-lang.github.io/rfcs/3173-float-next-up-down.html
+impl Neighbors for f32 {
+    fn next_up(self) -> Self {
+        const TINY_BITS: u32 = 0x1; // Smallest positive f32.
+        const CLEAR_SIGN_MASK: u32 = 0x7fff_ffff;
+
+        let bits = self.to_bits();
+        if self.is_nan() || bits == Self::INFINITY.to_bits() {
+            return self;
+        }
+
+        let abs = bits & CLEAR_SIGN_MASK;
+        let next_bits = if abs == 0 {
+            TINY_BITS
+        } else if bits == abs {
+            bits + 1
+        } else {
+            bits - 1
+        };
+        Self::from_bits(next_bits)
+    }
+
+    fn next_down(self) -> Self {
+        const NEG_TINY_BITS: u32 = 0x8000_0001; // Smallest (in magnitude) negative f32.
+        const CLEAR_SIGN_MASK: u32 = 0x7fff_ffff;
+
+        let bits = self.to_bits();
+        if self.is_nan() || bits == Self::NEG_INFINITY.to_bits() {
+            return self;
+        }
+
+        let abs = bits & CLEAR_SIGN_MASK;
+        let next_bits = if abs == 0 {
+            NEG_TINY_BITS
+        } else if bits == abs {
+            bits - 1
+        } else {
+            bits + 1
+        };
+        Self::from_bits(next_bits)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

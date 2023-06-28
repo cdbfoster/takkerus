@@ -12,6 +12,7 @@ use tak::{Ply, State};
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
 use crate::plies::{Fallibility, KillerMoves, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
+use crate::util::Neighbors;
 
 #[derive(Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
@@ -369,7 +370,7 @@ struct SearchState<'a, const N: usize> {
     evaluator: &'a dyn Evaluator<N>,
 }
 
-#[instrument(level = "trace", skip_all, fields(rd = remaining_depth, %alpha, %beta, scout = alpha + 1 == beta))]
+#[instrument(level = "trace", skip_all, fields(rd = remaining_depth, %alpha, %beta, scout = alpha.next_up() == beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &State<N>,
@@ -387,7 +388,7 @@ fn minimax<const N: usize>(
         return evaluation;
     }
 
-    if alpha + 1 == beta {
+    if alpha.next_up() == beta {
         search.stats.scouted += 1;
     }
 
@@ -433,7 +434,14 @@ fn minimax<const N: usize>(
         // Apply a null move.
         state.ply_count += 1;
 
-        let eval = -minimax(search, &state, remaining_depth - 3, -beta, -beta + 1, false);
+        let eval = -minimax(
+            search,
+            &state,
+            remaining_depth - 3,
+            -beta,
+            (-beta).next_up(),
+            false,
+        );
 
         // Undo the null move.
         state.ply_count -= 1;
@@ -480,7 +488,7 @@ fn minimax<const N: usize>(
                 search,
                 &state,
                 remaining_depth - 1,
-                -alpha - 1,
+                (-alpha).next_down(),
                 -alpha,
                 true,
             );

@@ -3,7 +3,7 @@ use std::fs::File;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use ::analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator, EVAL_SCALE};
+use ::analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator};
 use tak::{State, Tps};
 
 #[pyfunction]
@@ -42,5 +42,5 @@ pub fn evaluate_tps(tps_string: String, model_file: Option<String>) -> PyResult<
         _ => unreachable!(),
     };
 
-    Ok(evaluation.into_f32() / EVAL_SCALE)
+    Ok(evaluation.into())
 }
