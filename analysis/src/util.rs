@@ -1,3 +1,5 @@
+use std::io;
+
 use tak::{edge_masks, Bitmap, Direction};
 
 #[derive(Clone)]
@@ -141,6 +143,10 @@ impl Neighbors for f32 {
         };
         Self::from_bits(next_bits)
     }
+}
+
+pub trait Sender<T> {
+    fn send(&self, value: T) -> Result<(), io::Error>;
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ use tak::{Ply, State};
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
 use crate::plies::{Fallibility, KillerMoves, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
-use crate::util::Neighbors;
+use crate::util::{Neighbors, Sender};
 
 #[derive(Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
@@ -31,6 +31,8 @@ pub struct AnalysisConfig<'a, const N: usize> {
     /// The evaluator to use for the search. If none, a default will be
     /// used internally.
     pub evaluator: Option<&'a dyn Evaluator<N>>,
+    /// A sender that will be used to send interim results during the search.
+    pub interim_analysis_sender: Option<Box<dyn Sender<Analysis<N>>>>,
 }
 
 #[derive(Debug)]
@@ -46,7 +48,7 @@ impl<const N: usize> Default for PersistentState<N> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Analysis<const N: usize> {
     pub depth: u32,
     pub final_state: State<N>,
@@ -202,6 +204,12 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             stats: &analysis.stats + &search.stats,
             time: search_start_time.elapsed(),
         };
+
+        if let Some(sender) = &config.interim_analysis_sender {
+            if let Err(error) = sender.send(analysis.clone()) {
+                error!(?error, "Could not send interim analysis.");
+            }
+        }
 
         let depth_time = depth_start_time.elapsed();
 

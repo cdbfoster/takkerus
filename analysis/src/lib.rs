@@ -1,5 +1,6 @@
 pub use self::search::{analyze, Analysis, AnalysisConfig, PersistentState, Statistics};
 pub use self::transposition_table::{TranspositionTable, TranspositionTableEntry};
+pub use self::util::Sender;
 
 pub mod evaluation;
 pub mod plies;

@@ -1,15 +1,19 @@
 //! A limited TEI implementation, suitable for running analysis via (RaceTrack)[https://github.com/MortenLohne/racetrack].
 
 use std::fmt::Write;
+use std::io;
 use std::sync::Mutex;
 
+use async_std::channel::{self, Sender};
 use async_std::io::{prelude::BufReadExt, stdin, BufReader};
 use async_std::prelude::*;
 use async_std::task;
 use once_cell::sync::Lazy;
 use tracing::error;
 
-use analysis::{analyze, version, AnalysisConfig, PersistentState};
+use analysis::{
+    analyze, version, Analysis, AnalysisConfig, PersistentState, Sender as SenderTrait,
+};
 use tak::{Komi, PtnGame, PtnPly, State, Tps};
 
 use crate::args::{Ai, TeiConfig};
@@ -150,35 +154,59 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
 
         let state: State<N> = game.clone().try_into().expect("could not create state");
 
+        struct AnalysisSender<const M: usize>(Sender<Analysis<M>>);
+
+        impl<const M: usize> SenderTrait<Analysis<M>> for AnalysisSender<M> {
+            fn send(&self, value: Analysis<M>) -> Result<(), io::Error> {
+                self.0
+                    .try_send(value)
+                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "could not send analysis"))
+            }
+        }
+
+        let (sender, receiver) = {
+            let (s, r) = channel::unbounded();
+            (AnalysisSender::<N>(s), r)
+        };
+
         task::spawn_blocking(move || {
-            let analysis = {
-                let mut guard = persistent_state.lock().unwrap();
+            let mut guard = persistent_state.lock().unwrap();
 
-                let analysis_config = AnalysisConfig {
-                    depth_limit,
-                    time_limit,
-                    predict_time,
-                    persistent_state: Some(&mut *guard),
-                    ..Default::default()
-                };
-
-                analyze(analysis_config, &state)
+            let analysis_config = AnalysisConfig {
+                depth_limit,
+                time_limit,
+                predict_time,
+                persistent_state: Some(&mut *guard),
+                interim_analysis_sender: Some(Box::new(sender)),
+                ..Default::default()
             };
 
-            let mut info = String::from("info");
-            write!(info, " score cp {}", analysis.evaluation).unwrap();
-            write!(info, " pv").unwrap();
-            for &ply in &analysis.principal_variation {
-                let ptn: PtnPly = ply.into();
-                write!(info, " {ptn}").unwrap();
-            }
-            println!("{info}");
+            analyze(analysis_config, &state);
+        });
 
-            if let Some(&ply) = analysis.principal_variation.first() {
-                let ptn: PtnPly = ply.into();
-                println!("bestmove {ptn}");
-            } else {
-                error!(?analysis, "No PV returned from search.");
+        task::spawn(async move {
+            let mut last_analysis = None;
+
+            while let Ok(analysis) = receiver.recv().await {
+                let mut info = String::from("info");
+                write!(info, " score cp {}", analysis.evaluation).unwrap();
+                write!(info, " pv").unwrap();
+                for &ply in &analysis.principal_variation {
+                    let ptn: PtnPly = ply.into();
+                    write!(info, " {ptn}").unwrap();
+                }
+                println!("{info}");
+
+                last_analysis = Some(analysis);
+            }
+
+            if let Some(analysis) = last_analysis {
+                if let Some(&ply) = analysis.principal_variation.first() {
+                    let ptn: PtnPly = ply.into();
+                    println!("bestmove {ptn}");
+                } else {
+                    error!(?analysis, "No PV returned from search.");
+                }
             }
         });
     }
