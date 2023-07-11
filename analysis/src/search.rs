@@ -378,7 +378,7 @@ struct SearchState<'a, const N: usize> {
     evaluator: &'a dyn Evaluator<N>,
 }
 
-#[instrument(level = "trace", skip_all, fields(rd = remaining_depth, %alpha, %beta, scout = alpha.next_up() == beta))]
+#[instrument(level = "trace", skip_all, fields(rd = remaining_depth, %alpha, %beta, pv_node = alpha.next_up() != beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
     state: &State<N>,
@@ -402,7 +402,8 @@ fn minimax<const N: usize>(
         return evaluation;
     }
 
-    if alpha.next_up() == beta {
+    let pv_node = alpha.next_up() != beta;
+    if !pv_node {
         search.stats.scouted += 1;
     }
 
