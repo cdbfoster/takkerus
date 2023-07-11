@@ -347,7 +347,7 @@ fn fetch_pv<const N: usize>(
             break;
         } else {
             if entry.bound != Bound::Exact {
-                debug!(?entry, "Adding non-exact ply.");
+                warn!(?entry, "Adding non-exact ply.");
             }
 
             pv.push(entry.ply);
