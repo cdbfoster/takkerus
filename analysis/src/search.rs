@@ -560,7 +560,7 @@ fn minimax<const N: usize>(
             evaluation: alpha,
             node_count: search.stats.visited.try_into().unwrap_or(u32::MAX),
             depth: remaining_depth as u8,
-            ply_count: (state.ply_count & 0xFF) as u8,
+            ply_count: state.ply_count,
             ply: best_ply,
         },
     );

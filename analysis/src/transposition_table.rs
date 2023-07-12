@@ -41,7 +41,7 @@ impl<const N: usize> TranspositionTable<N> {
 
         fn score<const N: usize>(entry: &TranspositionTableEntry<N>) -> u32 {
             // Score by total ply depth, bound, and then individual search depth.
-            ((entry.depth as u32 + entry.ply_count as u32) << 10)
+            ((entry.depth as u32 + entry.ply_count as u32) << 16)
                 | ((entry.bound as u32) << 8)
                 | (entry.depth as u32)
         }
@@ -130,7 +130,7 @@ pub struct TranspositionTableEntry<const N: usize> {
     pub evaluation: Evaluation,
     pub node_count: u32,
     pub depth: u8,
-    pub ply_count: u8,
+    pub ply_count: u16,
     pub ply: Ply<N>,
 }
 
