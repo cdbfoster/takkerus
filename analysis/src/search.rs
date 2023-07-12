@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Neg};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -180,7 +180,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         debug!(depth, "Beginning analysis...");
 
-        let evaluation = minimax(
+        let root = minimax(
             &mut search,
             state,
             depth,
@@ -193,13 +193,16 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             break;
         }
 
-        let (principal_variation, final_state) =
-            fetch_pv(state, &search.persistent_state.transposition_table, depth);
+        let (principal_variation, final_state) = fetch_pv(
+            state,
+            &search.persistent_state.transposition_table,
+            root.depth,
+        );
 
         analysis = Analysis {
-            depth: depth as u32,
+            depth: root.depth as u32,
             final_state,
-            evaluation,
+            evaluation: root.evaluation,
             principal_variation,
             stats: &analysis.stats + &search.stats,
             time: search_start_time.elapsed(),
@@ -216,7 +219,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         info!(
             depth = analysis.depth,
             time = %format!("{:05.2}s", analysis.time.as_secs_f64()),
-            eval = %format!("{:<4}", evaluation),
+            eval = %format!("{:<4}", analysis.evaluation),
             pv = ?analysis.principal_variation,
             "Analyzed:",
         );
@@ -282,7 +285,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             "Search:",
         );
 
-        if evaluation.is_terminal() {
+        if analysis.evaluation.is_terminal() {
             info!("Tinuë found. Stopping.");
             break;
         }
@@ -378,6 +381,23 @@ struct SearchState<'a, const N: usize> {
     evaluator: &'a dyn Evaluator<N>,
 }
 
+#[derive(Clone, Copy)]
+struct BranchResult {
+    depth: usize,
+    evaluation: Evaluation,
+}
+
+impl Neg for BranchResult {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self {
+            depth: self.depth,
+            evaluation: -self.evaluation,
+        }
+    }
+}
+
 #[instrument(level = "trace", skip_all, fields(rd = remaining_depth, %alpha, %beta, pv_node = alpha.next_up() != beta))]
 fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,
@@ -386,7 +406,7 @@ fn minimax<const N: usize>(
     mut alpha: Evaluation,
     beta: Evaluation,
     null_move_allowed: bool,
-) -> Evaluation {
+) -> BranchResult {
     search.stats.visited += 1;
 
     let resolution = state.resolution();
@@ -397,9 +417,14 @@ fn minimax<const N: usize>(
 
     if remaining_depth == 0 || resolution.is_some() {
         let evaluation = search.evaluator.evaluate(state, resolution);
+
         trace!(%evaluation, "Leaf");
         search.stats.evaluated += 1;
-        return evaluation;
+
+        return BranchResult {
+            depth: 0,
+            evaluation,
+        };
     }
 
     let pv_node = alpha.next_up() != beta;
@@ -430,11 +455,14 @@ fn minimax<const N: usize>(
         if is_save || is_terminal && state.validate_ply(entry.ply).is_ok() {
             search.stats.tt_saves += 1;
 
-            match entry.bound {
-                Bound::Exact => return entry.evaluation,
-                Bound::Upper => return alpha,
-                Bound::Lower => return beta,
-            }
+            return BranchResult {
+                depth: entry.depth as usize,
+                evaluation: match entry.bound {
+                    Bound::Exact => entry.evaluation,
+                    Bound::Upper => alpha,
+                    Bound::Lower => beta,
+                },
+            };
         }
 
         tt_ply = Some(entry.ply);
@@ -449,7 +477,7 @@ fn minimax<const N: usize>(
         // Apply a null move.
         state.ply_count += 1;
 
-        let eval = -minimax(
+        let BranchResult { depth, evaluation } = -minimax(
             search,
             &state,
             remaining_depth - 3,
@@ -461,10 +489,14 @@ fn minimax<const N: usize>(
         // Undo the null move.
         state.ply_count -= 1;
 
-        if eval >= beta {
+        if evaluation >= beta {
             trace!("Null move cutoff");
             search.stats.null_cutoff += 1;
-            return beta;
+
+            return BranchResult {
+                depth,
+                evaluation: beta,
+            };
         }
     }
 
@@ -475,8 +507,13 @@ fn minimax<const N: usize>(
     let mut ply_generator =
         PlyGenerator::new(state, tt_ply, search.killer_moves[search_depth].clone());
 
-    let mut raised_alpha = false;
+    let mut best = BranchResult {
+        depth: 0,
+        evaluation: Evaluation::MIN,
+    };
     let mut best_ply = None;
+
+    let mut raised_alpha = false;
 
     for (i, (fallibility, ply)) in ply_generator.plies().enumerate() {
         let _move_span = trace_span!("move", ?ply).entered();
@@ -492,14 +529,14 @@ fn minimax<const N: usize>(
             Infallible => state.execute_ply_unchecked(ply),
         }
 
-        let next_eval = if i == 0 {
+        let next = if i == 0 {
             let _leftmost_span = trace_span!("leftmost").entered();
             // On the first iteration, perform a full-window search.
             -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
-            let scout_eval = -minimax(
+            let scout = -minimax(
                 search,
                 &state,
                 remaining_depth - 1,
@@ -508,21 +545,27 @@ fn minimax<const N: usize>(
                 true,
             );
 
-            if scout_eval > alpha && scout_eval < beta {
-                trace!(%alpha, %beta, %scout_eval, "Researching");
+            if scout.evaluation > alpha && scout.evaluation < beta {
+                trace!(%alpha, %beta, %scout.evaluation, "Researching");
                 let _researched_span = trace_span!("researched").entered();
                 search.stats.re_searched += 1;
                 // If we are inside the PV window instead, we need to re-search using the full PV window.
                 -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
             } else {
-                scout_eval
+                scout
             }
         };
 
-        if next_eval > alpha {
-            alpha = next_eval;
-            raised_alpha = true;
+        if next.evaluation > best.evaluation {
+            best = next;
+            best.depth += 1;
+
             best_ply = Some((i, ply));
+        }
+
+        if next.evaluation > alpha {
+            alpha = next.evaluation;
+            raised_alpha = true;
 
             if alpha >= beta {
                 alpha = beta;
@@ -532,12 +575,13 @@ fn minimax<const N: usize>(
 
                 break;
             }
-        } else if best_ply.is_none() {
-            best_ply = Some((i, ply));
         }
 
         if search.interrupted.load(Ordering::Relaxed) {
-            return alpha;
+            return BranchResult {
+                depth: best.depth,
+                evaluation: alpha,
+            };
         }
     }
 
@@ -559,7 +603,7 @@ fn minimax<const N: usize>(
             },
             evaluation: alpha,
             node_count: search.stats.visited.try_into().unwrap_or(u32::MAX),
-            depth: remaining_depth as u8,
+            depth: best.depth as u8,
             ply_count: state.ply_count,
             ply: best_ply,
         },
@@ -571,7 +615,10 @@ fn minimax<const N: usize>(
         search.stats.tt_store_fails += 1;
     }
 
-    alpha
+    BranchResult {
+        depth: best.depth,
+        evaluation: alpha,
+    }
 }
 
 fn spawn_timing_interrupt_thread<const N: usize>(
