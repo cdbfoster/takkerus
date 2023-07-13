@@ -84,6 +84,21 @@ impl<'a, const N: usize> Iterator for TtPly<'a, N> {
 
 // Killer moves =================================
 
+#[derive(Default)]
+pub(crate) struct DepthKillerMoves<const N: usize> {
+    depths: Vec<KillerMoves<N>>,
+}
+
+impl<const N: usize> DepthKillerMoves<N> {
+    pub(crate) fn depth(&mut self, depth: usize) -> &mut KillerMoves<N> {
+        while self.depths.len() <= depth {
+            self.depths.push(KillerMoves::default());
+        }
+
+        &mut self.depths[depth]
+    }
+}
+
 pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
 
 pub(super) struct Killers<'a, const N: usize> {

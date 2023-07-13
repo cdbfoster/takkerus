@@ -11,7 +11,7 @@ use tracing::{debug, error, info, instrument, trace, trace_span, warn};
 use tak::{Ply, State};
 
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
-use crate::plies::{Fallibility, KillerMoves, PlyGenerator};
+use crate::plies::{DepthKillerMoves, Fallibility, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 use crate::util::{Neighbors, Sender};
 
@@ -183,7 +183,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             stats: Default::default(),
             interrupted: &config.interrupted,
             persistent_state,
-            killer_moves: vec![KillerMoves::default(); depth],
+            killer_moves: Default::default(),
             exact_eval: config.exact_eval,
             evaluator,
         };
@@ -376,7 +376,7 @@ struct SearchState<'a, const N: usize> {
     stats: DepthStats,
     interrupted: &'a AtomicBool,
     persistent_state: &'a mut PersistentState<N>,
-    killer_moves: Vec<KillerMoves<N>>,
+    killer_moves: DepthKillerMoves<N>,
     exact_eval: bool,
     evaluator: &'a dyn Evaluator<N>,
 }
@@ -527,8 +527,11 @@ fn minimax<const N: usize>(
 
     // Ply search ===============================
 
-    let mut ply_generator =
-        PlyGenerator::new(state, tt_ply, search.killer_moves[search_depth].clone());
+    let mut ply_generator = PlyGenerator::new(
+        state,
+        tt_ply,
+        search.killer_moves.depth(search_depth).clone(),
+    );
 
     let mut best = BranchResult {
         depth: 0,
@@ -594,7 +597,7 @@ fn minimax<const N: usize>(
                 alpha = beta;
                 search.stats.depth(search_depth).beta_cutoff += 1;
 
-                search.killer_moves[search_depth].push(ply);
+                search.killer_moves.depth(search_depth).push(ply);
 
                 break;
             }
