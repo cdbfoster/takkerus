@@ -1,4 +1,5 @@
 use std::fmt::Write;
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Neg};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -106,6 +107,16 @@ impl AddAssign<&Statistics> for Statistics {
     }
 }
 
+impl<'a> Sum<&'a Self> for Statistics {
+    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
+        let mut total = Self::default();
+        for x in iter {
+            total += x;
+        }
+        total
+    }
+}
+
 pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> Analysis<N> {
     info!(
         depth_limit = %if let Some(depth_limit) = config.depth_limit {
@@ -160,9 +171,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         time: Duration::ZERO,
     };
 
-    // Visited nodes per depth, used in calculating effective branching factor.
-    let mut node_counts = vec![analysis.stats.visited.max(1)];
-
     let search_start_time = Instant::now();
 
     for depth in 1..=max_depth {
@@ -199,12 +207,14 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             root.depth,
         );
 
+        let total_stats = search.stats.total();
+
         analysis = Analysis {
             depth: root.depth as u32,
             final_state,
             evaluation: root.evaluation,
             principal_variation,
-            stats: &analysis.stats + &search.stats,
+            stats: &analysis.stats + &total_stats,
             time: search_start_time.elapsed(),
         };
 
@@ -225,17 +235,17 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         );
 
         debug!(
-            visited = search.stats.visited,
-            evaluated = search.stats.evaluated,
-            terminal = search.stats.terminal,
-            scouted = search.stats.scouted,
-            re_searched = search.stats.re_searched,
-            beta_cutoff = search.stats.beta_cutoff,
-            null_cutoff = search.stats.null_cutoff,
-            tt_stores = search.stats.tt_stores,
-            tt_store_fails = search.stats.tt_store_fails,
-            tt_hits = search.stats.tt_hits,
-            tt_saves = search.stats.tt_saves,
+            visited = total_stats.visited,
+            evaluated = total_stats.evaluated,
+            terminal = total_stats.terminal,
+            scouted = total_stats.scouted,
+            re_searched = total_stats.re_searched,
+            beta_cutoff = total_stats.beta_cutoff,
+            null_cutoff = total_stats.null_cutoff,
+            tt_stores = total_stats.tt_stores,
+            tt_store_fails = total_stats.tt_store_fails,
+            tt_hits = total_stats.tt_hits,
+            tt_saves = total_stats.tt_saves,
             tt_full = %format!(
                 "{:05.2}%",
                 100.0 * search.persistent_state.transposition_table.len() as f64
@@ -246,9 +256,9 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         // Best ply ordering calc.
         {
-            let total = search.stats.best_ply_order.iter().sum::<u64>().max(1);
+            let total = total_stats.best_ply_order.iter().sum::<u64>().max(1);
             let mut buffer = String::new();
-            for (i, c) in search.stats.best_ply_order.into_iter().enumerate() {
+            for (i, c) in total_stats.best_ply_order.into_iter().enumerate() {
                 if i < 5 {
                     write!(
                         buffer,
@@ -265,22 +275,12 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             debug!("Best ply ordering: {buffer}");
         }
 
-        node_counts.push(search.stats.visited.max(1));
-
-        // Treat even and odd depths separately (if there are enough data points), to account for alpha-beta's quirk.
-        let branching_factor = if node_counts.len() <= 2 {
-            effective_branching_factor(node_counts.iter().copied())
-        } else if depth % 2 == 1 {
-            effective_branching_factor(node_counts.iter().copied().skip(1).step_by(2))
-        } else {
-            effective_branching_factor(node_counts.iter().copied().step_by(2))
-        };
-
+        let branching_factor = effective_branching_factor(search.stats.iter().map(|d| d.visited));
         let next_depth_prediction = depth_time.as_secs_f64() * branching_factor;
 
         debug!(
             branch = %format!("{:.2}", branching_factor),
-            rate = %format!("{}n/s", (search.stats.visited as f64 / depth_time.as_secs_f64()) as u64),
+            rate = %format!("{}n/s", (total_stats.visited as f64 / depth_time.as_secs_f64()) as u64),
             next_depth_prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
             "Search:",
         );
@@ -313,22 +313,16 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     analysis
 }
 
-fn effective_branching_factor(node_counts: impl Iterator<Item = u64>) -> f64 {
-    let mut node_counts = node_counts.peekable();
-    let mut factors = Vec::new();
+fn effective_branching_factor(node_counts: impl Iterator<Item = u64> + Clone) -> f64 {
+    let count = (node_counts.clone().count() - 1) as f64;
 
-    while let Some(denominator) = node_counts.next() {
-        if let Some(&numerator) = node_counts.peek() {
-            factors.push(numerator as f64 / denominator as f64);
-        } else {
-            if factors.is_empty() {
-                factors.push(denominator as f64);
-            }
-            break;
-        }
-    }
-
-    let average = factors.iter().sum::<f64>() / factors.len() as f64;
+    let average = node_counts
+        .clone()
+        .skip(1)
+        .zip(node_counts)
+        .map(|(n, d)| n as f64 / d as f64)
+        .sum::<f64>()
+        / count;
 
     average.sqrt()
 }
@@ -373,12 +367,35 @@ fn fetch_pv<const N: usize>(
 
 struct SearchState<'a, const N: usize> {
     start_ply: u16,
-    stats: Statistics,
+    stats: DepthStats,
     interrupted: &'a AtomicBool,
     persistent_state: &'a mut PersistentState<N>,
     killer_moves: Vec<KillerMoves<N>>,
     exact_eval: bool,
     evaluator: &'a dyn Evaluator<N>,
+}
+
+#[derive(Default)]
+struct DepthStats {
+    depths: Vec<Statistics>,
+}
+
+impl DepthStats {
+    fn iter(&self) -> impl Iterator<Item = &Statistics> + Clone {
+        self.depths.iter()
+    }
+
+    fn depth(&mut self, depth: usize) -> &mut Statistics {
+        while self.depths.len() <= depth {
+            self.depths.push(Statistics::default());
+        }
+
+        &mut self.depths[depth]
+    }
+
+    fn total(&self) -> Statistics {
+        self.depths.iter().sum()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -407,19 +424,21 @@ fn minimax<const N: usize>(
     beta: Evaluation,
     null_move_allowed: bool,
 ) -> BranchResult {
-    search.stats.visited += 1;
+    let search_depth = (state.ply_count - search.start_ply) as usize;
+
+    search.stats.depth(search_depth).visited += 1;
 
     let resolution = state.resolution();
 
     if resolution.is_some() {
-        search.stats.terminal += 1;
+        search.stats.depth(search_depth).terminal += 1;
     }
 
     if remaining_depth == 0 || resolution.is_some() {
         let evaluation = search.evaluator.evaluate(state, resolution);
 
         trace!(%evaluation, "Leaf");
-        search.stats.evaluated += 1;
+        search.stats.depth(search_depth).evaluated += 1;
 
         return BranchResult {
             depth: 0,
@@ -429,7 +448,7 @@ fn minimax<const N: usize>(
 
     let pv_node = alpha.next_up() != beta;
     if !pv_node {
-        search.stats.scouted += 1;
+        search.stats.depth(search_depth).scouted += 1;
     }
 
     // Fetch from transposition table ===========
@@ -441,7 +460,7 @@ fn minimax<const N: usize>(
         .transposition_table
         .get(state.metadata.hash)
     {
-        search.stats.tt_hits += 1;
+        search.stats.depth(search_depth).tt_hits += 1;
 
         let is_save = entry.depth as usize >= remaining_depth
             && match entry.bound {
@@ -453,7 +472,7 @@ fn minimax<const N: usize>(
         let is_terminal = entry.bound == Bound::Exact && entry.evaluation.is_terminal();
 
         if is_save || is_terminal && state.validate_ply(entry.ply).is_ok() {
-            search.stats.tt_saves += 1;
+            search.stats.depth(search_depth).tt_saves += 1;
 
             return BranchResult {
                 depth: entry.depth as usize,
@@ -491,7 +510,7 @@ fn minimax<const N: usize>(
 
         if evaluation >= beta {
             trace!("Null move cutoff");
-            search.stats.null_cutoff += 1;
+            search.stats.depth(search_depth).null_cutoff += 1;
 
             return BranchResult {
                 depth,
@@ -501,8 +520,6 @@ fn minimax<const N: usize>(
     }
 
     // Ply search ===============================
-
-    let search_depth = (state.ply_count - search.start_ply) as usize;
 
     let mut ply_generator =
         PlyGenerator::new(state, tt_ply, search.killer_moves[search_depth].clone());
@@ -548,7 +565,7 @@ fn minimax<const N: usize>(
             if scout.evaluation > alpha && scout.evaluation < beta {
                 trace!(%alpha, %beta, %scout.evaluation, "Researching");
                 let _researched_span = trace_span!("researched").entered();
-                search.stats.re_searched += 1;
+                search.stats.depth(search_depth).re_searched += 1;
                 // If we are inside the PV window instead, we need to re-search using the full PV window.
                 -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
             } else {
@@ -569,7 +586,7 @@ fn minimax<const N: usize>(
 
             if alpha >= beta {
                 alpha = beta;
-                search.stats.beta_cutoff += 1;
+                search.stats.depth(search_depth).beta_cutoff += 1;
 
                 search.killer_moves[search_depth].push(ply);
 
@@ -587,7 +604,7 @@ fn minimax<const N: usize>(
 
     let (i, best_ply) = best_ply.expect("no plies were searched");
 
-    search.stats.best_ply_order[i.min(5)] += 1;
+    search.stats.depth(search_depth).best_ply_order[i.min(5)] += 1;
 
     // Store in transposition table =============
 
@@ -602,7 +619,13 @@ fn minimax<const N: usize>(
                 Bound::Upper
             },
             evaluation: alpha,
-            node_count: search.stats.visited.try_into().unwrap_or(u32::MAX),
+            node_count: search
+                .stats
+                .iter()
+                .map(|d| d.visited)
+                .sum::<u64>()
+                .try_into()
+                .unwrap_or(u32::MAX),
             depth: best.depth as u8,
             ply_count: state.ply_count,
             ply: best_ply,
@@ -610,9 +633,9 @@ fn minimax<const N: usize>(
     );
 
     if inserted {
-        search.stats.tt_stores += 1;
+        search.stats.depth(search_depth).tt_stores += 1;
     } else {
-        search.stats.tt_store_fails += 1;
+        search.stats.depth(search_depth).tt_store_fails += 1;
     }
 
     BranchResult {
