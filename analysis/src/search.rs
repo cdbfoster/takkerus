@@ -173,10 +173,10 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
     let search_start_time = Instant::now();
 
-    let mut depth_times = Vec::new();
+    let mut iteration_times = Vec::new();
 
-    for depth in 1..=max_depth {
-        let depth_start_time = Instant::now();
+    for iteration in 1..=max_depth {
+        let iteration_start_time = Instant::now();
 
         let mut search = SearchState {
             start_ply: state.ply_count,
@@ -188,12 +188,12 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             evaluator,
         };
 
-        debug!(depth, "Beginning analysis...");
+        debug!(iteration, "Beginning analysis...");
 
         let root = minimax(
             &mut search,
             state,
-            depth,
+            iteration,
             Evaluation::MIN,
             Evaluation::MAX,
             true,
@@ -226,7 +226,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             }
         }
 
-        let depth_time = depth_start_time.elapsed();
+        let iteration_time = iteration_start_time.elapsed();
 
         info!(
             depth = analysis.depth,
@@ -277,31 +277,31 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             debug!("Best ply ordering: {buffer}");
         }
 
-        depth_times.push(depth_time.as_secs_f64());
+        iteration_times.push(iteration_time.as_secs_f64());
 
         // Time factors are just the current iteration time divided by the previous iteration time.
-        let mut time_factors = depth_times
+        let mut time_factors = iteration_times
             .iter()
             .copied()
-            .zip(std::iter::once(depth_times[0]).chain(depth_times.iter().copied()))
+            .zip(std::iter::once(iteration_times[0]).chain(iteration_times.iter().copied()))
             .map(|(n, d)| n / d);
 
         // Calculate the average time factor separately for even/odd iterations.
         let time_factor = 2.0
-            * if depth_times.len() == 1 {
+            * if iteration_times.len() == 1 {
                 time_factors.next().unwrap()
-            } else if depth % 2 == 1 {
-                time_factors.skip(1).step_by(2).sum::<f64>() / depth_times.len() as f64
+            } else if iteration % 2 == 1 {
+                time_factors.skip(1).step_by(2).sum::<f64>() / iteration_times.len() as f64
             } else {
-                time_factors.step_by(2).sum::<f64>() / depth_times.len() as f64
+                time_factors.step_by(2).sum::<f64>() / iteration_times.len() as f64
             };
 
-        let next_depth_prediction = depth_time.as_secs_f64() * time_factor;
+        let next_iteration_prediction = iteration_time.as_secs_f64() * time_factor;
 
         debug!(
             time_factor = %format!("{:.2}", time_factor),
-            rate = %format!("{}n/s", (total_stats.visited as f64 / depth_time.as_secs_f64()) as u64),
-            next_depth_prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
+            rate = %format!("{}n/s", (total_stats.visited as f64 / iteration_time.as_secs_f64()) as u64),
+            next_iteration_prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
             "Search:",
         );
 
@@ -312,12 +312,12 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         if config.predict_time {
             if let Some(time_limit) = config.time_limit {
-                if analysis.time + Duration::from_secs_f64(next_depth_prediction) > time_limit {
+                if analysis.time + Duration::from_secs_f64(next_iteration_prediction) > time_limit {
                     info!(
                         time = %format!("{:.2}s", analysis.time.as_secs_f64()),
                         limit = %format!("{:.2}s", time_limit.as_secs_f64()),
-                        prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
-                        "Next depth is predicted to take too long. Stopping."
+                        prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
+                        "Next iteration is predicted to take too long. Stopping."
                     );
                     break;
                 }
