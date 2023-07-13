@@ -173,6 +173,8 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
     let search_start_time = Instant::now();
 
+    let mut depth_times = Vec::new();
+
     for depth in 1..=max_depth {
         let depth_start_time = Instant::now();
 
@@ -275,11 +277,29 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             debug!("Best ply ordering: {buffer}");
         }
 
-        let branching_factor = effective_branching_factor(search.stats.iter().map(|d| d.visited));
-        let next_depth_prediction = depth_time.as_secs_f64() * branching_factor;
+        depth_times.push(depth_time.as_secs_f64());
+
+        // Time factors are just the current iteration time divided by the previous iteration time.
+        let mut time_factors = depth_times
+            .iter()
+            .copied()
+            .zip(std::iter::once(depth_times[0]).chain(depth_times.iter().copied()))
+            .map(|(n, d)| n / d);
+
+        // Calculate the average time factor separately for even/odd iterations.
+        let time_factor = 2.0
+            * if depth_times.len() == 1 {
+                time_factors.next().unwrap()
+            } else if depth % 2 == 1 {
+                time_factors.skip(1).step_by(2).sum::<f64>() / depth_times.len() as f64
+            } else {
+                time_factors.step_by(2).sum::<f64>() / depth_times.len() as f64
+            };
+
+        let next_depth_prediction = depth_time.as_secs_f64() * time_factor;
 
         debug!(
-            branch = %format!("{:.2}", branching_factor),
+            time_factor = %format!("{:.2}", time_factor),
             rate = %format!("{}n/s", (total_stats.visited as f64 / depth_time.as_secs_f64()) as u64),
             next_depth_prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_depth_prediction),
             "Search:",
@@ -311,20 +331,6 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     }
 
     analysis
-}
-
-fn effective_branching_factor(node_counts: impl Iterator<Item = u64> + Clone) -> f64 {
-    let count = (node_counts.clone().count() - 1) as f64;
-
-    let average = node_counts
-        .clone()
-        .skip(1)
-        .zip(node_counts)
-        .map(|(n, d)| n as f64 / d as f64)
-        .sum::<f64>()
-        / count;
-
-    average.sqrt()
 }
 
 fn fetch_pv<const N: usize>(
