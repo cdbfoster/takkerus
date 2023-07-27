@@ -132,10 +132,10 @@ impl<const N: usize> State<N> {
                     ));
                 }
 
-                let drop_count = drops.into_iter().position(|d| d == 0).unwrap();
+                let drop_count = drops.len();
 
-                // Must not carry more than the size of the size of the stack.
-                let carry_total = drops.iter().sum::<u8>() as usize;
+                // Must not carry more than the size of the stack.
+                let carry_total = drops.carry();
                 if carry_total > stack.len() {
                     return Err(StateError::InvalidSpread("Illegal carry amount."));
                 }
@@ -159,7 +159,7 @@ impl<const N: usize> State<N> {
                         Some(StandingStone) => {
                             valid_crush = i == drop_count - 1
                                 && top_piece.piece_type() == Capstone
-                                && drops[i] == 1;
+                                && drops.iter().last() == Some(1);
 
                             if !valid_crush {
                                 return Err(StateError::InvalidSpread(
@@ -251,7 +251,7 @@ impl<const N: usize> State<N> {
 
                 let (dx, dy) = direction.to_offset();
                 let (mut tx, mut ty) = (x as i8, y as i8);
-                for drop in drops.into_iter().filter(|d| *d > 0) {
+                for drop in drops.iter() {
                     tx += dx;
                     ty += dy;
 

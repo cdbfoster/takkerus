@@ -384,8 +384,7 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                 let (mut tx, mut ty) = (x as i8, y as i8);
                 let (dx, dy) = direction.to_offset();
 
-                let mut i = 0;
-                loop {
+                for drop in drops.iter() {
                     // Check the color of the stone we're covering.
                     tx += dx;
                     ty += dy;
@@ -400,7 +399,6 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                         }
                     }
 
-                    let drop = drops[i];
                     carry -= drop as usize;
 
                     if carry == 0 {
@@ -417,8 +415,6 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                         reveals_opponent = true;
                     }
                     mask >>= 1;
-
-                    i += 1;
                 }
 
                 if delta_fcd > 0 {

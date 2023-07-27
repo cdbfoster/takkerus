@@ -4,9 +4,7 @@ use std::iter::Chain;
 use tak::{Ply, State};
 
 pub(crate) use self::order::DepthKillerMoves;
-use self::order::{
-    generate_all_plies, score_plies, AllPlies, KillerMoves, Killers, PlacementWins, TtPly,
-};
+use self::order::{AllPlies, KillerMoves, Killers, PlacementWins, TtPly};
 
 pub mod generation;
 mod order;

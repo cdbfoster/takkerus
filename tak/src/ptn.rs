@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::piece::{Color, PieceType};
-use crate::ply::{Direction, Ply};
+use crate::ply::{Direction, Drops, Ply, PlyError};
 use crate::state::{Komi, State, StateError};
 use crate::tps::{Tps, TpsError};
 
@@ -86,7 +86,7 @@ impl PtnGame {
         self.turns
             .iter()
             .flat_map(|t| [t.p1_move.ply.clone(), t.p2_move.ply.clone()])
-            .filter_map(|p| p.map(|p| p.try_into()))
+            .filter_map(|p| p.map(|p| p.try_into().map_err(|e: PlyError| e.into())))
             .collect()
     }
 
@@ -620,26 +620,13 @@ impl FromStr for PtnPly {
 }
 
 impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
-    type Error = PtnError;
+    type Error = PlyError;
 
-    fn try_from(ply: PtnPly) -> Result<Self, Self::Error> {
-        // Validate x and y.
-        let (x, y) = match &ply {
-            PtnPly::Place { x, y, .. } => (x, y),
-            PtnPly::Spread { x, y, .. } => (x, y),
-        };
-        if *x as usize >= N || *y as usize >= N {
-            return Err(PtnError::InvalidPly(format!(
-                "Board is size {N} and position is ({}, {}).",
-                x + 1,
-                y + 1
-            )));
-        }
-
-        match ply {
+    fn try_from(ptn_ply: PtnPly) -> Result<Self, Self::Error> {
+        let ply = match ptn_ply {
             PtnPly::Place {
                 x, y, piece_type, ..
-            } => Ok(Self::Place { x, y, piece_type }),
+            } => Self::Place { x, y, piece_type },
             PtnPly::Spread {
                 x,
                 y,
@@ -647,48 +634,25 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
                 drops,
                 annotations,
             } => {
-                let carry = drops.iter().sum::<u8>();
-                if carry as usize > N {
-                    return Err(PtnError::InvalidPly(format!(
-                        "Cannot carry {carry} stones on a board of size {N}."
-                    )));
-                }
-
-                let drop_squares = drops.len() as u8;
-                let out_of_bounds = match direction {
-                    Direction::North => y + drop_squares >= N as u8,
-                    Direction::East => x + drop_squares >= N as u8,
-                    Direction::South => drop_squares > y,
-                    Direction::West => drop_squares > x,
-                };
-                if out_of_bounds {
-                    return Err(PtnError::InvalidPly(
-                        "Cannot spread out of bounds.".to_owned(),
-                    ));
-                }
-
-                let mut drops_array = [0; N];
-                drops_array[..drops.len()].copy_from_slice(&drops);
+                let compact_drops = Drops::new::<N>(&drops)?;
 
                 let crush = annotations
                     .map(|a| a.contains(|c| c == '*'))
                     .unwrap_or_default();
 
-                if crush && *drops.last().unwrap() > 1 {
-                    return Err(PtnError::InvalidPly(
-                        "Cannot crush with more than one stone.".to_owned(),
-                    ));
-                }
-
-                Ok(Self::Spread {
+                Self::Spread {
                     x,
                     y,
                     direction,
-                    drops: drops_array,
+                    drops: compact_drops,
                     crush,
-                })
+                }
             }
-        }
+        };
+
+        ply.validate()?;
+
+        Ok(ply)
     }
 }
 
@@ -696,7 +660,8 @@ impl<const N: usize> FromStr for Ply<N> {
     type Err = PtnError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<PtnPly>().and_then(|p| p.try_into())
+        s.parse::<PtnPly>()
+            .and_then(|p| p.try_into().map_err(|e: PlyError| e.into()))
     }
 }
 
@@ -719,7 +684,7 @@ impl<const N: usize> From<Ply<N>> for PtnPly {
                 x,
                 y,
                 direction,
-                drops: drops.into_iter().filter(|d| *d != 0).collect(),
+                drops: drops.iter().collect(),
                 annotations: crush.then(|| "*".to_owned()),
             },
         }
@@ -795,12 +760,12 @@ pub enum PtnError {
     InvalidPly(String),
     InvalidResult(String),
     OutOfBounds(String),
-    IllegalCarry(String),
     IncorrectSize(String),
     IncorrectTurn(String),
     IncorrectResult(String),
     TpsError(TpsError),
     StateError(StateError),
+    PlyError(PlyError),
 }
 
 impl From<IoError> for PtnError {
@@ -818,6 +783,12 @@ impl From<TpsError> for PtnError {
 impl From<StateError> for PtnError {
     fn from(error: StateError) -> Self {
         PtnError::StateError(error)
+    }
+}
+
+impl From<PlyError> for PtnError {
+    fn from(error: PlyError) -> Self {
+        PtnError::PlyError(error)
     }
 }
 
@@ -941,7 +912,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::North,
-                drops: [1, 0, 0, 0, 0],
+                drops: Drops::new::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -952,7 +923,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::East,
-                drops: [1, 0, 0, 0, 0],
+                drops: Drops::new::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -963,7 +934,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::South,
-                drops: [1, 0, 0, 0, 0],
+                drops: Drops::new::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -974,7 +945,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::West,
-                drops: [1, 0, 0, 0, 0],
+                drops: Drops::new::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -990,7 +961,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: [1, 0, 0, 0, 0],
+                drops: Drops::new::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -1001,7 +972,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: [1, 0, 0, 0, 0],
+                drops: Drops::new::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -1012,7 +983,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: [1, 2, 0, 0, 0],
+                drops: Drops::new::<5>(&[1, 2]).unwrap(),
                 crush: false,
             },
         );
@@ -1039,7 +1010,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: [2, 1, 0, 0, 0],
+                drops: Drops::new::<5>(&[2, 1]).unwrap(),
                 crush: true,
             },
         );

@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 
-use tak::{Bitmap, Direction, PieceType, Ply, State};
+use tak::{Bitmap, Direction, Drops, PieceType, Ply, State};
 
 pub fn placements<const N: usize>(
     locations: Bitmap<N>,
@@ -80,8 +80,7 @@ pub fn spreads<const N: usize>(
                         (unblocked || crush).then_some((combo, crush))
                     })
                     .map(move |(combo, crush)| {
-                        let mut drops = [0; N];
-                        drops[..combo.len()].copy_from_slice(combo);
+                        let drops = Drops::new::<N>(&combo).unwrap();
 
                         Ply::Spread {
                             x: x as u8,

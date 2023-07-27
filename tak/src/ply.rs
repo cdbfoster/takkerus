@@ -26,6 +26,68 @@ impl Direction {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Drops(u8);
+
+impl Drops {
+    pub fn new<const N: usize>(drops: &[u8]) -> Result<Self, PlyError> {
+        if drops.len() >= N {
+            return Err(PlyError::InvalidDrops("Too many drops."));
+        } else if drops.len() == 0 {
+            return Err(PlyError::InvalidDrops("Must specify at least one drop."));
+        }
+
+        if drops.iter().any(|d| *d == 0) {
+            return Err(PlyError::InvalidDrops("Invalid drop amount."));
+        }
+
+        if drops.iter().sum::<u8>() as usize > N {
+            return Err(PlyError::InvalidDrops("Illegal carry amount."));
+        }
+
+        let mut map = 0;
+        for drop in drops.iter().rev() {
+            map <<= 1;
+            map |= 1;
+            map <<= drop - 1;
+        }
+
+        Ok(Self(map))
+    }
+
+    pub fn id(&self) -> usize {
+        self.0 as usize
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = u8> {
+        struct DropIterator(u8);
+
+        impl Iterator for DropIterator {
+            type Item = u8;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.0 > 0 {
+                    let drop = self.0.trailing_zeros() as u8 + 1;
+                    self.0 >>= drop;
+                    Some(drop)
+                } else {
+                    None
+                }
+            }
+        }
+
+        DropIterator(self.0)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.count_ones() as usize
+    }
+
+    pub fn carry(&self) -> usize {
+        (8 - self.0.leading_zeros()) as usize
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Ply<const N: usize> {
     Place {
         x: u8,
@@ -36,7 +98,7 @@ pub enum Ply<const N: usize> {
         x: u8,
         y: u8,
         direction: Direction,
-        drops: [u8; N],
+        drops: Drops,
         crush: bool,
     },
 }
@@ -63,45 +125,21 @@ impl<const N: usize> Ply<N> {
                     return Err(PlyError::OutOfBounds);
                 }
 
-                // Drops must begin with a non-zero number, have at least one zero at some point, and all zeros must be at the end.
-                // (It's not possible to drop N times on an NxN board.)
-                let drop_count = drops
-                    .into_iter()
-                    .position(|d| d == 0)
-                    .ok_or(PlyError::InvalidDrops("Too many drops."))?;
-                if !drops[drop_count..].iter().all(|d| *d == 0) {
-                    trace!("Misordered drops.");
-                    return Err(PlyError::InvalidDrops(
-                        "All drops must be at the beginning of the list.",
-                    ));
-                }
-                if drop_count == 0 {
-                    trace!("No drops.");
-                    return Err(PlyError::InvalidDrops("Must specify at least one drop."));
-                }
-
-                // Must not carry more than the size of the board or the size of the stack.
-                let carry_total = drops.iter().sum::<u8>() as usize;
-                if carry_total > N {
-                    trace!("Illegal carry amount.");
-                    return Err(PlyError::InvalidDrops("Illegal carry amount."));
-                }
-
-                // Must crush with only one stone.
-                if crush && drops[drop_count - 1] != 1 {
-                    trace!("Invalid crush.");
-                    return Err(PlyError::InvalidCrush);
-                }
-
                 // The end of the spread must be in bounds.
                 let (dx, dy) = direction.to_offset();
                 let (tx, ty) = (
-                    x as i8 + dx * drop_count as i8,
-                    y as i8 + dy * drop_count as i8,
+                    x as i8 + dx * drops.len() as i8,
+                    y as i8 + dy * drops.len() as i8,
                 );
                 if tx < 0 || tx as usize >= N || ty < 0 || ty as usize >= N {
                     trace!("End of spread is out of bounds.");
                     return Err(PlyError::OutOfBounds);
+                }
+
+                // Must crush with only one stone.
+                if crush && drops.iter().last() != Some(1) {
+                    trace!("Invalid crush.");
+                    return Err(PlyError::InvalidCrush);
                 }
             }
         }
@@ -122,4 +160,32 @@ pub enum PlyError {
     OutOfBounds,
     InvalidDrops(&'static str),
     InvalidCrush,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drops() {
+        let drops = Drops::new::<6>(&[3, 2, 1]).unwrap();
+        let mut d = drops.iter();
+
+        assert_eq!(d.next(), Some(3));
+        assert_eq!(d.next(), Some(2));
+        assert_eq!(d.next(), Some(1));
+        assert_eq!(d.next(), None);
+    }
+
+    #[test]
+    fn drops_invalid_carry() {
+        assert!(!Drops::new::<6>(&[3, 3, 1]).is_ok());
+    }
+
+    #[test]
+    fn drops_invalid_drop() {
+        assert!(Drops::new::<6>(&[3, 2, 0, 1]).is_err());
+        assert!(Drops::new::<6>(&[3, 2, 1, 0]).is_err());
+        assert!(Drops::new::<6>(&[0, 3, 2, 1]).is_err());
+    }
 }
