@@ -337,40 +337,40 @@ pub mod generation {
                 .collect(),
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    #[cfg(test)]
+    mod tests {
+        use super::*;
 
-    #[test]
-    fn drops() {
-        let drops = Drops::new::<6>(&[3, 2, 1]).unwrap();
-        let mut d = drops.iter();
+        #[test]
+        fn drops() {
+            let drops = Drops::new::<6>(&[3, 2, 1]).unwrap();
+            let mut d = drops.iter();
 
-        assert_eq!(d.next(), Some(3));
-        assert_eq!(d.next(), Some(2));
-        assert_eq!(d.next(), Some(1));
-        assert_eq!(d.next(), None);
-    }
+            assert_eq!(d.next(), Some(3));
+            assert_eq!(d.next(), Some(2));
+            assert_eq!(d.next(), Some(1));
+            assert_eq!(d.next(), None);
+        }
 
-    #[test]
-    fn drops_invalid_carry() {
-        assert!(Drops::new::<6>(&[3, 3, 1]).is_err());
-    }
+        #[test]
+        fn drops_invalid_carry() {
+            assert!(Drops::new::<6>(&[3, 3, 1]).is_err());
+        }
 
-    #[test]
-    fn drops_invalid_drop() {
-        assert!(Drops::new::<6>(&[3, 2, 0, 1]).is_err());
-        assert!(Drops::new::<6>(&[3, 2, 1, 0]).is_err());
-        assert!(Drops::new::<6>(&[0, 3, 2, 1]).is_err());
-    }
+        #[test]
+        fn drops_invalid_drop() {
+            assert!(Drops::new::<6>(&[3, 2, 0, 1]).is_err());
+            assert!(Drops::new::<6>(&[3, 2, 1, 0]).is_err());
+            assert!(Drops::new::<6>(&[0, 3, 2, 1]).is_err());
+        }
 
-    #[test]
-    fn drops_last() {
-        assert_eq!(Drops::new::<6>(&[3, 2, 1]).unwrap().last(), 1);
-        assert_eq!(Drops::new::<6>(&[1, 2, 3]).unwrap().last(), 3);
-        assert_eq!(Drops::new::<6>(&[3]).unwrap().last(), 3);
-        assert_eq!(Drops::new::<6>(&[1]).unwrap().last(), 1);
+        #[test]
+        fn drops_last() {
+            assert_eq!(Drops::new::<6>(&[3, 2, 1]).unwrap().last(), 1);
+            assert_eq!(Drops::new::<6>(&[1, 2, 3]).unwrap().last(), 3);
+            assert_eq!(Drops::new::<6>(&[3]).unwrap().last(), 3);
+            assert_eq!(Drops::new::<6>(&[1]).unwrap().last(), 1);
+        }
     }
 }
