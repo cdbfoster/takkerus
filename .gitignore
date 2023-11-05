@@ -6,3 +6,4 @@ flamegraph.svg
 perf.data*
 *.ptn
 .ipynb_checkpoints
+.cargo/config.toml
