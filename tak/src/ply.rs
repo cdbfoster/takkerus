@@ -189,6 +189,7 @@ pub enum PlyError {
 
 pub mod generation {
     use super::*;
+    use self::drop_combos::DROP_COMBOS;
 
     pub fn placements<const N: usize>(
         locations: Bitmap<N>,
@@ -280,97 +281,115 @@ pub mod generation {
             })
     }
 
-    struct DropCombos {
-        stack_size: Vec<Combinations>,
-    }
-
-    struct Combinations {
-        combos: Vec<Drops>,
-    }
-
-    static DROP_COMBOS: Lazy<DropCombos> = Lazy::new(|| generate_drop_combos(8));
-
-    /// Generates lists of drop combinations, for each stack size.
-    fn generate_drop_combos(max_size: usize) -> DropCombos {
-        let mut combos_for_size = Vec::with_capacity(max_size + 1);
-
-        // 0 stones, 0 drops.
-        combos_for_size.push(Vec::new());
-
-        for current_size in 1..=max_size {
-            // For any stack size, there's the option of dropping everything on the first square.
-            let full_drop = std::iter::once(vec![current_size as u8]);
-
-            // Iterate over every previous drop combo, subtracting the total from this stack size.
-            let other_combos = combos_for_size[..current_size]
-                .iter()
-                .flat_map(|stack_combos| stack_combos.iter())
-                .map(|combo: &Vec<u8>| {
-                    let mut new_combo = Vec::with_capacity(combo.len() + 1);
-                    new_combo.push(current_size as u8 - combo.iter().sum::<u8>());
-                    new_combo.extend_from_slice(combo);
-                    new_combo
-                });
-
-            combos_for_size.push(full_drop.chain(other_combos).collect());
-        }
-
-        DropCombos {
-            stack_size: combos_for_size
-                .into_iter()
-                .map(|combos| Combinations {
-                    combos: combos
-                        .into_iter()
-                        .filter_map(|drops| match Drops::new::<8>(&drops) {
-                            Ok(drops) => Some(drops),
-                            Err(_) if drops == [1, 1, 1, 1, 1, 1, 1, 1] => {
-                                // The above algorithm will generate drop patterns that drop one stone
-                                // on every space. The only time this is invalid for all cases is when
-                                // the number of stones equals 8 (the largest board). Don't panic because
-                                // we expect this to fail; just filter out this combo.
-                                None
-                            }
-                            Err(error) => panic!("invalid drops ({error:?}): {drops:?}"),
-                        })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
+    mod drop_combos {
         use super::*;
 
-        #[test]
-        fn drops() {
-            let drops = Drops::new::<6>(&[3, 2, 1]).unwrap();
-            let mut d = drops.iter();
-
-            assert_eq!(d.next(), Some(3));
-            assert_eq!(d.next(), Some(2));
-            assert_eq!(d.next(), Some(1));
-            assert_eq!(d.next(), None);
+        pub(super) struct DropCombos {
+            pub(super) stack_size: Vec<StackSize>,
         }
 
-        #[test]
-        fn drops_invalid_carry() {
-            assert!(Drops::new::<6>(&[3, 3, 1]).is_err());
+        pub(super) struct StackSize {
+            pub(super) combos: Vec<Drops>,
         }
 
-        #[test]
-        fn drops_invalid_drop() {
-            assert!(Drops::new::<6>(&[3, 2, 0, 1]).is_err());
-            assert!(Drops::new::<6>(&[3, 2, 1, 0]).is_err());
-            assert!(Drops::new::<6>(&[0, 3, 2, 1]).is_err());
+        pub(super) static DROP_COMBOS: Lazy<DropCombos> = Lazy::new(|| generate_drop_combos(8));
+
+        /// Generates lists of drop combinations, for each stack size.
+        fn generate_drop_combos(max_size: usize) -> DropCombos {
+            let mut combos_for_size = Vec::with_capacity(max_size + 1);
+
+            // 0 stones, 0 drops.
+            combos_for_size.push(Vec::new());
+
+            for current_size in 1..=max_size {
+                // For any stack size, there's the option of dropping everything on the first square.
+                let full_drop = std::iter::once(vec![current_size as u8]);
+
+                // Iterate over every previous drop combo, subtracting the total from this stack size.
+                let other_combos = combos_for_size[..current_size]
+                    .iter()
+                    .flat_map(|stack_combos| stack_combos.iter())
+                    .map(|combo: &Vec<u8>| {
+                        let mut new_combo = Vec::with_capacity(combo.len() + 1);
+                        new_combo.push(current_size as u8 - combo.iter().sum::<u8>());
+                        new_combo.extend_from_slice(combo);
+                        new_combo
+                    });
+
+                combos_for_size.push(full_drop.chain(other_combos).collect());
+            }
+
+            DropCombos {
+                stack_size: combos_for_size
+                    .into_iter()
+                    .map(|combos| StackSize {
+                        combos: combos
+                            .into_iter()
+                            .filter_map(|drops| match Drops::new::<8>(&drops) {
+                                Ok(drops) => Some(drops),
+                                Err(_) if drops == [1, 1, 1, 1, 1, 1, 1, 1] => {
+                                    // The above algorithm will generate drop patterns that drop one stone
+                                    // on every space. The only time this is invalid for all cases is when
+                                    // the number of stones equals 8 (the largest board). Don't panic because
+                                    // we expect this to fail; just filter out this combo.
+                                    None
+                                }
+                                Err(error) => panic!("invalid drops ({error:?}): {drops:?}"),
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            }
         }
 
-        #[test]
-        fn drops_last() {
-            assert_eq!(Drops::new::<6>(&[3, 2, 1]).unwrap().last(), 1);
-            assert_eq!(Drops::new::<6>(&[1, 2, 3]).unwrap().last(), 3);
-            assert_eq!(Drops::new::<6>(&[3]).unwrap().last(), 3);
-            assert_eq!(Drops::new::<6>(&[1]).unwrap().last(), 1);
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            #[test]
+            fn print_drop_counts() {
+                for (i, stack_size) in DROP_COMBOS.stack_size.iter().enumerate() {
+                    println!(
+                        "Combos for stack size {i}: {:>3}, total: {:>3}",
+                        stack_size.combos.len(),
+                        DROP_COMBOS.stack_size[..=i]
+                            .iter()
+                            .map(|s| s.combos.len())
+                            .sum::<usize>()
+                    );
+                }
+            }
+
+            #[test]
+            fn drops() {
+                let drops = Drops::new::<6>(&[3, 2, 1]).unwrap();
+                let mut d = drops.iter();
+
+                assert_eq!(d.next(), Some(3));
+                assert_eq!(d.next(), Some(2));
+                assert_eq!(d.next(), Some(1));
+                assert_eq!(d.next(), None);
+            }
+
+            #[test]
+            fn drops_invalid_carry() {
+                assert!(Drops::new::<6>(&[3, 3, 1]).is_err());
+            }
+
+            #[test]
+            fn drops_invalid_drop() {
+                assert!(Drops::new::<6>(&[3, 2, 0, 1]).is_err());
+                assert!(Drops::new::<6>(&[3, 2, 1, 0]).is_err());
+                assert!(Drops::new::<6>(&[0, 3, 2, 1]).is_err());
+            }
+
+            #[test]
+            fn drops_last() {
+                assert_eq!(Drops::new::<6>(&[3, 2, 1]).unwrap().last(), 1);
+                assert_eq!(Drops::new::<6>(&[1, 2, 3]).unwrap().last(), 3);
+                assert_eq!(Drops::new::<6>(&[3]).unwrap().last(), 3);
+                assert_eq!(Drops::new::<6>(&[1]).unwrap().last(), 1);
+            }
         }
     }
 }
