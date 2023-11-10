@@ -6,12 +6,12 @@ use Color::*;
 use PieceType::*;
 
 #[cfg(not(feature = "deep-stacks"))]
-type Bitmap = u32;
+pub type StackBitmap = u32;
 
 #[cfg(feature = "deep-stacks")]
-type Bitmap = u128;
+pub type StackBitmap = u128;
 
-const MAX_STACK_HEIGHT: usize = Bitmap::BITS as usize - 4;
+const MAX_STACK_HEIGHT: usize = StackBitmap::BITS as usize - 4;
 
 /// Representation:
 ///
@@ -22,7 +22,7 @@ const MAX_STACK_HEIGHT: usize = Bitmap::BITS as usize - 4;
 /// The least significant piece color bit represents the top of the stack,
 /// and the most significant represents the bottom.
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct Stack(Bitmap);
+pub struct Stack(StackBitmap);
 
 impl Default for Stack {
     fn default() -> Self {
@@ -32,7 +32,40 @@ impl Default for Stack {
 
 impl Stack {
     pub fn from_piece(piece: Piece) -> Self {
-        Self(0b10000 | (piece.piece_type() as Bitmap >> 4) | ((piece.color() as Bitmap - 1) << 3))
+        Self(
+            0b10000
+                | (piece.piece_type() as StackBitmap >> 4)
+                | ((piece.color() as StackBitmap - 1) << 3),
+        )
+    }
+
+    pub fn from_player_bitmap(
+        stack_height: usize,
+        player_bitmap: StackBitmap,
+        top_piece: Piece,
+    ) -> Self {
+        assert!(
+            stack_height <= MAX_STACK_HEIGHT,
+            "exceeded stack limit, compile with \"deep-stacks\" feature to support this"
+        );
+
+        let mut bitmap = player_bitmap;
+
+        let player_color = if bitmap & 0x01 == 1 {
+            top_piece.color()
+        } else {
+            top_piece.color().other()
+        };
+
+        if player_color == White {
+            bitmap = !(bitmap | (StackBitmap::MAX << stack_height));
+        }
+
+        bitmap |= 0x01 << stack_height;
+        bitmap <<= 3;
+        bitmap |= top_piece.piece_type() as StackBitmap >> 4;
+
+        Self(bitmap)
     }
 
     pub fn len(&self) -> usize {
@@ -99,7 +132,7 @@ impl Stack {
     pub fn take(&mut self, count: usize) -> Self {
         debug_assert!(count > 0 && count <= self.len());
 
-        let carry = self.0 & !(Bitmap::MAX << (count + 3)) | (0x01 << (count + 3));
+        let carry = self.0 & !(StackBitmap::MAX << (count + 3)) | (0x01 << (count + 3));
 
         self.0 = (self.0 >> count) & !0x07;
 
@@ -138,9 +171,9 @@ impl Stack {
     /// Returns the positions of each color's pieces in the stack. The first
     /// value is white's piece map, the second is black's. A 1 is a piece of
     /// that color, a 0 could be the opponent's piece or an empty space.
-    pub fn get_player_pieces(&self) -> (Bitmap, Bitmap) {
+    pub fn get_player_bitmaps(&self) -> (StackBitmap, StackBitmap) {
         if !self.is_empty() {
-            let mask = !(Bitmap::MAX << self.len());
+            let mask = !(StackBitmap::MAX << self.len());
             let stack_segment = (self.0 >> 3) & mask;
             let p1 = !stack_segment & mask;
             let p2 = stack_segment;
@@ -275,14 +308,20 @@ mod tests {
     }
 
     #[test]
-    fn get_player_pieces() {
+    fn get_player_bitmaps() {
         let stack = Stack(0b1011010001);
-        assert_eq!(stack.get_player_pieces(), (0b100101, 0b011010));
+        assert_eq!(stack.get_player_bitmaps(), (0b100101, 0b011010));
 
         let stack = Stack(0b101101001101001);
-        assert_eq!(stack.get_player_pieces(), (0b10010110010, 0b01101001101));
+        assert_eq!(stack.get_player_bitmaps(), (0b10010110010, 0b01101001101));
 
         let stack = Stack(0b1000);
-        assert_eq!(stack.get_player_pieces(), (0, 0));
+        assert_eq!(stack.get_player_bitmaps(), (0, 0));
+    }
+
+    #[test]
+    fn from_player_bitmap() {
+        let stack = Stack::from_player_bitmap(3, 0b101, Piece::new(Flatstone, White));
+        assert_eq!(stack.get_player_bitmaps(), (0b101, 0b010));
     }
 }

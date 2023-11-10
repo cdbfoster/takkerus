@@ -341,26 +341,45 @@ impl<const N: usize> State<N> {
             Color::Black => m.p1_pieces,
         };
 
-        let stacks = opponent_pieces.bits().filter(|b| {
+        let stack_bits = opponent_pieces.bits().filter(|b| {
             let (x, y) = b.coordinates();
             self.board[x][y].len() > 1
         });
 
-        for stack in stacks {
-            for ply in generation::spreads(self, stack) {
-                let mut next_state = self.clone();
-                next_state.execute_ply_unchecked(ply);
+        for stack_bit in stack_bits {
+            for ply in generation::spreads(self, stack_bit) {
+                let (x, y) = stack_bit.coordinates();
+                let stack = &self.board[x][y];
 
-                let m = &next_state.metadata;
+                fn spread_creates_road<const N: usize>(
+                    mut road_pieces: Bitmap<N>,
+                    stack: &Stack,
+                    ply: &Ply<N>,
+                ) -> bool {
+                    let (x, y) = match *ply {
+                        Ply::Spread { x, y, .. } => (x as usize, y as usize),
+                        _ => unreachable!("the ply should never be a placement here"),
+                    };
 
-                let road_pieces = m.flatstones | m.capstones;
+                    let spread_map = generation::spread_map(stack, ply);
 
-                let opponent_road_pieces = match color {
-                    Color::White => road_pieces & m.p2_pieces,
-                    Color::Black => road_pieces & m.p1_pieces,
-                };
+                    road_pieces.clear(x, y);
+                    road_pieces |= spread_map.player;
+                    road_pieces &= !spread_map.opponent;
 
-                if spans_board(opponent_road_pieces) {
+                    if stack
+                        .top()
+                        .expect("there's at least one piece in the stack")
+                        .piece_type()
+                        == PieceType::StandingStone
+                    {
+                        road_pieces &= !spread_map.endpoint;
+                    }
+
+                    spans_board(road_pieces)
+                }
+
+                if spread_creates_road(opponent_road_pieces, stack, &ply) {
                     return true;
                 }
             }

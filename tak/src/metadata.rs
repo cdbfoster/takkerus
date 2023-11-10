@@ -66,7 +66,7 @@ impl<const N: usize> Metadata<N> {
             self.capstones.clear(x, y);
         }
 
-        let (p1_stack, p2_stack) = stack.get_player_pieces();
+        let (p1_stack, p2_stack) = stack.get_player_bitmaps();
         self.p1_stacks[x][y] = (p1_stack & 0xFF) as u8;
         self.p2_stacks[x][y] = (p2_stack & 0xFF) as u8;
     }

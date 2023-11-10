@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 use ann::linear_algebra::Vector;
-use tak::{edge_masks, Bitmap, Color, Direction, State};
+use tak::{edge_masks, Bitmap, Color, Direction, StackBitmap, State};
 
 use Color::*;
 use Direction::*;
@@ -149,14 +149,8 @@ fn gather_stack_composition<const N: usize, const C: usize>(
         for (w, b) in pieces
             .bits()
             .map(|b| b.coordinates())
-            .map(|(x, y)| state.board[x][y].get_player_pieces())
+            .map(|(x, y)| state.board[x][y].get_player_bitmaps())
         {
-            #[cfg(not(feature = "deep-stacks"))]
-            type StackBitmap = u32;
-
-            #[cfg(feature = "deep-stacks")]
-            type StackBitmap = u128;
-
             let shallow = !(StackBitmap::MAX << N);
             let deep = StackBitmap::MAX & !shallow;
 

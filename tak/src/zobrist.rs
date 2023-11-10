@@ -96,24 +96,24 @@ pub fn zobrist_advance_move<const N: usize>() -> ZobristHash {
 
 pub fn zobrist_hash_state<const N: usize>(state: &State<N>) -> ZobristHash {
     match N {
-        3 => zobrist_hash_state_sized(downcast_size(state), &*ZOBRIST_KEYS_3S),
-        4 => zobrist_hash_state_sized(downcast_size(state), &*ZOBRIST_KEYS_4S),
-        5 => zobrist_hash_state_sized(downcast_size(state), &*ZOBRIST_KEYS_5S),
-        6 => zobrist_hash_state_sized(downcast_size(state), &*ZOBRIST_KEYS_6S),
-        7 => zobrist_hash_state_sized(downcast_size(state), &*ZOBRIST_KEYS_7S),
-        8 => zobrist_hash_state_sized(downcast_size(state), &*ZOBRIST_KEYS_8S),
+        3 => zobrist_hash_state_sized(cast_size(state), &*ZOBRIST_KEYS_3S),
+        4 => zobrist_hash_state_sized(cast_size(state), &*ZOBRIST_KEYS_4S),
+        5 => zobrist_hash_state_sized(cast_size(state), &*ZOBRIST_KEYS_5S),
+        6 => zobrist_hash_state_sized(cast_size(state), &*ZOBRIST_KEYS_6S),
+        7 => zobrist_hash_state_sized(cast_size(state), &*ZOBRIST_KEYS_7S),
+        8 => zobrist_hash_state_sized(cast_size(state), &*ZOBRIST_KEYS_8S),
         _ => unreachable!(),
     }
 }
 
 pub fn zobrist_hash_stack<const N: usize>(state: &State<N>, x: usize, y: usize) -> ZobristHash {
     match N {
-        3 => zobrist_hash_stack_sized(downcast_size(state), x, y, &*ZOBRIST_KEYS_3S),
-        4 => zobrist_hash_stack_sized(downcast_size(state), x, y, &*ZOBRIST_KEYS_4S),
-        5 => zobrist_hash_stack_sized(downcast_size(state), x, y, &*ZOBRIST_KEYS_5S),
-        6 => zobrist_hash_stack_sized(downcast_size(state), x, y, &*ZOBRIST_KEYS_6S),
-        7 => zobrist_hash_stack_sized(downcast_size(state), x, y, &*ZOBRIST_KEYS_7S),
-        8 => zobrist_hash_stack_sized(downcast_size(state), x, y, &*ZOBRIST_KEYS_8S),
+        3 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_3S),
+        4 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_4S),
+        5 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_5S),
+        6 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_6S),
+        7 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_7S),
+        8 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_8S),
         _ => unreachable!(),
     }
 }
@@ -156,7 +156,7 @@ fn zobrist_hash_stack_sized<const N: usize>(
     hash
 }
 
-fn downcast_size<const N: usize, const M: usize>(state: &State<N>) -> &State<M> {
+fn cast_size<const N: usize, const M: usize>(state: &State<N>) -> &State<M> {
     debug_assert_eq!(N, M);
     unsafe { mem::transmute(state) }
 }

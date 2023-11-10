@@ -634,7 +634,7 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
                 drops,
                 annotations,
             } => {
-                let compact_drops = Drops::new::<N>(&drops)?;
+                let compact_drops = Drops::from_drop_counts::<N>(&drops)?;
 
                 let crush = annotations
                     .map(|a| a.contains(|c| c == '*'))
@@ -912,7 +912,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::North,
-                drops: Drops::new::<5>(&[1]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -923,7 +923,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::East,
-                drops: Drops::new::<5>(&[1]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -934,7 +934,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::South,
-                drops: Drops::new::<5>(&[1]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -945,7 +945,7 @@ mod tests {
                 x: 2,
                 y: 2,
                 direction: Direction::West,
-                drops: Drops::new::<5>(&[1]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -961,7 +961,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: Drops::new::<5>(&[1]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -972,7 +972,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: Drops::new::<5>(&[1]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
                 crush: false,
             },
         );
@@ -983,7 +983,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: Drops::new::<5>(&[1, 2]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[1, 2]).unwrap(),
                 crush: false,
             },
         );
@@ -1010,7 +1010,7 @@ mod tests {
                 x: 0,
                 y: 2,
                 direction: Direction::East,
-                drops: Drops::new::<5>(&[2, 1]).unwrap(),
+                drops: Drops::from_drop_counts::<5>(&[2, 1]).unwrap(),
                 crush: true,
             },
         );

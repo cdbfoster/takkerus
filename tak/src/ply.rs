@@ -1,11 +1,14 @@
 use std::fmt;
+use std::mem;
+use std::ops::RangeInclusive;
 
 use once_cell::sync::Lazy;
 use tracing::{instrument, trace};
 
 use crate::bitmap::Bitmap;
-use crate::piece::PieceType;
+use crate::piece::{Color, Piece, PieceType};
 use crate::ptn::PtnPly;
+use crate::stack::{Stack, StackBitmap};
 use crate::state::State;
 
 #[repr(u8)]
@@ -32,10 +35,20 @@ impl Direction {
 pub struct Drops(u8);
 
 impl Drops {
-    pub fn new<const N: usize>(drops: &[u8]) -> Result<Self, PlyError> {
+    pub fn new<const N: usize>(value: u8) -> Result<Self, PlyError> {
+        if value == 0 {
+            return Err(PlyError::InvalidDrops("Must specify at least one drop."));
+        } else if value as usize >= 1 << N {
+            return Err(PlyError::InvalidDrops("Illegal carry amount."));
+        }
+
+        Ok(Self(value))
+    }
+
+    pub fn from_drop_counts<const N: usize>(drops: &[u8]) -> Result<Self, PlyError> {
         if drops.len() >= N {
             return Err(PlyError::InvalidDrops("Too many drops."));
-        } else if drops.len() == 0 {
+        } else if drops.is_empty() {
             return Err(PlyError::InvalidDrops("Must specify at least one drop."));
         }
 
@@ -70,7 +83,11 @@ impl Drops {
             fn next(&mut self) -> Option<Self::Item> {
                 if self.0 > 0 {
                     let drop = self.0.trailing_zeros() as u8 + 1;
-                    self.0 >>= drop;
+                    if drop < 8 {
+                        self.0 >>= drop;
+                    } else {
+                        self.0 = 0;
+                    }
                     Some(drop)
                 } else {
                     None
@@ -102,7 +119,7 @@ impl Drops {
 impl fmt::Debug for Drops {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let drops = self.iter().collect::<Vec<_>>();
-        f.debug_tuple("Drops").field(&drops).finish()
+        f.debug_tuple("Drops").field(&self.0).field(&drops).finish()
     }
 }
 
@@ -189,6 +206,8 @@ pub enum PlyError {
 
 pub mod generation {
     use super::*;
+
+    pub(crate) use self::spread_maps::spread_map;
 
     pub fn placements<const N: usize>(
         locations: Bitmap<N>,
@@ -277,6 +296,350 @@ pub mod generation {
                 })
             })
     }
+
+    mod spread_maps {
+        use super::*;
+
+        #[derive(Debug)]
+        struct SpreadMaps<const N: usize> {
+            stack_size: Vec<StackSize<N>>,
+        }
+
+        #[derive(Debug)]
+        struct StackSize<const N: usize> {
+            configuration: Vec<Configuration<N>>,
+        }
+
+        #[derive(Debug)]
+        struct Configuration<const N: usize> {
+            spread: Vec<Spread<N>>,
+        }
+
+        #[derive(Debug)]
+        struct Spread<const N: usize> {
+            direction: Vec<SpreadMap<N>>,
+        }
+
+        #[derive(Clone, Copy, Debug)]
+        pub(crate) struct SpreadMap<const N: usize> {
+            pub(crate) endpoint: Bitmap<N>,
+            pub(crate) player: Bitmap<N>,
+            pub(crate) opponent: Bitmap<N>,
+        }
+
+        impl<const N: usize> SpreadMaps<N> {
+            fn new() -> Self {
+                Self {
+                    stack_size: StackSize::<N>::range().map(StackSize::new).collect(),
+                }
+            }
+        }
+
+        impl<const N: usize> StackSize<N> {
+            fn new(stack_size: usize) -> Self {
+                debug_assert!(StackSize::<N>::range().contains(&stack_size));
+
+                Self {
+                    configuration: Configuration::<N>::range(stack_size)
+                        .map(|configuration| Configuration::new(stack_size, configuration))
+                        .collect(),
+                }
+            }
+
+            fn range() -> RangeInclusive<usize> {
+                RangeInclusive::new(
+                    // Smallest stack size to consider is 1.
+                    1,
+                    // Largest is the board size + 1 (a full carry + the piece that gets revealed underneath).
+                    N + 1,
+                )
+            }
+        }
+
+        impl<const N: usize> Configuration<N> {
+            fn new(stack_size: usize, configuration: usize) -> Self {
+                debug_assert!(StackSize::<N>::range().contains(&stack_size));
+                debug_assert!(Configuration::<N>::range(stack_size).contains(&configuration));
+
+                Self {
+                    spread: Spread::<N>::range(stack_size)
+                        .map(|spread| Drops::new::<N>(spread as u8).expect("invalid drops"))
+                        .map(|drops| Spread::new(stack_size, configuration, drops))
+                        .collect(),
+                }
+            }
+
+            fn range(stack_size: usize) -> RangeInclusive<usize> {
+                // A range that walks every combination of player and opponent stones
+                // in a stack of stack_size height.
+                RangeInclusive::new(
+                    // Begin with a single player stone on top of all opponent stones.
+                    // i.e. stack_size = 3 => range.start = 0b100
+                    1 << (stack_size - 1),
+                    // Increment configurations until the stack is all player stones.
+                    // i.e. stack_size = 3 => range.end = 0b111
+                    (1 << stack_size) - 1,
+                )
+            }
+        }
+
+        impl<const N: usize> Spread<N> {
+            fn new(stack_size: usize, configuration: usize, drops: Drops) -> Self {
+                debug_assert!(StackSize::<N>::range().contains(&stack_size));
+                debug_assert!(Configuration::<N>::range(stack_size).contains(&configuration));
+                debug_assert!(Spread::<N>::range(stack_size).contains(&(u8::from(drops) as usize)));
+
+                Self {
+                    direction: [
+                        Direction::North,
+                        Direction::East,
+                        Direction::South,
+                        Direction::West,
+                    ]
+                    .into_iter()
+                    .map(|direction| SpreadMap::new(stack_size, configuration, drops, direction))
+                    .collect(),
+                }
+            }
+
+            fn range(stack_size: usize) -> RangeInclusive<usize> {
+                // A range that walks every drop pattern for a stack of stack_size - 1
+                // height (for carries that leave one stone behind), followed by every drop
+                // pattern for a stack of stack_size height (for carries that leave no stones behind).
+                RangeInclusive::new(
+                    // Begin with dumping all but one stone on the very next square.
+                    // i.e. stack_size = 3 => range.start = 0b10
+                    1 << (stack_size.max(2) - 2),
+                    // Increment until we drop one stone on every square. If we'd run into the board
+                    // edge, don't generate the very last one.
+                    // i.e. stack_size = 3, N = 4 => range.end = 0b111
+                    // i.e. stack_size = 4, N = 4 => range.end = 0b1110
+                    (1 << stack_size).min((1 << N) - 1) - 1,
+                )
+            }
+        }
+
+        impl<const N: usize> SpreadMap<N> {
+            fn new(
+                stack_size: usize,
+                configuration: usize,
+                drops: Drops,
+                direction: Direction,
+            ) -> Self {
+                debug_assert!(StackSize::<N>::range().contains(&stack_size));
+                debug_assert!(Configuration::<N>::range(stack_size).contains(&configuration));
+                debug_assert!(Spread::<N>::range(stack_size).contains(&(u8::from(drops) as usize)));
+
+                let (x, y) = match direction {
+                    Direction::North | Direction::East => (0, 0),
+                    Direction::South | Direction::West => (N - 1, N - 1),
+                };
+
+                let mut state = State::<N> {
+                    ply_count: 2,
+                    ..Default::default()
+                };
+
+                let player_bitmap =
+                    ((configuration as u16).reverse_bits() >> (16 - stack_size)) as StackBitmap;
+
+                let stack = Stack::from_player_bitmap(
+                    stack_size,
+                    player_bitmap,
+                    Piece::new(PieceType::Capstone, Color::White),
+                );
+
+                state.board[x][y] = stack;
+
+                state
+                    .execute_ply(Ply::Spread {
+                        x: x as u8,
+                        y: y as u8,
+                        direction,
+                        drops,
+                        crush: false,
+                    })
+                    .expect("invalid ply");
+
+                Self {
+                    endpoint: state.metadata.capstones,
+                    player: state.metadata.p1_pieces,
+                    opponent: state.metadata.p2_pieces,
+                }
+            }
+        }
+
+        static SPREAD_MAPS_3S: Lazy<SpreadMaps<3>> = Lazy::new(SpreadMaps::<3>::new);
+        static SPREAD_MAPS_4S: Lazy<SpreadMaps<4>> = Lazy::new(SpreadMaps::<4>::new);
+        static SPREAD_MAPS_5S: Lazy<SpreadMaps<5>> = Lazy::new(SpreadMaps::<5>::new);
+        static SPREAD_MAPS_6S: Lazy<SpreadMaps<6>> = Lazy::new(SpreadMaps::<6>::new);
+        static SPREAD_MAPS_7S: Lazy<SpreadMaps<7>> = Lazy::new(SpreadMaps::<7>::new);
+        static SPREAD_MAPS_8S: Lazy<SpreadMaps<8>> = Lazy::new(SpreadMaps::<8>::new);
+
+        fn cast_ply<const N: usize, const M: usize>(ply: &Ply<N>) -> &Ply<M> {
+            debug_assert_eq!(N, M);
+            unsafe { mem::transmute(ply) }
+        }
+
+        fn cast_spread_map<const N: usize, const M: usize>(
+            spread_map: SpreadMap<N>,
+        ) -> SpreadMap<M> {
+            debug_assert_eq!(N, M);
+            unsafe { mem::transmute(spread_map) }
+        }
+
+        pub(crate) fn spread_map<const N: usize>(stack: &Stack, ply: &Ply<N>) -> SpreadMap<N> {
+            let stack_size = match ply {
+                Ply::Spread { drops, .. } => (drops.carry() + 1).min(stack.len()),
+                _ => panic!("can't get spread map of a placement ply: {ply:?}"),
+            };
+            let player_bitmaps = stack.get_player_bitmaps();
+            let player_bitmap = match stack
+                .top()
+                .expect("must be at least one piece in the stack")
+                .color()
+            {
+                Color::White => player_bitmaps.0,
+                Color::Black => player_bitmaps.1,
+            };
+
+            match N {
+                3 => cast_spread_map(spread_map_sized(
+                    stack_size,
+                    player_bitmap,
+                    cast_ply(ply),
+                    &*SPREAD_MAPS_3S,
+                )),
+                4 => cast_spread_map(spread_map_sized(
+                    stack_size,
+                    player_bitmap,
+                    cast_ply(ply),
+                    &*SPREAD_MAPS_4S,
+                )),
+                5 => cast_spread_map(spread_map_sized(
+                    stack_size,
+                    player_bitmap,
+                    cast_ply(ply),
+                    &*SPREAD_MAPS_5S,
+                )),
+                6 => cast_spread_map(spread_map_sized(
+                    stack_size,
+                    player_bitmap,
+                    cast_ply(ply),
+                    &*SPREAD_MAPS_6S,
+                )),
+                7 => cast_spread_map(spread_map_sized(
+                    stack_size,
+                    player_bitmap,
+                    cast_ply(ply),
+                    &*SPREAD_MAPS_7S,
+                )),
+                8 => cast_spread_map(spread_map_sized(
+                    stack_size,
+                    player_bitmap,
+                    cast_ply(ply),
+                    &*SPREAD_MAPS_8S,
+                )),
+                _ => unreachable!(),
+            }
+        }
+
+        fn spread_map_sized<const N: usize>(
+            stack_size: usize,
+            player_bitmap: StackBitmap,
+            ply: &Ply<N>,
+            spread_maps: &SpreadMaps<N>,
+        ) -> SpreadMap<N> {
+            let (x, y, direction, drops) = match *ply {
+                Ply::Spread {
+                    x,
+                    y,
+                    direction,
+                    drops,
+                    ..
+                } => (x, y, direction, drops),
+                _ => unreachable!("the ply should never be a placement here"),
+            };
+
+            let stack_size_index = stack_size - StackSize::<N>::range().start();
+            let configuration_index = ((player_bitmap as u16) << (16 - stack_size)).reverse_bits()
+                as usize
+                - Configuration::<N>::range(stack_size).start();
+            let spread_index = u8::from(drops) as usize - Spread::<N>::range(stack_size).start();
+
+            let stack_size = &spread_maps.stack_size[stack_size_index];
+            let configuration = &stack_size.configuration[configuration_index];
+            let spread = &configuration.spread[spread_index];
+            let mut map = spread.direction[direction as usize];
+
+            match direction {
+                Direction::North | Direction::East => {
+                    let x_shift = x as usize;
+                    let y_shift = y as usize * N;
+                    map.endpoint = (map.endpoint >> x_shift) << y_shift;
+                    map.player = (map.player >> x_shift) << y_shift;
+                    map.opponent = (map.opponent >> x_shift) << y_shift;
+                }
+                Direction::South | Direction::West => {
+                    let x_shift = N - 1 - x as usize;
+                    let y_shift = (N - 1 - y as usize) * N;
+                    map.endpoint = (map.endpoint << x_shift) >> y_shift;
+                    map.player = (map.player << x_shift) >> y_shift;
+                    map.opponent = (map.opponent << x_shift) >> y_shift;
+                }
+            }
+
+            map
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            #[test]
+            fn print_spread_maps_size() {
+                macro_rules! spread_count {
+                    ($maps:ident) => {{
+                        $maps.stack_size
+                            .iter()
+                            .flat_map(|stack_size| &stack_size.configuration)
+                            .flat_map(|configuration| &configuration.spread)
+                            .count()
+                    }};
+                }
+
+                let count = spread_count!(SPREAD_MAPS_3S);
+                let maps = count * 4;
+                let bytes = maps * std::mem::size_of::<SpreadMap<3>>();
+                println!("SPREAD_MAPS_3S: {count} spreads, {maps} maps, {bytes} bytes");
+
+                let count = spread_count!(SPREAD_MAPS_4S);
+                let maps = count * 4;
+                let bytes = maps * std::mem::size_of::<SpreadMap<4>>();
+                println!("SPREAD_MAPS_4S: {count} spreads, {maps} maps, {bytes} bytes");
+
+                let count = spread_count!(SPREAD_MAPS_5S);
+                let maps = count * 4;
+                let bytes = maps * std::mem::size_of::<SpreadMap<5>>();
+                println!("SPREAD_MAPS_5S: {count} spreads, {maps} maps, {bytes} bytes");
+
+                let count = spread_count!(SPREAD_MAPS_6S);
+                let maps = count * 4;
+                let bytes = maps * std::mem::size_of::<SpreadMap<6>>();
+                println!("SPREAD_MAPS_6S: {count} spreads, {maps} maps, {bytes} bytes");
+
+                let count = spread_count!(SPREAD_MAPS_7S);
+                let maps = count * 4;
+                let bytes = maps * std::mem::size_of::<SpreadMap<7>>();
+                println!("SPREAD_MAPS_7S: {count} spreads, {maps} maps, {bytes} bytes");
+
+                let count = spread_count!(SPREAD_MAPS_8S);
+                let maps = count * 4;
+                let bytes = maps * std::mem::size_of::<SpreadMap<8>>();
+                println!("SPREAD_MAPS_8S: {count} spreads, {maps} maps, {bytes} bytes");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -315,4 +678,45 @@ mod tests {
         assert_eq!(Drops::from_drop_counts::<6>(&[1]).unwrap().last(), 1);
     }
 
+    #[test]
+    fn spread_maps() {
+        let stack =
+            Stack::from_player_bitmap(3, 0b101, Piece::new(PieceType::Flatstone, Color::Black));
+        let ply = Ply::<5>::Spread {
+            x: 1,
+            y: 1,
+            direction: Direction::East,
+            drops: Drops::new::<5>(0b111).unwrap(),
+            crush: false,
+        };
+        let map = spread_map(&stack, &ply);
+
+        assert_eq!(map.endpoint, 0b00000_00000_00000_00001_00000.into());
+        assert_eq!(map.player, 0b00000_00000_00000_00101_00000.into());
+        assert_eq!(map.opponent, 0b00000_00000_00000_00010_00000.into());
+
+        let stack =
+            Stack::from_player_bitmap(5, 0b01101, Piece::new(PieceType::Flatstone, Color::White));
+        let ply = Ply::<6>::Spread {
+            x: 3,
+            y: 4,
+            direction: Direction::South,
+            drops: Drops::new::<6>(0b111).unwrap(),
+            crush: false,
+        };
+        let map = spread_map(&stack, &ply);
+
+        assert_eq!(
+            map.endpoint,
+            0b000000_000000_000000_000000_000100_000000.into(),
+        );
+        assert_eq!(
+            map.player,
+            0b000000_000100_000100_000000_000100_000000.into(),
+        );
+        assert_eq!(
+            map.opponent,
+            0b000000_000000_000000_000100_000000_000000.into(),
+        );
+    }
 }
