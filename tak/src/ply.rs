@@ -600,7 +600,8 @@ pub mod generation {
             fn print_spread_maps_size() {
                 macro_rules! spread_count {
                     ($maps:ident) => {{
-                        $maps.stack_size
+                        $maps
+                            .stack_size
                             .iter()
                             .flat_map(|stack_size| &stack_size.configuration)
                             .flat_map(|configuration| &configuration.spread)

@@ -204,6 +204,7 @@ impl<const N: usize> State<N> {
         use PieceType::*;
 
         let player_color = self.to_move();
+        let mut m = self.metadata.get_modifier();
 
         match ply {
             Ply::Place { x, y, piece_type } => {
@@ -227,8 +228,12 @@ impl<const N: usize> State<N> {
                 *selected_count -= 1;
                 let piece = Piece::new(piece_type, color);
                 self.board[x as usize][y as usize].add_piece(piece);
-                self.metadata.place_piece(piece, x as usize, y as usize);
-                self.metadata.hash ^= zobrist_hash_stack(self, x as usize, y as usize);
+                m.place_piece(piece, x as usize, y as usize);
+                m.metadata.hash ^= zobrist_hash_stack::<N>(
+                    self.board[x as usize][y as usize],
+                    x as usize,
+                    y as usize,
+                );
             }
             Ply::Spread {
                 x,
@@ -237,17 +242,22 @@ impl<const N: usize> State<N> {
                 drops,
                 ..
             } => {
-                self.metadata.hash ^= zobrist_hash_stack(self, x as usize, y as usize);
+                m.metadata.hash ^= zobrist_hash_stack::<N>(
+                    self.board[x as usize][y as usize],
+                    x as usize,
+                    y as usize,
+                );
 
                 let carry_total = drops.iter().sum::<u8>() as usize;
                 let mut carry = self.board[x as usize][y as usize].take(carry_total);
 
-                self.metadata.set_stack(
-                    &self.board[x as usize][y as usize],
+                m.set_stack(self.board[x as usize][y as usize], x as usize, y as usize);
+
+                m.metadata.hash ^= zobrist_hash_stack::<N>(
+                    self.board[x as usize][y as usize],
                     x as usize,
                     y as usize,
                 );
-                self.metadata.hash ^= zobrist_hash_stack(self, x as usize, y as usize);
 
                 let (dx, dy) = direction.to_offset();
                 let (mut tx, mut ty) = (x as i8, y as i8);
@@ -255,15 +265,23 @@ impl<const N: usize> State<N> {
                     tx += dx;
                     ty += dy;
 
-                    self.metadata.hash ^= zobrist_hash_stack(self, tx as usize, ty as usize);
-
-                    self.board[tx as usize][ty as usize].add(carry.drop(drop as usize));
-                    self.metadata.set_stack(
-                        &self.board[tx as usize][ty as usize],
+                    m.metadata.hash ^= zobrist_hash_stack::<N>(
+                        self.board[x as usize][y as usize],
                         tx as usize,
                         ty as usize,
                     );
-                    self.metadata.hash ^= zobrist_hash_stack(self, tx as usize, ty as usize);
+
+                    self.board[tx as usize][ty as usize].add(carry.drop(drop as usize));
+                    m.set_stack(
+                        self.board[tx as usize][ty as usize],
+                        tx as usize,
+                        ty as usize,
+                    );
+                    m.metadata.hash ^= zobrist_hash_stack::<N>(
+                        self.board[x as usize][y as usize],
+                        tx as usize,
+                        ty as usize,
+                    );
                 }
             }
         }
@@ -390,12 +408,13 @@ impl<const N: usize> State<N> {
 
     pub fn recalculate_metadata(&mut self) {
         self.metadata = Default::default();
+        let mut m = self.metadata.get_modifier();
 
         for x in 0..N {
             for y in 0..N {
-                let stack = &self.board[x][y];
+                let stack = self.board[x][y];
                 if !stack.is_empty() {
-                    self.metadata.set_stack(stack, x, y);
+                    m.set_stack(stack, x, y);
                 }
             }
         }

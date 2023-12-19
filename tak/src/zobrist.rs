@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 use rand::{self, Error, Fill, Rng};
 
 use crate::piece::{Color::*, Piece};
+use crate::stack::Stack;
 use crate::state::State;
 
 pub type ZobristHash = u64;
@@ -106,14 +107,14 @@ pub fn zobrist_hash_state<const N: usize>(state: &State<N>) -> ZobristHash {
     }
 }
 
-pub fn zobrist_hash_stack<const N: usize>(state: &State<N>, x: usize, y: usize) -> ZobristHash {
+pub fn zobrist_hash_stack<const N: usize>(stack: Stack, x: usize, y: usize) -> ZobristHash {
     match N {
-        3 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_3S),
-        4 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_4S),
-        5 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_5S),
-        6 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_6S),
-        7 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_7S),
-        8 => zobrist_hash_stack_sized(cast_size(state), x, y, &*ZOBRIST_KEYS_8S),
+        3 => zobrist_hash_stack_sized(stack, x, y, &*ZOBRIST_KEYS_3S),
+        4 => zobrist_hash_stack_sized(stack, x, y, &*ZOBRIST_KEYS_4S),
+        5 => zobrist_hash_stack_sized(stack, x, y, &*ZOBRIST_KEYS_5S),
+        6 => zobrist_hash_stack_sized(stack, x, y, &*ZOBRIST_KEYS_6S),
+        7 => zobrist_hash_stack_sized(stack, x, y, &*ZOBRIST_KEYS_7S),
+        8 => zobrist_hash_stack_sized(stack, x, y, &*ZOBRIST_KEYS_8S),
         _ => unreachable!(),
     }
 }
@@ -130,7 +131,7 @@ fn zobrist_hash_state_sized<const N: usize>(
 
     for x in 0..N {
         for y in 0..N {
-            hash ^= zobrist_hash_stack_sized(state, x, y, keys);
+            hash ^= zobrist_hash_stack_sized(state.board[x][y], x, y, keys);
         }
     }
 
@@ -138,14 +139,12 @@ fn zobrist_hash_state_sized<const N: usize>(
 }
 
 fn zobrist_hash_stack_sized<const N: usize>(
-    state: &State<N>,
+    stack: Stack,
     x: usize,
     y: usize,
     keys: &ZobristKeys<N>,
 ) -> ZobristHash {
     let mut hash = 0;
-
-    let stack = state.board[x][y];
 
     if let Some(top_piece) = stack.top() {
         let (_, stack_map) = stack.get_player_bitmaps();
