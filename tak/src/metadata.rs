@@ -10,8 +10,6 @@ pub struct Metadata<const N: usize> {
     pub flatstones: Bitmap<N>,
     pub standing_stones: Bitmap<N>,
     pub capstones: Bitmap<N>,
-    pub p1_stacks: [[u8; N]; N],
-    pub p2_stacks: [[u8; N]; N],
     pub hash: ZobristHash,
 }
 
@@ -23,8 +21,6 @@ impl<const N: usize> Default for Metadata<N> {
             flatstones: Bitmap::empty(),
             standing_stones: Bitmap::empty(),
             capstones: Bitmap::empty(),
-            p1_stacks: [[0; N]; N],
-            p2_stacks: [[0; N]; N],
             hash: 0,
         }
     }
@@ -65,19 +61,13 @@ impl<const N: usize> Metadata<N> {
             self.standing_stones.clear(x, y);
             self.capstones.clear(x, y);
         }
-
-        let (p1_stack, p2_stack) = stack.get_player_bitmaps();
-        self.p1_stacks[x][y] = (p1_stack & 0xFF) as u8;
-        self.p2_stacks[x][y] = (p2_stack & 0xFF) as u8;
     }
 
     pub(crate) fn place_piece(&mut self, piece: Piece, x: usize, y: usize) {
         if piece.color() == Color::White {
             self.p1_pieces.set(x, y);
-            self.p1_stacks[x][y] = 1;
         } else {
             self.p2_pieces.set(x, y);
-            self.p2_stacks[x][y] = 1;
         }
 
         match piece.piece_type() {

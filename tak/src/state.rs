@@ -824,28 +824,6 @@ mod tests {
         s.execute_ply(ply("Sb4")).unwrap();
         s.execute_ply(ply("5d5<221")).unwrap();
 
-        assert_eq!(
-            s.metadata.p1_stacks,
-            [
-                [0, 0, 0, 0b00000001, 0b00000101],
-                [0, 0, 0, 0, 0b00000101],
-                [0, 0, 0, 0, 0b00000001],
-                [0, 0, 0, 0, 0b00000001],
-                [0; 5],
-            ]
-        );
-
-        assert_eq!(
-            s.metadata.p2_stacks,
-            [
-                [0, 0, 0, 0, 0b00000010],
-                [0, 0, 0, 0b00000001, 0b00000010],
-                [0, 0, 0, 0, 0b00001110],
-                [0; 5],
-                [0, 0, 0, 0, 0b00000001],
-            ]
-        );
-
         assert_eq!(s.metadata.p1_pieces, 0b11110_10000_00000_00000_00000.into());
         assert_eq!(s.metadata.p2_pieces, 0b00001_01000_00000_00000_00000.into());
         assert_eq!(
