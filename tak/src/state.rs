@@ -204,7 +204,7 @@ impl<const N: usize> State<N> {
         use PieceType::*;
 
         let player_color = self.to_move();
-        let mut m = self.metadata.get_modifier();
+        let m = &mut self.metadata;
 
         match ply {
             Ply::Place { x, y, piece_type } => {
@@ -226,14 +226,17 @@ impl<const N: usize> State<N> {
 
                 // Execute the placement.
                 *selected_count -= 1;
+
                 let piece = Piece::new(piece_type, color);
                 self.board[x as usize][y as usize].add_piece(piece);
-                m.place_piece(piece, x as usize, y as usize);
-                m.metadata.hash ^= zobrist_hash_stack::<N>(
+
+                m.hash ^= zobrist_hash_stack::<N>(
                     self.board[x as usize][y as usize],
                     x as usize,
                     y as usize,
                 );
+
+                m.place(piece, x as usize, y as usize);
             }
             Ply::Spread {
                 x,
@@ -242,18 +245,18 @@ impl<const N: usize> State<N> {
                 drops,
                 ..
             } => {
-                m.metadata.hash ^= zobrist_hash_stack::<N>(
+                m.hash ^= zobrist_hash_stack::<N>(
                     self.board[x as usize][y as usize],
                     x as usize,
                     y as usize,
                 );
 
+                m.spread(self.board[x as usize][y as usize], ply);
+
                 let carry_total = drops.iter().sum::<u8>() as usize;
                 let mut carry = self.board[x as usize][y as usize].take(carry_total);
 
-                m.set_stack(self.board[x as usize][y as usize], x as usize, y as usize);
-
-                m.metadata.hash ^= zobrist_hash_stack::<N>(
+                m.hash ^= zobrist_hash_stack::<N>(
                     self.board[x as usize][y as usize],
                     x as usize,
                     y as usize,
@@ -265,20 +268,16 @@ impl<const N: usize> State<N> {
                     tx += dx;
                     ty += dy;
 
-                    m.metadata.hash ^= zobrist_hash_stack::<N>(
-                        self.board[x as usize][y as usize],
+                    m.hash ^= zobrist_hash_stack::<N>(
+                        self.board[tx as usize][ty as usize],
                         tx as usize,
                         ty as usize,
                     );
 
                     self.board[tx as usize][ty as usize].add(carry.drop(drop as usize));
-                    m.set_stack(
+
+                    m.hash ^= zobrist_hash_stack::<N>(
                         self.board[tx as usize][ty as usize],
-                        tx as usize,
-                        ty as usize,
-                    );
-                    m.metadata.hash ^= zobrist_hash_stack::<N>(
-                        self.board[x as usize][y as usize],
                         tx as usize,
                         ty as usize,
                     );
@@ -286,7 +285,7 @@ impl<const N: usize> State<N> {
             }
         }
 
-        self.metadata.hash ^= zobrist_advance_move::<N>();
+        m.hash ^= zobrist_advance_move::<N>();
         self.ply_count += 1;
     }
 
@@ -408,13 +407,12 @@ impl<const N: usize> State<N> {
 
     pub fn recalculate_metadata(&mut self) {
         self.metadata = Default::default();
-        let mut m = self.metadata.get_modifier();
 
         for x in 0..N {
             for y in 0..N {
                 let stack = self.board[x][y];
                 if !stack.is_empty() {
-                    m.set_stack(stack, x, y);
+                    self.metadata.set_stack(stack, x, y);
                 }
             }
         }
@@ -710,10 +708,10 @@ mod tests {
         let mut s = state::<5>("x5/x,212121C,212,2S,x/x5/x5/x5 1 2");
 
         s.execute_ply(ply("b2")).unwrap();
-        assert_eq!(s, state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"),);
+        assert_eq!(s, state("x5/x,212121C,212,2S,x/x5/x,1,x3/x5 2 2"));
 
         s.execute_ply(ply("d4>")).unwrap();
-        assert_eq!(s, state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"),);
+        assert_eq!(s, state("x5/x,212121C,212,x,2S/x5/x,1,x3/x5 1 3"));
 
         s.execute_ply(ply("4b4>211*")).unwrap();
         assert_eq!(s, state("x5/x,21,21221,2,21C/x5/x,1,x3/x5 2 3"));

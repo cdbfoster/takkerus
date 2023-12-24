@@ -435,36 +435,64 @@ pub mod generation {
                     Direction::South | Direction::West => (N - 1, N - 1),
                 };
 
-                let mut state = State::<N> {
-                    ply_count: 2,
-                    ..Default::default()
-                };
+                let mut player = Bitmap::empty();
+                let mut opponent = Bitmap::empty();
+                let mut endpoint = Bitmap::empty();
+
+                fn mark_square<const N: usize>(
+                    stack: Stack,
+                    x: usize,
+                    y: usize,
+                    player: &mut Bitmap<N>,
+                    opponent: &mut Bitmap<N>,
+                    endpoint: &mut Bitmap<N>,
+                ) {
+                    if let Some(top) = stack.top() {
+                        match top.color() {
+                            Color::White => player.set(x, y),
+                            Color::Black => opponent.set(x, y),
+                        }
+
+                        if top.piece_type() == PieceType::Capstone {
+                            endpoint.set(x, y);
+                        }
+                    }
+                }
 
                 let player_bitmap =
                     ((configuration as u16).reverse_bits() >> (16 - stack_size)) as StackBitmap;
 
-                let stack = Stack::from_player_bitmap(
+                let mut stack = Stack::from_player_bitmap(
                     stack_size,
                     player_bitmap,
                     Piece::new(PieceType::Capstone, Color::White),
                 );
 
-                state.board[x][y] = stack;
+                let carry_total = drops.iter().sum::<u8>() as usize;
+                let mut carry = stack.take(carry_total);
 
-                state
-                    .execute_ply(Ply::Spread {
-                        x: x as u8,
-                        y: y as u8,
-                        direction,
-                        drops,
-                        crush: false,
-                    })
-                    .expect("invalid ply");
+                mark_square(stack, x, y, &mut player, &mut opponent, &mut endpoint);
+
+                let (dx, dy) = direction.to_offset();
+                let (mut tx, mut ty) = (x as i8, y as i8);
+                for drop in drops.iter() {
+                    tx += dx;
+                    ty += dy;
+
+                    mark_square(
+                        carry.drop(drop as usize),
+                        tx as usize,
+                        ty as usize,
+                        &mut player,
+                        &mut opponent,
+                        &mut endpoint,
+                    );
+                }
 
                 Self {
-                    endpoint: state.metadata.capstones,
-                    player: state.metadata.p1_pieces,
-                    opponent: state.metadata.p2_pieces,
+                    endpoint,
+                    player,
+                    opponent,
                 }
             }
         }
