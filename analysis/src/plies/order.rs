@@ -1,8 +1,7 @@
-use tak::{board_mask, edge_masks, Bitmap, Color, Direction, PieceType, Ply, State};
+use tak::{board_mask, edge_masks, generation, Bitmap, Color, Direction, PieceType, Ply, State};
 
 use crate::util::{placement_threat_map, FixedLifoBuffer};
 
-use super::generation;
 use super::Continuation::{self, *};
 use super::Fallibility::{self, *};
 use super::PlyBuffer;

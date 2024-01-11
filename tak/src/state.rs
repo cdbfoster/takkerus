@@ -8,7 +8,7 @@ use tracing::{instrument, trace};
 use crate::bitmap::{board_mask, edge_masks, Bitmap};
 use crate::metadata::Metadata;
 use crate::piece::{Color, Piece, PieceType};
-use crate::ply::{Direction, Ply, PlyError};
+use crate::ply::{generation, Direction, Ply, PlyError};
 use crate::stack::Stack;
 use crate::tps::Tps;
 use crate::zobrist::{zobrist_advance_move, zobrist_hash_stack, zobrist_hash_state};
@@ -273,27 +273,6 @@ impl<const N: usize> State<N> {
     }
 
     pub fn resolution(&self) -> Option<Resolution> {
-        fn spans_board<const N: usize>(bitmap: Bitmap<N>) -> bool {
-            use Direction::*;
-            let edge = edge_masks();
-
-            let all_edges = edge[North as usize]
-                | edge[East as usize]
-                | edge[South as usize]
-                | edge[West as usize];
-
-            for group in bitmap.groups_from(bitmap & all_edges) {
-                if (!(group & edge[North as usize]).is_empty()
-                    && !(group & edge[South as usize]).is_empty())
-                    || (!(group & edge[West as usize]).is_empty()
-                        && !(group & edge[East as usize]).is_empty())
-                {
-                    return true;
-                }
-            }
-            false
-        }
-
         let m = &self.metadata;
         let p1_road = m.p1_pieces & (m.flatstones | m.capstones);
         let p2_road = m.p2_pieces & (m.flatstones | m.capstones);
@@ -342,6 +321,54 @@ impl<const N: usize> State<N> {
         }
     }
 
+    pub fn is_in_tak(&self, color: Color) -> bool {
+        let m = &self.metadata;
+
+        let all_pieces = m.p1_pieces | m.p2_pieces;
+        let road_pieces = m.flatstones | m.capstones;
+
+        let opponent_road_pieces = match color {
+            Color::White => road_pieces & m.p2_pieces,
+            Color::Black => road_pieces & m.p1_pieces,
+        };
+
+        if placement_threat(opponent_road_pieces, all_pieces & !opponent_road_pieces) {
+            return true;
+        }
+
+        let opponent_pieces = match color {
+            Color::White => m.p2_pieces,
+            Color::Black => m.p1_pieces,
+        };
+
+        let stacks = opponent_pieces.bits().filter(|b| {
+            let (x, y) = b.coordinates();
+            self.board[x][y].len() > 1
+        });
+
+        for stack in stacks {
+            for ply in generation::spreads(self, stack) {
+                let mut next_state = self.clone();
+                next_state.execute_ply_unchecked(ply);
+
+                let m = &next_state.metadata;
+
+                let road_pieces = m.flatstones | m.capstones;
+
+                let opponent_road_pieces = match color {
+                    Color::White => road_pieces & m.p2_pieces,
+                    Color::Black => road_pieces & m.p1_pieces,
+                };
+
+                if spans_board(opponent_road_pieces) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     pub fn recalculate_metadata(&mut self) {
         self.metadata = Default::default();
 
@@ -356,6 +383,57 @@ impl<const N: usize> State<N> {
 
         self.metadata.hash = zobrist_hash_state(self);
     }
+
+    pub fn fcd(&self, color: Color) -> i32 {
+        let p1_flats = (self.metadata.flatstones & self.metadata.p1_pieces).count_ones() as i32;
+        let p2_flats = (self.metadata.flatstones & self.metadata.p2_pieces).count_ones() as i32;
+
+        match color {
+            Color::White => p1_flats - p2_flats,
+            Color::Black => p2_flats - p1_flats,
+        }
+    }
+}
+
+fn spans_board<const N: usize>(bitmap: Bitmap<N>) -> bool {
+    use Direction::*;
+    let edge = edge_masks();
+
+    let all_edges =
+        edge[North as usize] | edge[East as usize] | edge[South as usize] | edge[West as usize];
+
+    for group in bitmap.groups_from(bitmap & all_edges) {
+        if (!(group & edge[North as usize]).is_empty()
+            && !(group & edge[South as usize]).is_empty())
+            || (!(group & edge[West as usize]).is_empty()
+                && !(group & edge[East as usize]).is_empty())
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn placement_threat<const N: usize>(road_pieces: Bitmap<N>, blocking_pieces: Bitmap<N>) -> bool {
+    use Direction::*;
+
+    let edges = edge_masks();
+
+    let left_pieces = edges[West as usize].flood_fill(road_pieces);
+    let right_pieces = edges[East as usize].flood_fill(road_pieces);
+    let horizontal_threats = (left_pieces.dilate() | edges[West as usize])
+        & (right_pieces.dilate() | edges[East as usize]);
+
+    if !(horizontal_threats & !blocking_pieces).is_empty() {
+        return true;
+    }
+
+    let top_pieces = edges[North as usize].flood_fill(road_pieces);
+    let bottom_pieces = edges[South as usize].flood_fill(road_pieces);
+    let vertical_threats = (top_pieces.dilate() | edges[North as usize])
+        & (bottom_pieces.dilate() | edges[South as usize]);
+
+    !(vertical_threats & !blocking_pieces).is_empty()
 }
 
 impl<const N: usize> fmt::Debug for State<N> {
@@ -659,6 +737,65 @@ mod tests {
                 komi: Komi::default(),
             })
         );
+    }
+
+    #[test]
+    fn spans_board_is_accurate() {
+        let b: Bitmap<5> = 0.into();
+        assert!(!spans_board(b));
+
+        let b: Bitmap<5> = 0b11111_00000_00000_00000_00000.into();
+        assert!(spans_board(b));
+
+        let b: Bitmap<5> = 0b10000_10000_10000_10000_10000.into();
+        assert!(spans_board(b));
+
+        let b: Bitmap<8> =
+            0b00011100_11010100_01010100_01010100_01010100_01010100_01110111_00000000.into();
+        assert!(spans_board(b));
+
+        let b: Bitmap<8> =
+            0b01000000_01111110_00000010_11111110_10000000_11111110_00000010_00000010.into();
+        assert!(spans_board(b));
+    }
+
+    #[test]
+    fn placement_threat_is_accurate() {
+        let b: Bitmap<5> = 0b01000_11110_01000_00000_01000.into();
+        assert!(placement_threat(b, 0.into()));
+        assert!(placement_threat(b, 0b00000_00001_00000_00000_00000.into()));
+        assert!(placement_threat(b, 0b00000_00000_00000_01000_00000.into()));
+        assert!(!placement_threat(b, 0b00000_00001_00000_01000_00000.into()));
+
+        let b: Bitmap<5> = 0b01000_11100_00000_00000_01000.into();
+        assert!(!placement_threat(b, 0.into()));
+    }
+
+    #[test]
+    fn is_in_tak() {
+        let s = state::<6>("x6/x6/x6/2,2,2,x,2,2/x6/x6 1 1");
+        assert!(s.is_in_tak(Color::White));
+        assert!(!s.is_in_tak(Color::Black));
+
+        let s = state::<6>("x6/x6/x6/2,2,2,1,2,2/x6/x6 1 1");
+        assert!(!s.is_in_tak(Color::White));
+        assert!(!s.is_in_tak(Color::Black));
+
+        let s = state::<6>("x6/x6/x6/2,2,x,x,2,2/x6/x6 1 1");
+        assert!(!s.is_in_tak(Color::White));
+        assert!(!s.is_in_tak(Color::Black));
+
+        let s = state::<6>("x6/x6/x,2121212C,x4/2,2,x,x,2,2/x6/x6 1 1");
+        assert!(s.is_in_tak(Color::White));
+        assert!(!s.is_in_tak(Color::Black));
+
+        let s = state::<6>("x6/x6/x,2121212S,x4/2,2,x,x,2,2/x6/x6 1 1");
+        assert!(!s.is_in_tak(Color::White));
+        assert!(!s.is_in_tak(Color::Black));
+
+        let s = state::<6>("x6/x6/x,1212121C,x4/1,1,x,x,1,1/x6/x6 1 1");
+        assert!(!s.is_in_tak(Color::White));
+        assert!(s.is_in_tak(Color::Black));
     }
 
     #[test]

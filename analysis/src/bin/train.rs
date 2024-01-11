@@ -10,12 +10,11 @@ use rand::{self, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 
 use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator, GatherFeatures};
-use analysis::plies::generation;
 use analysis::{analyze, AnalysisConfig, PersistentState};
 use ann::linear_algebra::MatrixRowMajor;
 use ann::loss::{mse, mse_prime};
 use ann::shallow::ShallowAdam;
-use tak::{board_mask, Color, PieceType, Ply, Resolution, State};
+use tak::{board_mask, generation, Color, PieceType, Ply, Resolution, State};
 
 const BATCH_SIZE: usize = 128;
 const BATCHES_PER_UPDATE: usize = 8;

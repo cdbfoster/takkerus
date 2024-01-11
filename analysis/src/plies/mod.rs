@@ -6,7 +6,6 @@ use tak::{Ply, State};
 pub(crate) use self::order::DepthKillerMoves;
 use self::order::{AllPlies, KillerMoves, Killers, PlacementWins, TtPly};
 
-pub mod generation;
 mod order;
 
 use Continuation::*;

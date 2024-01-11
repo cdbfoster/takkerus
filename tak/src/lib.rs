@@ -1,7 +1,7 @@
 pub use self::bitmap::{board_mask, center_mask, edge_masks, Bitmap, GroupIter};
 pub use self::metadata::Metadata;
 pub use self::piece::{Color, Piece, PieceType};
-pub use self::ply::{Direction, Drops, Ply, PlyError};
+pub use self::ply::{generation, Direction, Ply, PlyError};
 pub use self::ptn::{PtnError, PtnGame, PtnHeader, PtnMove, PtnPly, PtnTurn};
 pub use self::stack::{Stack, StackIter};
 pub use self::state::{Komi, Resolution, State, StateError};
