@@ -72,15 +72,23 @@ pub struct Statistics {
     pub tt_store_fails: u64,
     pub tt_hits: u64,
     pub tt_saves: u64,
-    pub best_ply_order: [u64; 6],
+    /// Best-ply ordering of PV-Nodes (exact bound nodes).
+    pub pv_ply_order: [u64; 6],
+    /// Best-ply ordering of All-Nodes (fail-low nodes).
+    pub all_ply_order: [u64; 6],
 }
 
 impl Add for &Statistics {
     type Output = Statistics;
 
     fn add(self, other: Self) -> Self::Output {
-        let mut best_ply_order = self.best_ply_order;
-        for (a, b) in best_ply_order.iter_mut().zip(other.best_ply_order) {
+        let mut pv_ply_order = self.pv_ply_order;
+        for (a, b) in pv_ply_order.iter_mut().zip(other.pv_ply_order) {
+            *a += b;
+        }
+
+        let mut all_ply_order = self.all_ply_order;
+        for (a, b) in all_ply_order.iter_mut().zip(other.all_ply_order) {
             *a += b;
         }
 
@@ -96,7 +104,8 @@ impl Add for &Statistics {
             tt_store_fails: self.tt_store_fails + other.tt_store_fails,
             tt_hits: self.tt_hits + other.tt_hits,
             tt_saves: self.tt_saves + other.tt_saves,
-            best_ply_order,
+            pv_ply_order,
+            all_ply_order,
         }
     }
 }
@@ -258,23 +267,27 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         // Best ply ordering calc.
         {
-            let total = total_stats.best_ply_order.iter().sum::<u64>().max(1);
-            let mut buffer = String::new();
-            for (i, c) in total_stats.best_ply_order.into_iter().enumerate() {
-                if i < 5 {
-                    write!(
-                        buffer,
-                        "{}: {:5.2}%, ",
-                        i + 1,
-                        100.0 * c as f64 / total as f64
-                    )
-                    .ok();
-                } else {
-                    write!(buffer, "6+: {:5.2}%", 100.0 * c as f64 / total as f64).ok();
+            fn order_string(values: &[u64; 6]) -> String {
+                let total = values.iter().sum::<u64>().max(1);
+                let mut buffer = String::new();
+                for (i, &c) in values.iter().enumerate() {
+                    if i < 5 {
+                        write!(
+                            buffer,
+                            "{}: {:5.2}%, ",
+                            i + 1,
+                            100.0 * c as f64 / total as f64
+                        )
+                        .ok();
+                    } else {
+                        write!(buffer, "6+: {:5.2}%", 100.0 * c as f64 / total as f64).ok();
+                    }
                 }
+                buffer
             }
 
-            debug!("Best ply ordering: {buffer}");
+            debug!("PV-Node best-ply ordering: {}", order_string(&total_stats.pv_ply_order));
+            debug!("All-Node best-ply ordering: {}", order_string(&total_stats.all_ply_order));
         }
 
         iteration_times.push(iteration_time.as_secs_f64());
@@ -613,20 +626,26 @@ fn minimax<const N: usize>(
 
     let (i, best_ply) = best_ply.expect("no plies were searched");
 
-    search.stats.depth(search_depth).best_ply_order[i.min(5)] += 1;
+    let bound = if alpha == beta {
+        Bound::Lower
+    } else if raised_alpha {
+        Bound::Exact
+    } else {
+        Bound::Upper
+    };
+
+    if bound == Bound::Exact {
+        search.stats.depth(search_depth).pv_ply_order[i.min(5)] += 1;
+    } else if bound == Bound::Upper {
+        search.stats.depth(search_depth).all_ply_order[i.min(5)] += 1;
+    }
 
     // Store in transposition table =============
 
     let inserted = search.persistent_state.transposition_table.insert(
         state.metadata.hash,
         TranspositionTableEntry {
-            bound: if alpha == beta {
-                Bound::Lower
-            } else if raised_alpha {
-                Bound::Exact
-            } else {
-                Bound::Upper
-            },
+            bound,
             evaluation: alpha,
             node_count: search
                 .stats
