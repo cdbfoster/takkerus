@@ -303,11 +303,6 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
         !threats.is_empty()
     };
 
-    let player_stacks = match state.to_move() {
-        White => &m.p1_stacks,
-        Black => &m.p2_stacks,
-    };
-
     for ScoredPly { score, ply } in plies {
         match *ply {
             Ply::Place { x, y, piece_type } => {
@@ -376,7 +371,10 @@ fn score_plies<const N: usize>(state: &State<N>, plies: &mut [ScoredPly<N>]) {
                     }
                 }
 
-                let player_pieces = player_stacks[x as usize][y as usize];
+                let player_pieces = match state.to_move() {
+                    White => stack.get_player_bitmaps().0,
+                    Black => stack.get_player_bitmaps().1,
+                };
 
                 let mut mask = 0x80 >> (8 - carry);
 
