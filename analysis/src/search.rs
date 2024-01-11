@@ -635,7 +635,7 @@ fn minimax<const N: usize>(
                 .sum::<u64>()
                 .try_into()
                 .unwrap_or(u32::MAX),
-            depth: best.depth as u8,
+            depth: best.depth.max(remaining_depth) as u8,
             ply_count: state.ply_count,
             ply: best_ply,
         },
