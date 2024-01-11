@@ -1,6 +1,8 @@
 use std::env;
 
 use clap::Parser;
+use tracing_subscriber::filter::EnvFilter;
+use tracing_subscriber::fmt::format;
 
 use self::analyze::run_analysis;
 use self::args::{Args, Command};
@@ -20,7 +22,12 @@ fn main() {
         set_default_logging();
     }
 
-    tracing_subscriber::fmt::init();
+    let event_format = format().with_target(false).without_time();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .event_format(event_format)
+        .init();
 
     // Limit the number of threads async-std tries to spawn; we don't need that many.
     if env::var("ASYNC_STD_THREAD_COUNT").is_err() {

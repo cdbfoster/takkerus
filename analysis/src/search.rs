@@ -286,8 +286,14 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
                 buffer
             }
 
-            debug!("PV-Node best-ply ordering: {}", order_string(&total_stats.pv_ply_order));
-            debug!("All-Node best-ply ordering: {}", order_string(&total_stats.all_ply_order));
+            debug!(
+                "PV-Node best-ply ordering: {}",
+                order_string(&total_stats.pv_ply_order)
+            );
+            debug!(
+                "All-Node best-ply ordering: {}",
+                order_string(&total_stats.all_ply_order)
+            );
         }
 
         iteration_times.push(iteration_time.as_secs_f64());
