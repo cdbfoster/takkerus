@@ -17,6 +17,7 @@ version = "0.1.0"
 dependencies = [
  "ann",
  "criterion",
+ "fnv",
  "lime",
  "once_cell",
  "pyo3",
@@ -456,6 +457,12 @@ checksum = "a7a407cfaa3385c4ae6b23e84623d48c2798d06e3e6a1878f7f59f17b3f86499"
 dependencies = [
  "instant",
 ]
+
+[[package]]
+name = "fnv"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "futures"

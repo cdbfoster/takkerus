@@ -4,7 +4,6 @@ use crate::util::{placement_threat_map, FixedLifoBuffer};
 
 use super::Continuation::{self, *};
 use super::Fallibility::{self, *};
-use super::PlyBuffer;
 
 use Color::*;
 use Direction::*;
@@ -18,11 +17,19 @@ pub(super) struct GeneratedPly<const N: usize> {
 
 // Placement wins ===============================
 
-pub(super) struct PlacementWins<'a, const N: usize> {
-    pub(super) state: &'a State<N>,
+pub(super) struct PlacementWins<const N: usize> {
+    state: State<N>,
 }
 
-impl<'a, const N: usize> Iterator for PlacementWins<'a, N> {
+impl<const N: usize> PlacementWins<N> {
+    pub(super) fn new(state: &State<N>) -> Self {
+        Self {
+            state: state.clone(),
+        }
+    }
+}
+
+impl<const N: usize> Iterator for PlacementWins<N> {
     type Item = GeneratedPly<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -62,22 +69,27 @@ impl<'a, const N: usize> Iterator for PlacementWins<'a, N> {
 
 // Transposition table ply =====================
 
-pub(super) struct TtPly<'a, const N: usize> {
-    pub(super) used_plies: &'a PlyBuffer<N>,
-    pub(super) ply: Option<Ply<N>>,
+pub(super) struct TtPly<const N: usize> {
+    ply: <Option<Ply<N>> as IntoIterator>::IntoIter,
 }
 
-impl<'a, const N: usize> Iterator for TtPly<'a, N> {
+impl<const N: usize> TtPly<N> {
+    pub(super) fn new(ply: Option<Ply<N>>) -> Self {
+        Self {
+            ply: ply.into_iter(),
+        }
+    }
+}
+
+impl<const N: usize> Iterator for TtPly<N> {
     type Item = GeneratedPly<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.ply
-            .filter(|ply| !self.used_plies.borrow().contains(ply))
-            .map(|ply| GeneratedPly {
-                ply,
-                fallibility: Fallible,
-                continuation: Continue,
-            })
+        self.ply.next().map(|ply| GeneratedPly {
+            ply,
+            fallibility: Fallible,
+            continuation: Continue,
+        })
     }
 }
 
@@ -100,32 +112,44 @@ impl<const N: usize> DepthKillerMoves<N> {
 
 pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
 
-pub(super) struct Killers<'a, const N: usize> {
-    pub(super) used_plies: &'a PlyBuffer<N>,
-    pub(super) killer_moves: &'a mut KillerMoves<N>,
+pub(super) struct Killers<const N: usize> {
+    pub(super) killer_moves: KillerMoves<N>,
 }
 
-impl<'a, const N: usize> Iterator for Killers<'a, N> {
+impl<const N: usize> Killers<N> {
+    pub(super) fn new(killer_moves: &KillerMoves<N>) -> Self {
+        Self {
+            killer_moves: killer_moves.clone(),
+        }
+    }
+}
+
+impl<const N: usize> Iterator for Killers<N> {
     type Item = GeneratedPly<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.killer_moves
-            .pop()
-            .filter(|ply| !self.used_plies.borrow().contains(ply))
-            .map(|ply| GeneratedPly {
-                ply,
-                fallibility: Fallible,
-                continuation: Continue,
-            })
+        self.killer_moves.pop().map(|ply| GeneratedPly {
+            ply,
+            fallibility: Fallible,
+            continuation: Continue,
+        })
     }
 }
 
 // All plies ====================================
 
-pub(super) struct AllPlies<'a, const N: usize> {
-    pub(super) used_plies: &'a PlyBuffer<N>,
-    pub(super) state: &'a State<N>,
-    pub(super) plies: Option<Vec<ScoredPly<N>>>,
+pub(super) struct AllPlies<const N: usize> {
+    state: State<N>,
+    plies: Option<Vec<ScoredPly<N>>>,
+}
+
+impl<const N: usize> AllPlies<N> {
+    pub(super) fn new(state: &State<N>) -> Self {
+        Self {
+            state: state.clone(),
+            plies: None,
+        }
+    }
 }
 
 pub(super) struct ScoredPly<const N: usize> {
@@ -133,7 +157,7 @@ pub(super) struct ScoredPly<const N: usize> {
     ply: Ply<N>,
 }
 
-impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
+impl<const N: usize> Iterator for AllPlies<N> {
     type Item = GeneratedPly<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -144,11 +168,11 @@ impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
                 continuation: Continue,
             })
         } else {
-            let mut plies = generate_all_plies(self.state, &self.used_plies.borrow());
+            let mut plies = generate_all_plies(&self.state);
 
             // Don't really need a detailed ordering so early in the game.
             if self.state.ply_count >= 6 {
-                score_plies(self.state, &mut plies);
+                score_plies(&self.state, &mut plies);
                 plies.sort_unstable_by_key(|scored_ply| scored_ply.score);
             }
 
@@ -159,10 +183,7 @@ impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
 }
 
 // Generate all available plies in a simple, but probably beneficial order.
-fn generate_all_plies<const N: usize>(
-    state: &State<N>,
-    used_plies: &[Ply<N>],
-) -> Vec<ScoredPly<N>> {
+fn generate_all_plies<const N: usize>(state: &State<N>) -> Vec<ScoredPly<N>> {
     let mut plies = Vec::new();
 
     let empty = board_mask() ^ state.metadata.p1_pieces ^ state.metadata.p2_pieces;
@@ -181,17 +202,13 @@ fn generate_all_plies<const N: usize>(
         // Standing stones.
         if reserve_flatstones > 0 {
             plies.extend(
-                generation::placements(empty, StandingStone)
-                    .filter(|ply| !used_plies.contains(ply))
-                    .map(|ply| ScoredPly { score: 0, ply }),
+                generation::placements(empty, StandingStone).map(|ply| ScoredPly { score: 0, ply }),
             );
         }
 
         // Spreads.
         plies.extend(
-            generation::spreads(state, player_stacks)
-                .filter(|ply| !used_plies.contains(ply))
-                .map(|ply| ScoredPly { score: 0, ply }),
+            generation::spreads(state, player_stacks).map(|ply| ScoredPly { score: 0, ply }),
         );
 
         let reserve_capstones = match state.to_move() {
@@ -202,9 +219,7 @@ fn generate_all_plies<const N: usize>(
         // Capstones.
         if reserve_capstones > 0 {
             plies.extend(
-                generation::placements(empty, Capstone)
-                    .filter(|ply| !used_plies.contains(ply))
-                    .map(|ply| ScoredPly { score: 0, ply }),
+                generation::placements(empty, Capstone).map(|ply| ScoredPly { score: 0, ply }),
             );
         }
     }
@@ -212,9 +227,7 @@ fn generate_all_plies<const N: usize>(
     // Flatstones.
     if reserve_flatstones > 0 {
         plies.extend(
-            generation::placements(empty, Flatstone)
-                .filter(|ply| !used_plies.contains(ply))
-                .map(|ply| ScoredPly { score: 0, ply }),
+            generation::placements(empty, Flatstone).map(|ply| ScoredPly { score: 0, ply }),
         );
     }
 

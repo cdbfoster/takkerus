@@ -1,5 +1,7 @@
-use std::cell::RefCell;
+use std::collections::HashSet;
 use std::iter::Chain;
+
+use fnv::FnvBuildHasher;
 
 use tak::{Ply, State};
 
@@ -7,8 +9,6 @@ pub(crate) use self::order::DepthKillerMoves;
 use self::order::{AllPlies, KillerMoves, Killers, PlacementWins, TtPly};
 
 mod order;
-
-use Continuation::*;
 
 #[derive(PartialEq)]
 pub(crate) enum Fallibility {
@@ -21,72 +21,35 @@ enum Continuation {
     Continue,
     Stop,
 }
+use Continuation::*;
 
-type PlyBuffer<const N: usize> = RefCell<Vec<Ply<N>>>;
-
-pub(crate) struct PlyGenerator<'a, const N: usize> {
-    used_plies: PlyBuffer<N>,
-    state: &'a State<N>,
-    tt_ply: Option<Ply<N>>,
-    killer_moves: KillerMoves<N>,
-}
-
-impl<'a, const N: usize> PlyGenerator<'a, N> {
-    pub(crate) fn new(
-        state: &'a State<N>,
-        tt_ply: Option<Ply<N>>,
-        killer_moves: KillerMoves<N>,
-    ) -> Self {
-        Self {
-            used_plies: PlyBuffer::default(),
-            state,
-            tt_ply,
-            killer_moves,
-        }
-    }
-
-    pub(crate) fn plies(&mut self) -> PlyGeneratorIter<'_, N> {
-        PlyGeneratorIter::new(self)
-    }
-}
-
-pub(crate) struct PlyGeneratorIter<'a, const N: usize> {
-    used_plies: &'a PlyBuffer<N>,
-    plies: PlyIterator<'a, N>,
+pub(crate) struct PlyGenerator<const N: usize> {
+    used_plies: HashSet<Ply<N>, FnvBuildHasher>,
+    plies: PlyIterator<N>,
     continuation: Continuation,
 }
 
-type PlyIterator<'a, const N: usize> =
-    Chain<Chain<Chain<PlacementWins<'a, N>, TtPly<'a, N>>, Killers<'a, N>>, AllPlies<'a, N>>;
-
-impl<'a, const N: usize> PlyGeneratorIter<'a, N> {
-    fn new(generator: &'a mut PlyGenerator<N>) -> Self {
-        let plies = PlacementWins {
-            state: generator.state,
-        }
-        .chain(TtPly {
-            used_plies: &generator.used_plies,
-            ply: generator.tt_ply,
-        })
-        .chain(Killers {
-            used_plies: &generator.used_plies,
-            killer_moves: &mut generator.killer_moves,
-        })
-        .chain(AllPlies {
-            used_plies: &generator.used_plies,
-            state: generator.state,
-            plies: None,
-        });
-
+impl<const N: usize> PlyGenerator<N> {
+    pub(crate) fn new(
+        state: &State<N>,
+        tt_ply: Option<Ply<N>>,
+        killer_moves: &KillerMoves<N>,
+    ) -> Self {
         Self {
-            used_plies: &generator.used_plies,
-            plies,
+            used_plies: HashSet::default(),
+            plies: PlacementWins::new(state)
+                .chain(TtPly::new(tt_ply))
+                .chain(Killers::new(killer_moves))
+                .chain(AllPlies::new(state)),
             continuation: Continue,
         }
     }
 }
 
-impl<'a, const N: usize> Iterator for PlyGeneratorIter<'a, N> {
+type PlyIterator<const N: usize> =
+    Chain<Chain<Chain<PlacementWins<N>, TtPly<N>>, Killers<N>>, AllPlies<N>>;
+
+impl<const N: usize> Iterator for PlyGenerator<N> {
     type Item = (Fallibility, Ply<N>);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -94,15 +57,17 @@ impl<'a, const N: usize> Iterator for PlyGeneratorIter<'a, N> {
             return None;
         }
 
-        let next_ply = self.plies.next();
-
-        if let Some(generated_ply) = &next_ply {
-            let mut used_plies = self.used_plies.borrow_mut();
-            used_plies.push(generated_ply.ply);
-
-            self.continuation = generated_ply.continuation;
+        'generate: loop {
+            if let Some(next_ply) = self.plies.next() {
+                if !self.used_plies.insert(next_ply.ply) {
+                    // We've already seen this ply, so get another.
+                    continue 'generate;
+                }
+                self.continuation = next_ply.continuation;
+                return Some((next_ply.fallibility, next_ply.ply));
+            } else {
+                return None;
+            }
         }
-
-        next_ply.map(|generated_ply| (generated_ply.fallibility, generated_ply.ply))
     }
 }

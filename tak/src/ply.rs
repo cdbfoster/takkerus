@@ -12,7 +12,7 @@ use crate::stack::{Stack, StackBitmap};
 use crate::state::State;
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Direction {
     North = 0,
     East,
@@ -31,7 +31,7 @@ impl Direction {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct Drops(u8);
 
 impl Drops {
@@ -129,7 +129,7 @@ impl From<Drops> for u8 {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum Ply<const N: usize> {
     Place {
         x: u8,

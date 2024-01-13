@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 use std::fmt;
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum PieceType {
     Flatstone = 0x10,
     StandingStone = 0x20,

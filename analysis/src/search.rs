@@ -546,11 +546,7 @@ fn minimax<const N: usize>(
 
     // Ply search ===============================
 
-    let mut ply_generator = PlyGenerator::new(
-        state,
-        tt_ply,
-        search.killer_moves.depth(search_depth).clone(),
-    );
+    let ply_generator = PlyGenerator::new(state, tt_ply, search.killer_moves.depth(search_depth));
 
     let mut best = BranchResult {
         depth: 0,
@@ -560,7 +556,7 @@ fn minimax<const N: usize>(
 
     let mut raised_alpha = false;
 
-    for (i, (fallibility, ply)) in ply_generator.plies().enumerate() {
+    for (i, (fallibility, ply)) in ply_generator.enumerate() {
         let _move_span = trace_span!("move", ?ply).entered();
         let mut state = state.clone();
 
