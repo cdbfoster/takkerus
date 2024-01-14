@@ -1,6 +1,6 @@
 use std::fmt;
 
-use tak::{Ply, ZobristHash};
+use tak::{Drops, Ply, PlyError, ZobristHash};
 
 use crate::evaluation::Evaluation;
 
@@ -41,9 +41,9 @@ impl<const N: usize> TranspositionTable<N> {
 
         fn score<const N: usize>(entry: &TranspositionTableEntry<N>) -> u32 {
             // Score by total ply depth, bound, and then individual search depth.
-            ((entry.depth as u32 + entry.ply_count as u32) << 16)
-                | ((entry.bound as u32) << 8)
-                | (entry.depth as u32)
+            ((entry.depth() as u32 + entry.ply_count() as u32) << 16)
+                | ((entry.bound() as u32) << 8)
+                | (entry.depth() as u32)
         }
 
         let entry_score = score(&entry);
@@ -124,13 +124,166 @@ pub enum Bound {
     Exact,
 }
 
+impl TryFrom<u8> for Bound {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Bound::Lower),
+            1 => Ok(Bound::Upper),
+            2 => Ok(Bound::Exact),
+            _ => Err("invalid bound value"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TranspositionTableEntry<const N: usize> {
-    pub bound: Bound,
-    pub evaluation: Evaluation,
-    pub depth: u8,
-    pub ply_count: u16,
-    pub ply: Ply<N>,
+    ply: PackedPly,
+    evaluation: Evaluation,
+    info: EntryInfo,
+}
+
+impl<const N: usize> TranspositionTableEntry<N> {
+    pub fn new(
+        ply: Ply<N>,
+        evaluation: Evaluation,
+        bound: Bound,
+        depth: usize,
+        ply_count: u16,
+    ) -> Self {
+        Self {
+            ply: ply.into(),
+            evaluation,
+            info: EntryInfo::new(bound, depth, ply_count),
+        }
+    }
+
+    pub fn ply(&self) -> Ply<N> {
+        self.ply.try_into().expect("could not unpack ply")
+    }
+
+    pub fn evaluation(&self) -> Evaluation {
+        self.evaluation
+    }
+
+    pub fn bound(&self) -> Bound {
+        self.info.bound()
+    }
+
+    pub fn depth(&self) -> usize {
+        self.info.depth()
+    }
+
+    pub fn ply_count(&self) -> u16 {
+        self.info.ply_count()
+    }
+}
+
+/// Bit-packed bound, depth, and ply_count information. Representation:
+/// ```text
+///     Bound  ┊  Depth   ┊   Ply count
+///       ├─┐ ┌─────┴─┐ ┌───────┴───────┐
+/// MSB - b b d d d d d p p p p p p p p p - LSB
+/// ```
+/// This does impose limits on the possible depth and ply count.
+/// The maximum depth is 32, and the maximum ply count is 511.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct EntryInfo(u16);
+
+const ENTRY_MAX_DEPTH: usize = 32;
+const ENTRY_MAX_PLY_COUNT: u16 = 511;
+
+impl EntryInfo {
+    fn new(bound: Bound, depth: usize, ply_count: u16) -> Self {
+        assert!(depth > 0, "transposition table entry depth cannot be 0");
+        assert!(
+            depth <= ENTRY_MAX_DEPTH,
+            "transposition table entry depth cannot be greater than {ENTRY_MAX_DEPTH}"
+        );
+        assert!(
+            ply_count <= ENTRY_MAX_PLY_COUNT,
+            "transposition table entry ply count cannot be greater than {ENTRY_MAX_PLY_COUNT}"
+        );
+
+        Self(((bound as u16) << 14) | ((depth as u16 - 1) << 9) | ply_count)
+    }
+
+    fn bound(self) -> Bound {
+        ((self.0 >> 14) as u8)
+            .try_into()
+            .expect("invalid packed bound")
+    }
+
+    fn depth(self) -> usize {
+        ((self.0 & 0x3E00) >> 9) as usize + 1
+    }
+
+    fn ply_count(self) -> u16 {
+        self.0 & 0x01FF
+    }
+}
+
+/// A bit-packed ply. Representation:
+/// ```text
+/// Place:
+///               Magic  ┊   Type ┊ X coord ┊ Y coord
+///           ┌─────┴───────┐   ├─┐ ┌──┴┐ ┌───┤
+///     MSB - 1 1 0 0 0 0 0 0 , t t x x x y y y - LSB
+///
+/// Spread:
+///   Direction ┊ X coord ┊ Y coord ┊ Drop pattern
+///           ├─┐ ┌──┴┐ ┌───┤   ┌──────────┴──┐
+///     MSB - d d x x x y y y , d … … … … … … d - LSB
+/// ```
+/// These patterns are distinguishable because the "magic" value
+/// cannot be interpreted as a valid spread; it would represent a
+/// spread West from (0, 0), which is impossible.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PackedPly(u8, u8);
+
+impl<const N: usize> From<Ply<N>> for PackedPly {
+    fn from(ply: Ply<N>) -> Self {
+        match ply {
+            Ply::Place { x, y, piece_type } => {
+                PackedPly(0b11000000, ((piece_type as u8 & 0xE0) << 1) | (x << 3) | y)
+            }
+            Ply::Spread {
+                x,
+                y,
+                direction,
+                drops,
+            } => PackedPly(((direction as u8) << 6) | (x << 3) | y, drops.into()),
+        }
+    }
+}
+
+impl<const N: usize> TryFrom<PackedPly> for Ply<N> {
+    type Error = PlyError;
+
+    fn try_from(packed: PackedPly) -> Result<Self, Self::Error> {
+        let ply = if packed.0 == 0b11000000 {
+            Ply::Place {
+                x: (packed.1 >> 3) & 0x07,
+                y: packed.1 & 0x07,
+                piece_type: (0x01 << ((packed.1 >> 6) + 4))
+                    .try_into()
+                    .expect("invalid packed piece type"),
+            }
+        } else {
+            Ply::Spread {
+                x: (packed.0 >> 3) & 0x07,
+                y: packed.0 & 0x07,
+                direction: (packed.0 >> 6)
+                    .try_into()
+                    .expect("invalid packed direction"),
+                drops: Drops::new::<N>(packed.1)?,
+            }
+        };
+
+        ply.validate()?;
+        Ok(ply)
+    }
 }
 
 impl<const N: usize> TranspositionTable<N> {
@@ -152,23 +305,23 @@ impl<const N: usize> TranspositionTable<N> {
 mod tests {
     use super::*;
 
-    use tak::PieceType;
+    use tak::{Direction, PieceType};
 
-    fn test_entry<const N: usize>(value: u8) -> TranspositionTableEntry<N> {
-        TranspositionTableEntry {
-            bound: Bound::Exact,
-            evaluation: 0.0.into(),
-            depth: value,
-            ply_count: 0,
-            ply: Ply::Place {
+    fn test_entry<const N: usize>(value: usize) -> TranspositionTableEntry<N> {
+        TranspositionTableEntry::new(
+            Ply::Place {
                 x: 0,
                 y: 0,
                 piece_type: PieceType::Flatstone,
             },
-        }
+            0.0.into(),
+            Bound::Exact,
+            value,
+            0,
+        )
     }
 
-    fn test_slot<const N: usize>(hash: ZobristHash, value: u8) -> Option<Slot<N>> {
+    fn test_slot<const N: usize>(hash: ZobristHash, value: usize) -> Option<Slot<N>> {
         Some(Slot {
             hash,
             entry: test_entry(value),
@@ -359,5 +512,59 @@ mod tests {
 
         // Get works when probing has to wrap around.
         assert_eq!(tt.get(29), Some(&test_entry(3)));
+    }
+
+    #[test]
+    fn entry_info() {
+        let entry_info = EntryInfo::new(Bound::Exact, 32, 511);
+        assert_eq!(entry_info.0, 0xBFFF);
+        assert_eq!(entry_info.bound(), Bound::Exact);
+        assert_eq!(entry_info.depth(), 32);
+        assert_eq!(entry_info.ply_count(), 511);
+    }
+
+    #[test]
+    fn packed_ply() {
+        let ply = Ply::<5>::Place {
+            x: 0,
+            y: 0,
+            piece_type: PieceType::Flatstone,
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b11000000, 0b00000000));
+        assert_eq!(unpacked, ply);
+
+        let ply = Ply::<5>::Place {
+            x: 2,
+            y: 3,
+            piece_type: PieceType::Capstone,
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b11000000, 0b10010011));
+        assert_eq!(unpacked, ply);
+
+        let ply = Ply::<5>::Spread {
+            x: 0,
+            y: 0,
+            direction: Direction::North,
+            drops: Drops::new::<5>(1).unwrap(),
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b00000000, 0b00000001));
+        assert_eq!(unpacked, ply);
+
+        let ply = Ply::<5>::Spread {
+            x: 4,
+            y: 2,
+            direction: Direction::West,
+            drops: Drops::from_drop_counts::<5>(&[2, 1, 1, 1]).unwrap(),
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b11100010, 0b00011110));
+        assert_eq!(unpacked, ply);
     }
 }

@@ -91,6 +91,20 @@ impl Direction {
     }
 }
 
+impl TryFrom<u8> for Direction {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Direction::North),
+            1 => Ok(Direction::East),
+            2 => Ok(Direction::South),
+            3 => Ok(Direction::West),
+            _ => Err("invalid direction value"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct Drops(u8);
 
@@ -169,6 +183,10 @@ impl Drops {
 
     pub fn len(&self) -> usize {
         self.0.count_ones() as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn carry(&self) -> usize {

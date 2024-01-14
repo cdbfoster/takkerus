@@ -367,15 +367,15 @@ fn fetch_pv<const N: usize>(
 
     while let Some(entry) = tt.get(state.metadata.hash) {
         let old_state = state.clone();
-        if let Err(err) = state.execute_ply(entry.ply) {
+        if let Err(err) = state.execute_ply(entry.ply()) {
             error!(error = ?err, ?entry, state = ?old_state, "Transposition table ply caused an error. Ending fetch");
             break;
         } else {
-            if entry.bound != Bound::Exact {
+            if entry.bound() != Bound::Exact {
                 warn!(?entry, "Adding non-exact ply.");
             }
 
-            pv.push(entry.ply);
+            pv.push(entry.ply());
 
             // Only grab as many as we've actually analyzed.
             if pv.len() == max_depth || state.resolution().is_some() {
@@ -486,29 +486,29 @@ fn minimax<const N: usize>(
     {
         search.stats.depth(search_depth).tt_hits += 1;
 
-        let is_save = entry.depth as usize >= remaining_depth
-            && match entry.bound {
+        let is_save = entry.depth() >= remaining_depth
+            && match entry.bound() {
                 Bound::Exact => false, // Search exact nodes to avoid cutting the PV short.
-                Bound::Upper => entry.evaluation <= alpha,
-                Bound::Lower => entry.evaluation >= beta,
+                Bound::Upper => entry.evaluation() <= alpha,
+                Bound::Lower => entry.evaluation() >= beta,
             };
 
-        let is_terminal = entry.bound == Bound::Exact && entry.evaluation.is_terminal();
+        let is_terminal = entry.bound() == Bound::Exact && entry.evaluation().is_terminal();
 
-        if is_save || is_terminal && state.validate_ply(entry.ply).is_ok() {
+        if is_save || is_terminal && state.validate_ply(entry.ply()).is_ok() {
             search.stats.depth(search_depth).tt_saves += 1;
 
             return BranchResult {
-                depth: entry.depth as usize,
-                evaluation: match entry.bound {
-                    Bound::Exact => entry.evaluation,
+                depth: entry.depth(),
+                evaluation: match entry.bound() {
+                    Bound::Exact => entry.evaluation(),
                     Bound::Upper => alpha,
                     Bound::Lower => beta,
                 },
             };
         }
 
-        tt_ply = Some(entry.ply);
+        tt_ply = Some(entry.ply());
     }
 
     // Null move search =========================
@@ -645,13 +645,13 @@ fn minimax<const N: usize>(
 
     let inserted = search.persistent_state.transposition_table.insert(
         state.metadata.hash,
-        TranspositionTableEntry {
+        TranspositionTableEntry::new(
+            best_ply,
+            alpha,
             bound,
-            evaluation: alpha,
-            depth: best.depth.max(remaining_depth) as u8,
-            ply_count: state.ply_count,
-            ply: best_ply,
-        },
+            best.depth.max(remaining_depth),
+            state.ply_count,
+        ),
     );
 
     if inserted {
