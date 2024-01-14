@@ -15,8 +15,8 @@ const MAX_STACK_HEIGHT: usize = StackBitmap::BITS as usize - 4;
 
 /// Representation:
 ///
-///  Leading 1   Piece colors   Piece type
-///         | ┌-----┴---------┐ ┌-┴-┐
+///  Leading 1 ┊ Piece colors ┊ Piece type
+///         | ┌─────┴─────────┐ ┌─┴─┐
 /// MSB - … 1 x … … … … … … … x t t t - LSB
 ///
 /// The least significant piece color bit represents the top of the stack,
