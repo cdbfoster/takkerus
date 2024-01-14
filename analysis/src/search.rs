@@ -51,6 +51,7 @@ impl<const N: usize> Default for PersistentState<N> {
 
 #[derive(Clone, Debug)]
 pub struct Analysis<const N: usize> {
+    pub state: State<N>,
     pub depth: u32,
     pub final_state: State<N>,
     pub evaluation: Evaluation,
@@ -172,6 +173,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     });
 
     let mut analysis = Analysis {
+        state: state.clone(),
         depth: 0,
         final_state: state.clone(),
         evaluation: evaluator.evaluate(state, state.resolution()),
@@ -221,6 +223,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         let total_stats = search.stats.total();
 
         analysis = Analysis {
+            state: analysis.state,
             depth: root.depth as u32,
             final_state,
             evaluation: root.evaluation,

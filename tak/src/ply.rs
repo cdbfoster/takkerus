@@ -9,7 +9,7 @@ use crate::bitmap::Bitmap;
 use crate::piece::{Color, Piece, PieceType};
 use crate::ptn::PtnPly;
 use crate::stack::{Stack, StackBitmap};
-use crate::state::State;
+use crate::state::{PlyValidation, State};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -141,7 +141,6 @@ pub enum Ply<const N: usize> {
         y: u8,
         direction: Direction,
         drops: Drops,
-        crush: bool,
     },
 }
 
@@ -160,7 +159,6 @@ impl<const N: usize> Ply<N> {
                 y,
                 direction,
                 drops,
-                crush,
             } => {
                 if x as usize >= N || y as usize >= N {
                     trace!("Out of bounds.");
@@ -177,12 +175,6 @@ impl<const N: usize> Ply<N> {
                     trace!("End of spread is out of bounds.");
                     return Err(PlyError::OutOfBounds);
                 }
-
-                // Must crush with only one stone.
-                if crush && drops.iter().last() != Some(1) {
-                    trace!("Invalid crush.");
-                    return Err(PlyError::InvalidCrush);
-                }
             }
         }
 
@@ -192,7 +184,7 @@ impl<const N: usize> Ply<N> {
 
 impl<const N: usize> fmt::Debug for Ply<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ptn = PtnPly::from(*self);
+        let ptn = PtnPly::from((*self, PlyValidation { is_crush: false }));
         write!(f, "{ptn}")
     }
 }
@@ -201,7 +193,6 @@ impl<const N: usize> fmt::Debug for Ply<N> {
 pub enum PlyError {
     OutOfBounds,
     InvalidDrops(&'static str),
-    InvalidCrush,
 }
 
 pub mod generation {
@@ -269,7 +260,7 @@ pub mod generation {
                     (1..1 << pickup_size)
                         .map(|value| Drops::new::<N>(value as u8).expect("invalid drops"))
                         .filter(move |drops| drops.len() <= distance)
-                        .filter_map(move |drops| {
+                        .filter(move |drops| {
                             let tx = x as i8 + drops.len() as i8 * dx;
                             let ty = y as i8 + drops.len() as i8 * dy;
                             let target_type =
@@ -284,14 +275,13 @@ pub mod generation {
                                 && top_piece.piece_type() == Capstone
                                 && drops.last() == 1;
 
-                            (unblocked || crush).then_some((drops, crush))
+                            unblocked || crush
                         })
-                        .map(move |(drops, crush)| Ply::Spread {
+                        .map(move |drops| Ply::Spread {
                             x: x as u8,
                             y: y as u8,
                             direction,
                             drops,
-                            crush,
                         })
                 })
             })
@@ -716,7 +706,6 @@ mod tests {
             y: 1,
             direction: Direction::East,
             drops: Drops::new::<5>(0b111).unwrap(),
-            crush: false,
         };
         let map = spread_map(&stack, &ply);
 
@@ -731,7 +720,6 @@ mod tests {
             y: 4,
             direction: Direction::South,
             drops: Drops::new::<6>(0b111).unwrap(),
-            crush: false,
         };
         let map = spread_map(&stack, &ply);
 

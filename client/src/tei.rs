@@ -190,12 +190,14 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
             while let Ok(analysis) = receiver.recv().await {
                 // Or something.
                 let centiflats = (Into::<f32>::into(analysis.evaluation) * 1000.0) as i32;
+                let mut state = analysis.state.clone();
 
                 let mut info = String::from("info");
                 write!(info, " score cp {centiflats}").unwrap();
                 write!(info, " pv").unwrap();
                 for &ply in &analysis.principal_variation {
-                    let ptn: PtnPly = ply.into();
+                    let validation = state.execute_ply(ply).expect("invalid ply in pv");
+                    let ptn: PtnPly = (ply, validation).into();
                     write!(info, " {ptn}").unwrap();
                 }
                 println!("{info}");
@@ -205,7 +207,11 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
 
             if let Some(analysis) = last_analysis {
                 if let Some(&ply) = analysis.principal_variation.first() {
-                    let ptn: PtnPly = ply.into();
+                    let validation = analysis
+                        .state
+                        .validate_ply(ply)
+                        .expect("invalid ply bestmove");
+                    let ptn: PtnPly = (ply, validation).into();
                     println!("bestmove {ptn}");
                 } else {
                     error!(?analysis, "No PV returned from search.");

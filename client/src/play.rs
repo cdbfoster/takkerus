@@ -349,7 +349,6 @@ fn handle_ply<const N: usize>(game: &mut PtnGame, ply: Ply<N>) -> Result<(), Sta
         match err {
             PtnError::StateError(err) => {
                 let message = match err {
-                    StateError::PlyError(PlyError::InvalidCrush) => "Invalid crush.",
                     StateError::PlyError(PlyError::InvalidDrops(message)) => message,
                     StateError::PlyError(PlyError::OutOfBounds) => "Out of bounds.",
                     StateError::InvalidPlace(message) => message,

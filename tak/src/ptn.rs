@@ -10,7 +10,7 @@ use regex::Regex;
 
 use crate::piece::{Color, PieceType};
 use crate::ply::{Direction, Drops, Ply, PlyError};
-use crate::state::{Komi, State, StateError};
+use crate::state::{Komi, PlyValidation, State, StateError};
 use crate::tps::{Tps, TpsError};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -92,9 +92,9 @@ impl PtnGame {
 
     pub fn add_ply<const N: usize>(&mut self, ply: Ply<N>) -> Result<(), PtnError> {
         let state: State<N> = self.clone().try_into()?;
-        let ply = state.validate_ply(ply)?;
+        let validation = state.validate_ply(ply)?;
 
-        let ptn_ply: PtnPly = ply.into();
+        let ptn_ply: PtnPly = (ply, validation).into();
 
         if let Some(turn) = self.turns.last_mut() {
             let number = turn.number;
@@ -632,20 +632,15 @@ impl<const N: usize> TryFrom<PtnPly> for Ply<N> {
                 y,
                 direction,
                 drops,
-                annotations,
+                ..
             } => {
                 let compact_drops = Drops::from_drop_counts::<N>(&drops)?;
-
-                let crush = annotations
-                    .map(|a| a.contains(|c| c == '*'))
-                    .unwrap_or_default();
 
                 Self::Spread {
                     x,
                     y,
                     direction,
                     drops: compact_drops,
-                    crush,
                 }
             }
         };
@@ -665,8 +660,8 @@ impl<const N: usize> FromStr for Ply<N> {
     }
 }
 
-impl<const N: usize> From<Ply<N>> for PtnPly {
-    fn from(ply: Ply<N>) -> Self {
+impl<const N: usize> From<(Ply<N>, PlyValidation<N>)> for PtnPly {
+    fn from((ply, validation): (Ply<N>, PlyValidation<N>)) -> Self {
         match ply {
             Ply::Place { x, y, piece_type } => Self::Place {
                 x,
@@ -679,13 +674,12 @@ impl<const N: usize> From<Ply<N>> for PtnPly {
                 y,
                 direction,
                 drops,
-                crush,
             } => Self::Spread {
                 x,
                 y,
                 direction,
                 drops: drops.iter().collect(),
-                annotations: crush.then(|| "*".to_owned()),
+                annotations: validation.is_crush.then(|| "*".to_owned()),
             },
         }
     }
@@ -913,7 +907,6 @@ mod tests {
                 y: 2,
                 direction: Direction::North,
                 drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
-                crush: false,
             },
         );
 
@@ -924,7 +917,6 @@ mod tests {
                 y: 2,
                 direction: Direction::East,
                 drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
-                crush: false,
             },
         );
 
@@ -935,7 +927,6 @@ mod tests {
                 y: 2,
                 direction: Direction::South,
                 drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
-                crush: false,
             },
         );
 
@@ -946,7 +937,6 @@ mod tests {
                 y: 2,
                 direction: Direction::West,
                 drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
-                crush: false,
             },
         );
     }
@@ -962,7 +952,6 @@ mod tests {
                 y: 2,
                 direction: Direction::East,
                 drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
-                crush: false,
             },
         );
 
@@ -973,7 +962,6 @@ mod tests {
                 y: 2,
                 direction: Direction::East,
                 drops: Drops::from_drop_counts::<5>(&[1]).unwrap(),
-                crush: false,
             },
         );
 
@@ -984,7 +972,6 @@ mod tests {
                 y: 2,
                 direction: Direction::East,
                 drops: Drops::from_drop_counts::<5>(&[1, 2]).unwrap(),
-                crush: false,
             },
         );
 
@@ -1011,7 +998,6 @@ mod tests {
                 y: 2,
                 direction: Direction::East,
                 drops: Drops::from_drop_counts::<5>(&[2, 1]).unwrap(),
-                crush: true,
             },
         );
 

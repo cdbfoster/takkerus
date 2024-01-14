@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::Neg;
 use std::str::FromStr;
 
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use crate::bitmap::{board_mask, edge_masks, Bitmap};
 use crate::metadata::Metadata;
@@ -72,13 +72,14 @@ impl<const N: usize> State<N> {
     }
 
     #[instrument(level = "trace", skip(self))]
-    pub fn validate_ply(&self, mut ply: Ply<N>) -> Result<Ply<N>, StateError> {
+    pub fn validate_ply(&self, ply: Ply<N>) -> Result<PlyValidation<N>, StateError> {
         use Color::*;
         use PieceType::*;
 
         ply.validate()?;
 
         let player_color = self.to_move();
+        let mut validation = PlyValidation::default();
 
         match ply {
             Ply::Place { x, y, piece_type } => {
@@ -116,7 +117,6 @@ impl<const N: usize> State<N> {
                 y,
                 direction,
                 drops,
-                crush,
             } => {
                 // Board space must not be empty.
                 let stack = &self.board[x as usize][y as usize];
@@ -144,7 +144,6 @@ impl<const N: usize> State<N> {
                 // unless we're crushing a standing stone.
                 let (dx, dy) = direction.to_offset();
                 let (mut tx, mut ty) = (x as i8, y as i8);
-                let mut valid_crush = false;
                 for i in 0..drop_count {
                     tx += dx;
                     ty += dy;
@@ -157,45 +156,28 @@ impl<const N: usize> State<N> {
                             ));
                         }
                         Some(StandingStone) => {
-                            valid_crush = i == drop_count - 1
+                            validation.is_crush = i == drop_count - 1
                                 && top_piece.piece_type() == Capstone
                                 && drops.iter().last() == Some(1);
 
-                            if !valid_crush {
+                            if !validation.is_crush {
                                 return Err(StateError::InvalidSpread(
                                     "Cannot spread onto a standing stone.",
                                 ));
-                            } else if !crush {
-                                trace!(
-                                    "Ply describes a valid crush, but the crush flag was not set."
-                                );
-                                ply = Ply::Spread {
-                                    x,
-                                    y,
-                                    direction,
-                                    drops,
-                                    crush: true,
-                                };
                             }
                         }
                     }
                 }
-
-                if crush && !valid_crush {
-                    return Err(StateError::InvalidSpread(
-                        "Spread is not a crushing move, but the crush flag was set.",
-                    ));
-                }
             }
         }
 
-        Ok(ply)
+        Ok(validation)
     }
 
-    pub fn execute_ply(&mut self, mut ply: Ply<N>) -> Result<Ply<N>, StateError> {
-        ply = self.validate_ply(ply)?;
+    pub fn execute_ply(&mut self, ply: Ply<N>) -> Result<PlyValidation<N>, StateError> {
+        let validation = self.validate_ply(ply)?;
         self.execute_ply_unchecked(ply);
-        Ok(ply)
+        Ok(validation)
     }
 
     #[instrument(level = "trace", skip(self))]
@@ -535,6 +517,11 @@ impl<const N: usize> fmt::Display for State<N> {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PlyValidation<const N: usize> {
+    pub is_crush: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
