@@ -409,10 +409,6 @@ struct DepthStats {
 }
 
 impl DepthStats {
-    fn iter(&self) -> impl Iterator<Item = &Statistics> + Clone {
-        self.depths.iter()
-    }
-
     fn depth(&mut self, depth: usize) -> &mut Statistics {
         while self.depths.len() <= depth {
             self.depths.push(Statistics::default());
@@ -652,13 +648,6 @@ fn minimax<const N: usize>(
         TranspositionTableEntry {
             bound,
             evaluation: alpha,
-            node_count: search
-                .stats
-                .iter()
-                .map(|d| d.visited)
-                .sum::<u64>()
-                .try_into()
-                .unwrap_or(u32::MAX),
             depth: best.depth.max(remaining_depth) as u8,
             ply_count: state.ply_count,
             ply: best_ply,

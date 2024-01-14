@@ -128,7 +128,6 @@ pub enum Bound {
 pub struct TranspositionTableEntry<const N: usize> {
     pub bound: Bound,
     pub evaluation: Evaluation,
-    pub node_count: u32,
     pub depth: u8,
     pub ply_count: u16,
     pub ply: Ply<N>,
@@ -159,7 +158,6 @@ mod tests {
         TranspositionTableEntry {
             bound: Bound::Exact,
             evaluation: 0.0.into(),
-            node_count: 0,
             depth: value,
             ply_count: 0,
             ply: Ply::Place {
