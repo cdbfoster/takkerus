@@ -11,6 +11,66 @@ use crate::ptn::PtnPly;
 use crate::stack::{Stack, StackBitmap};
 use crate::state::{PlyValidation, State};
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub enum Ply<const N: usize> {
+    Place {
+        x: u8,
+        y: u8,
+        piece_type: PieceType,
+    },
+    Spread {
+        x: u8,
+        y: u8,
+        direction: Direction,
+        drops: Drops,
+    },
+}
+
+impl<const N: usize> Ply<N> {
+    #[instrument(level = "trace")]
+    pub fn validate(self) -> Result<(), PlyError> {
+        match self {
+            Ply::Place { x, y, .. } => {
+                if x as usize >= N || y as usize >= N {
+                    trace!("Out of bounds.");
+                    return Err(PlyError::OutOfBounds);
+                }
+            }
+            Ply::Spread {
+                x,
+                y,
+                direction,
+                drops,
+            } => {
+                if x as usize >= N || y as usize >= N {
+                    trace!("Out of bounds.");
+                    return Err(PlyError::OutOfBounds);
+                }
+
+                // The end of the spread must be in bounds.
+                let (dx, dy) = direction.to_offset();
+                let (tx, ty) = (
+                    x as i8 + dx * drops.len() as i8,
+                    y as i8 + dy * drops.len() as i8,
+                );
+                if tx < 0 || tx as usize >= N || ty < 0 || ty as usize >= N {
+                    trace!("End of spread is out of bounds.");
+                    return Err(PlyError::OutOfBounds);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<const N: usize> fmt::Debug for Ply<N> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ptn = PtnPly::from((*self, PlyValidation { is_crush: false }));
+        write!(f, "{ptn}")
+    }
+}
+
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Direction {
@@ -126,66 +186,6 @@ impl fmt::Debug for Drops {
 impl From<Drops> for u8 {
     fn from(drops: Drops) -> Self {
         drops.0
-    }
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum Ply<const N: usize> {
-    Place {
-        x: u8,
-        y: u8,
-        piece_type: PieceType,
-    },
-    Spread {
-        x: u8,
-        y: u8,
-        direction: Direction,
-        drops: Drops,
-    },
-}
-
-impl<const N: usize> Ply<N> {
-    #[instrument(level = "trace")]
-    pub fn validate(self) -> Result<(), PlyError> {
-        match self {
-            Ply::Place { x, y, .. } => {
-                if x as usize >= N || y as usize >= N {
-                    trace!("Out of bounds.");
-                    return Err(PlyError::OutOfBounds);
-                }
-            }
-            Ply::Spread {
-                x,
-                y,
-                direction,
-                drops,
-            } => {
-                if x as usize >= N || y as usize >= N {
-                    trace!("Out of bounds.");
-                    return Err(PlyError::OutOfBounds);
-                }
-
-                // The end of the spread must be in bounds.
-                let (dx, dy) = direction.to_offset();
-                let (tx, ty) = (
-                    x as i8 + dx * drops.len() as i8,
-                    y as i8 + dy * drops.len() as i8,
-                );
-                if tx < 0 || tx as usize >= N || ty < 0 || ty as usize >= N {
-                    trace!("End of spread is out of bounds.");
-                    return Err(PlyError::OutOfBounds);
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl<const N: usize> fmt::Debug for Ply<N> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ptn = PtnPly::from((*self, PlyValidation { is_crush: false }));
-        write!(f, "{ptn}")
     }
 }
 
