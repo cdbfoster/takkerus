@@ -1,4 +1,5 @@
-use std::fmt;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::{fmt, mem};
 
 use tak::{Drops, Ply, PlyError, ZobristHash};
 
@@ -7,50 +8,52 @@ use crate::evaluation::Evaluation;
 const MAX_PROBE_DEPTH: isize = 5;
 
 pub struct TranspositionTable<const N: usize> {
-    len: usize,
-    values: Vec<Option<Slot<N>>>,
+    len: AtomicUsize,
+    values: Vec<Slot<N>>,
 }
 
 impl<const N: usize> TranspositionTable<N> {
     pub fn with_capacity(capacity: usize) -> Self {
+        let mut values = Vec::with_capacity(capacity);
+        values.resize_with(capacity, Default::default);
+
         Self {
-            len: 0,
-            values: vec![None; capacity],
+            len: AtomicUsize::new(0),
+            values,
         }
     }
 
     pub fn len(&self) -> usize {
-        self.len
+        self.len.load(Ordering::Acquire)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.len() == 0
     }
 
     pub fn capacity(&self) -> usize {
         self.values.len()
     }
 
-    pub fn insert(&mut self, hash: ZobristHash, entry: TranspositionTableEntry<N>) -> bool {
+    pub fn insert(&self, hash: ZobristHash, entry: TranspositionTableEntry<N>) -> bool {
         let start_index = self.index(hash);
 
         let mut current_index = start_index;
-        let mut offset = 0;
         let mut target_index = start_index;
         let mut target_score = u32::MAX;
 
-        fn score<const N: usize>(entry: &TranspositionTableEntry<N>) -> u32 {
+        fn score<const N: usize>(entry: TranspositionTableEntry<N>) -> u32 {
             // Score by total ply depth, bound, and then individual search depth.
             ((entry.depth() as u32 + entry.ply_count() as u32) << 16)
                 | ((entry.bound() as u32) << 8)
                 | (entry.depth() as u32)
         }
 
-        let entry_score = score(&entry);
+        let entry_score = score(entry);
 
-        while offset < MAX_PROBE_DEPTH {
-            if let Some(slot) = &self.values[current_index] {
-                let slot_score = score(&slot.entry);
+        for _ in 0..MAX_PROBE_DEPTH {
+            if let Some(slot) = self.values[current_index].load() {
+                let slot_score = score(slot.entry);
 
                 if hash != slot.hash {
                     // Find the lowest score to replace.
@@ -59,7 +62,7 @@ impl<const N: usize> TranspositionTable<N> {
                         target_score = slot_score;
                     }
                 } else if entry_score >= slot_score {
-                    self.values[current_index] = Some(Slot { hash, entry });
+                    self.values[current_index].store(hash, entry);
                     return true;
                 } else {
                     return false;
@@ -67,33 +70,30 @@ impl<const N: usize> TranspositionTable<N> {
             } else {
                 // Always overwrite an empty slot.
                 target_index = current_index;
-                self.len += 1;
+                self.len.fetch_add(1, Ordering::AcqRel);
                 break;
             }
 
-            offset += 1;
             current_index = self.next_index(current_index);
         }
 
-        self.values[target_index] = Some(Slot { hash, entry });
+        self.values[target_index].store(hash, entry);
 
         true
     }
 
-    pub fn get(&self, hash: ZobristHash) -> Option<&TranspositionTableEntry<N>> {
+    pub fn get(&self, hash: ZobristHash) -> Option<TranspositionTableEntry<N>> {
         let mut current_index = self.index(hash);
-        let mut offset = 0;
 
-        while offset < MAX_PROBE_DEPTH {
-            if let Some(slot) = &self.values[current_index] {
+        for _ in 0..MAX_PROBE_DEPTH {
+            if let Some(slot) = self.values[current_index].load() {
                 if hash == slot.hash {
-                    return Some(&slot.entry);
+                    return Some(slot.entry);
                 }
             } else {
                 return None;
             }
 
-            offset += 1;
             current_index = self.next_index(current_index);
         }
 
@@ -110,8 +110,56 @@ impl<const N: usize> fmt::Debug for TranspositionTable<N> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Slot<const N: usize> {
+impl<const N: usize> TranspositionTable<N> {
+    fn index(&self, hash: ZobristHash) -> usize {
+        hash as usize % self.capacity()
+    }
+
+    fn next_index(&self, index: usize) -> usize {
+        let next = index + 1;
+        if next < self.capacity() {
+            next
+        } else {
+            next - self.capacity()
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct Slot<const N: usize> {
+    key: AtomicU64,
+    data: AtomicU64,
+}
+
+impl<const N: usize> Slot<N> {
+    fn load(&self) -> Option<LoadedSlot<N>> {
+        let key = self.key.load(Ordering::Acquire);
+
+        if key == 0 {
+            None
+        } else {
+            let data = self.data.load(Ordering::Acquire);
+            Some(LoadedSlot {
+                hash: key ^ data,
+                entry: TranspositionTableEntry::from_u64(data),
+            })
+        }
+    }
+
+    fn store(&self, hash: ZobristHash, entry: TranspositionTableEntry<N>) {
+        let data = entry.as_u64();
+        let key = hash ^ data;
+
+        // Store the data before the key.  Since we read the key first upon load,
+        // this will ensure that the data will never be an invalid entry while the
+        // key is non-zero.
+        self.data.store(data, Ordering::Release);
+        self.key.store(key, Ordering::Release);
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct LoadedSlot<const N: usize> {
     hash: ZobristHash,
     entry: TranspositionTableEntry<N>,
 }
@@ -177,6 +225,20 @@ impl<const N: usize> TranspositionTableEntry<N> {
 
     pub fn ply_count(&self) -> u16 {
         self.info.ply_count()
+    }
+}
+
+impl<const N: usize> TranspositionTableEntry<N> {
+    fn as_u64(&self) -> u64 {
+        debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<u64>(),);
+
+        unsafe { mem::transmute(*self) }
+    }
+
+    fn from_u64(value: u64) -> Self {
+        debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<u64>(),);
+
+        unsafe { mem::transmute(value) }
     }
 }
 
@@ -286,21 +348,6 @@ impl<const N: usize> TryFrom<PackedPly> for Ply<N> {
     }
 }
 
-impl<const N: usize> TranspositionTable<N> {
-    fn index(&self, hash: ZobristHash) -> usize {
-        hash as usize % self.capacity()
-    }
-
-    fn next_index(&self, index: usize) -> usize {
-        let next = index + 1;
-        if next < self.capacity() {
-            next
-        } else {
-            next - self.capacity()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,11 +368,15 @@ mod tests {
         )
     }
 
-    fn test_slot<const N: usize>(hash: ZobristHash, value: usize) -> Option<Slot<N>> {
-        Some(Slot {
+    fn test_slot<const N: usize>(hash: ZobristHash, value: usize) -> Option<LoadedSlot<N>> {
+        Some(LoadedSlot {
             hash,
             entry: test_entry(value),
         })
+    }
+
+    fn load<const N: usize>(values: &[Slot<N>]) -> Vec<Option<LoadedSlot<N>>> {
+        values.iter().map(|slot| slot.load()).collect()
     }
 
     #[test]
@@ -401,11 +452,11 @@ mod tests {
     #[test]
     fn insert_and_get() {
         // Probe to find an empty slot.
-        let mut tt = TranspositionTable::<6>::with_capacity(10);
+        let tt = TranspositionTable::<6>::with_capacity(10);
         assert!(tt.insert(3, test_entry(1)));
         assert!(tt.insert(13, test_entry(2)));
         assert_eq!(
-            tt.values,
+            load(&tt.values),
             vec![
                 None,
                 None,
@@ -423,7 +474,7 @@ mod tests {
         // Overwrite entries with the same hash but a higher score.
         assert!(tt.insert(3, test_entry(3)));
         assert_eq!(
-            tt.values,
+            load(&tt.values),
             vec![
                 None,
                 None,
@@ -445,7 +496,7 @@ mod tests {
         // When the probe depth is reached, insert should replace the lowest score entry.
         assert!(tt.insert(53, test_entry(1)));
         assert_eq!(
-            tt.values,
+            load(&tt.values),
             vec![
                 None,
                 None,
@@ -463,7 +514,7 @@ mod tests {
         // Adjacent indices probe further.
         assert!(tt.insert(4, test_entry(2)));
         assert_eq!(
-            tt.values,
+            load(&tt.values),
             vec![
                 None,
                 None,
@@ -483,7 +534,7 @@ mod tests {
         assert!(tt.insert(19, test_entry(2)));
         assert!(tt.insert(29, test_entry(3)));
         assert_eq!(
-            tt.values,
+            load(&tt.values),
             vec![
                 test_slot(19, 2),
                 test_slot(29, 3),
@@ -499,10 +550,10 @@ mod tests {
         );
 
         // Get works when there's an exact match right away.
-        assert_eq!(tt.get(3), Some(&test_entry(3)));
+        assert_eq!(tt.get(3), Some(test_entry(3)));
 
         // Get works when we have to probe for it.
-        assert_eq!(tt.get(33), Some(&test_entry(5)));
+        assert_eq!(tt.get(33), Some(test_entry(5)));
 
         // Get returns none when there's an empty slot.
         assert_eq!(tt.get(2), None);
@@ -511,7 +562,7 @@ mod tests {
         assert_eq!(tt.get(63), None);
 
         // Get works when probing has to wrap around.
-        assert_eq!(tt.get(29), Some(&test_entry(3)));
+        assert_eq!(tt.get(29), Some(test_entry(3)));
     }
 
     #[test]
