@@ -296,7 +296,7 @@ impl EntryInfo {
 /// Spread:
 ///   Direction ┊ X coord ┊ Y coord ┊ Drop pattern
 ///           ├─┐ ┌──┴┐ ┌───┤   ┌──────────┴──┐
-///     MSB - d d x x x y y y , d … … … … … … d - LSB
+///     MSB - d d x x x y y y , d d d d d d d d - LSB
 /// ```
 /// These patterns are distinguishable because the "magic" value
 /// cannot be interpreted as a valid spread; it would represent a
