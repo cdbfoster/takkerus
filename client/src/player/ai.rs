@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_std::prelude::*;
@@ -47,7 +47,7 @@ async fn message_handler<const N: usize>(
 ) {
     use Message::*;
 
-    let persistent_state = Arc::new(Mutex::new(PersistentState::<N>::default()));
+    let persistent_state = Arc::new(PersistentState::<N>::default());
 
     let mut interrupt: Option<Arc<AtomicBool>> = None;
     let (analysis_sender, analysis_receiver) = mpsc::unbounded();
@@ -89,15 +89,12 @@ async fn message_handler<const N: usize>(
                             println!("\nAnalyzing...");
 
                             let analysis = {
-                                trace!("Aquiring persistent state.");
-                                let mut guard = persistent_state.lock().unwrap();
-
                                 let analysis_config = AnalysisConfig {
                                     depth_limit,
                                     time_limit,
                                     predict_time,
                                     interrupted,
-                                    persistent_state: Some(&mut *guard),
+                                    persistent_state: Some(&persistent_state),
                                     ..Default::default()
                                 };
 

@@ -25,7 +25,7 @@ pub struct AnalysisConfig<'a, const N: usize> {
     pub interrupted: Arc<AtomicBool>,
     /// A place to put data gathered during the search that could be
     /// useful to future searches. If none, this will be created internally.
-    pub persistent_state: Option<&'a mut PersistentState<N>>,
+    pub persistent_state: Option<&'a PersistentState<N>>,
     /// If false, the search is allowed to use unprovable methods that may
     /// improve playing strength at the cost of correctness.
     pub exact_eval: bool,
@@ -154,12 +154,12 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     let max_depth = config.depth_limit.unwrap_or(u32::MAX) as usize;
 
     // Use the passed-in persistent state or create a local one for this analysis.
-    let mut local_persistent_state;
+    let local_persistent_state;
     let persistent_state = if let Some(persistent_state) = config.persistent_state {
         persistent_state
     } else {
         local_persistent_state = PersistentState::default();
-        &mut local_persistent_state
+        &local_persistent_state
     };
 
     let evaluator: &dyn Evaluator<N> = config.evaluator.unwrap_or_else(|| match N {
@@ -397,7 +397,7 @@ struct SearchState<'a, const N: usize> {
     start_ply: u16,
     stats: DepthStats,
     interrupted: &'a AtomicBool,
-    persistent_state: &'a mut PersistentState<N>,
+    persistent_state: &'a PersistentState<N>,
     killer_moves: DepthKillerMoves<N>,
     exact_eval: bool,
     evaluator: &'a dyn Evaluator<N>,

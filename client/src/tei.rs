@@ -170,13 +170,13 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
         };
 
         task::spawn_blocking(move || {
-            let mut guard = persistent_state.lock().unwrap();
+            let guard = persistent_state.lock().unwrap();
 
             let analysis_config = AnalysisConfig {
                 depth_limit,
                 time_limit,
                 predict_time,
-                persistent_state: Some(&mut *guard),
+                persistent_state: Some(&*guard),
                 interim_analysis_sender: Some(Box::new(sender)),
                 ..Default::default()
             };
