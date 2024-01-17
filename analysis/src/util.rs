@@ -1,6 +1,68 @@
 use std::io;
 
-use tak::{edge_masks, Bitmap, Direction};
+use tak::{edge_masks, Bitmap, Direction, Drops, Ply, PlyError};
+
+/// A bit-packed ply. Representation:
+/// ```text
+/// Place:
+///               Magic  ┊   Type ┊ X coord ┊ Y coord
+///           ┌─────┴───────┐   ├─┐ ┌──┴┐ ┌───┤
+///     MSB - 1 1 0 0 0 0 0 0 , t t x x x y y y - LSB
+///
+/// Spread:
+///   Direction ┊ X coord ┊ Y coord ┊ Drop pattern
+///           ├─┐ ┌──┴┐ ┌───┤   ┌──────────┴──┐
+///     MSB - d d x x x y y y , d d d d d d d d - LSB
+/// ```
+/// These patterns are distinguishable because the "magic" value
+/// cannot be interpreted as a valid spread; it would represent a
+/// spread West from (0, 0), which is impossible.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PackedPly(u8, u8);
+
+impl<const N: usize> From<Ply<N>> for PackedPly {
+    fn from(ply: Ply<N>) -> Self {
+        match ply {
+            Ply::Place { x, y, piece_type } => {
+                PackedPly(0b11000000, ((piece_type as u8 & 0xE0) << 1) | (x << 3) | y)
+            }
+            Ply::Spread {
+                x,
+                y,
+                direction,
+                drops,
+            } => PackedPly(((direction as u8) << 6) | (x << 3) | y, drops.into()),
+        }
+    }
+}
+
+impl<const N: usize> TryFrom<PackedPly> for Ply<N> {
+    type Error = PlyError;
+
+    fn try_from(packed: PackedPly) -> Result<Self, Self::Error> {
+        let ply = if packed.0 == 0b11000000 {
+            Ply::Place {
+                x: (packed.1 >> 3) & 0x07,
+                y: packed.1 & 0x07,
+                piece_type: (0x01 << ((packed.1 >> 6) + 4))
+                    .try_into()
+                    .expect("invalid packed piece type"),
+            }
+        } else {
+            Ply::Spread {
+                x: (packed.0 >> 3) & 0x07,
+                y: packed.0 & 0x07,
+                direction: (packed.0 >> 6)
+                    .try_into()
+                    .expect("invalid packed direction"),
+                drops: Drops::new::<N>(packed.1)?,
+            }
+        };
+
+        ply.validate()?;
+        Ok(ply)
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct FixedLifoBuffer<const C: usize, T>
@@ -152,6 +214,53 @@ pub trait Sender<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use tak::PieceType;
+
+    #[test]
+    fn packed_ply() {
+        let ply = Ply::<5>::Place {
+            x: 0,
+            y: 0,
+            piece_type: PieceType::Flatstone,
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b11000000, 0b00000000));
+        assert_eq!(unpacked, ply);
+
+        let ply = Ply::<5>::Place {
+            x: 2,
+            y: 3,
+            piece_type: PieceType::Capstone,
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b11000000, 0b10010011));
+        assert_eq!(unpacked, ply);
+
+        let ply = Ply::<5>::Spread {
+            x: 0,
+            y: 0,
+            direction: Direction::North,
+            drops: Drops::new::<5>(1).unwrap(),
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b00000000, 0b00000001));
+        assert_eq!(unpacked, ply);
+
+        let ply = Ply::<5>::Spread {
+            x: 4,
+            y: 2,
+            direction: Direction::West,
+            drops: Drops::from_drop_counts::<5>(&[2, 1, 1, 1]).unwrap(),
+        };
+        let packed: PackedPly = ply.into();
+        let unpacked: Ply<5> = packed.try_into().unwrap();
+        assert_eq!(packed, PackedPly(0b11100010, 0b00011110));
+        assert_eq!(unpacked, ply);
+    }
 
     #[test]
     fn placement_threat_maps_are_correct() {
