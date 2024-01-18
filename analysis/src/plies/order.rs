@@ -98,18 +98,22 @@ impl<const N: usize> Iterator for TtPly<N> {
 
 // Killer moves =================================
 
-#[derive(Default)]
 pub(crate) struct DepthKillerMoves<const N: usize> {
     depths: Vec<KillerMoves<N>>,
 }
 
-impl<const N: usize> DepthKillerMoves<N> {
-    pub(crate) fn depth(&mut self, depth: usize) -> &mut KillerMoves<N> {
-        while self.depths.len() <= depth {
-            self.depths.push(KillerMoves::default());
-        }
+impl<const N: usize> Default for DepthKillerMoves<N> {
+    fn default() -> Self {
+        let mut depths = Vec::with_capacity(32);
+        depths.resize_with(32, Default::default);
 
-        &mut self.depths[depth]
+        Self { depths }
+    }
+}
+
+impl<const N: usize> DepthKillerMoves<N> {
+    pub(crate) fn depth(&self, depth: usize) -> &KillerMoves<N> {
+        &self.depths[depth]
     }
 }
 
