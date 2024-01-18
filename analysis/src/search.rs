@@ -15,7 +15,6 @@ use crate::plies::{DepthKillerMoves, Fallibility, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 use crate::util::{Neighbors, Sender};
 
-#[derive(Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
     pub depth_limit: Option<u32>,
     pub time_limit: Option<Duration>,

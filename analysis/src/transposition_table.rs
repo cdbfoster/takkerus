@@ -142,13 +142,13 @@ impl<const N: usize> Slot<N> {
             let data = self.data.load(Ordering::Acquire);
             Some(LoadedSlot {
                 hash: key ^ data,
-                entry: TranspositionTableEntry::from_u64(data),
+                entry: TranspositionTableEntry::from_bits(data),
             })
         }
     }
 
     fn store(&self, hash: ZobristHash, entry: TranspositionTableEntry<N>) {
-        let data = entry.as_u64();
+        let data = entry.to_bits();
         let key = hash ^ data;
 
         // Store the data before the key.  Since we read the key first upon load,
@@ -230,13 +230,13 @@ impl<const N: usize> TranspositionTableEntry<N> {
 }
 
 impl<const N: usize> TranspositionTableEntry<N> {
-    fn as_u64(&self) -> u64 {
+    fn to_bits(self) -> u64 {
         debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<u64>(),);
 
-        unsafe { mem::transmute(*self) }
+        unsafe { mem::transmute(self) }
     }
 
-    fn from_u64(value: u64) -> Self {
+    fn from_bits(value: u64) -> Self {
         debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<u64>(),);
 
         unsafe { mem::transmute(value) }

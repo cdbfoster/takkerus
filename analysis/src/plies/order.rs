@@ -131,7 +131,7 @@ impl<const N: usize> KillerMoves<N> {
         }
 
         let packed: PackedPly = ply.into();
-        let mut next = packed.as_u16();
+        let mut next = packed.to_bits();
         for slot in &self.buffer {
             next = slot.swap(next, Ordering::AcqRel);
         }
@@ -140,7 +140,7 @@ impl<const N: usize> KillerMoves<N> {
     fn read(&self) -> [Option<Ply<N>>; KILLER_MOVE_COUNT] {
         let mut plies = [None; KILLER_MOVE_COUNT];
         for (i, slot) in self.buffer.iter().enumerate() {
-            plies[i] = PackedPly::from_u16(slot.load(Ordering::Acquire))
+            plies[i] = PackedPly::from_bits(slot.load(Ordering::Acquire))
                 .try_into()
                 .ok();
         }
