@@ -251,7 +251,7 @@ impl<const N: usize> TranspositionTableEntry<N> {
 /// ```
 /// This does impose limits on the possible depth and ply count.
 /// The maximum depth is 32, and the maximum ply count is 511.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 struct EntryInfo(u16);
 
 const ENTRY_MAX_DEPTH: usize = 32;
@@ -284,6 +284,16 @@ impl EntryInfo {
 
     fn ply_count(self) -> u16 {
         self.0 & 0x01FF
+    }
+}
+
+impl fmt::Debug for EntryInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EntryInfo")
+            .field("bound", &self.bound())
+            .field("depth", &self.depth())
+            .field("ply_count", &self.ply_count())
+            .finish()
     }
 }
 
