@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, mem};
 
 use tak::{edge_masks, Bitmap, Direction, Drops, Ply, PlyError};
 
@@ -19,6 +19,20 @@ use tak::{edge_masks, Bitmap, Direction, Drops, Ply, PlyError};
 /// spread West from (0, 0), which is impossible.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PackedPly(u8, u8);
+
+impl PackedPly {
+    pub(crate) fn as_u16(&self) -> u16 {
+        debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<u16>(),);
+
+        unsafe { mem::transmute(*self) }
+    }
+
+    pub(crate) fn from_u16(value: u16) -> Self {
+        debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<u16>(),);
+
+        unsafe { mem::transmute(value) }
+    }
+}
 
 impl<const N: usize> From<Ply<N>> for PackedPly {
     fn from(ply: Ply<N>) -> Self {
