@@ -1,6 +1,9 @@
+use std::iter::{Flatten, Fuse};
+use std::sync::atomic::{AtomicU16, Ordering};
+
 use tak::{board_mask, edge_masks, generation, Bitmap, Color, Direction, PieceType, Ply, State};
 
-use crate::util::{placement_threat_map, FixedLifoBuffer};
+use crate::util::{placement_threat_map, PackedPly};
 
 use super::Continuation::{self, *};
 use super::Fallibility::{self, *};
@@ -110,16 +113,45 @@ impl<const N: usize> DepthKillerMoves<N> {
     }
 }
 
-pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
+const KILLER_MOVE_COUNT: usize = 2;
+
+#[derive(Default)]
+pub(crate) struct KillerMoves<const N: usize> {
+    buffer: [AtomicU16; KILLER_MOVE_COUNT],
+}
+
+impl<const N: usize> KillerMoves<N> {
+    pub(crate) fn push(&self, ply: Ply<N>) {
+        if self.read().contains(&Some(ply)) {
+            return;
+        }
+
+        let packed: PackedPly = ply.into();
+        let mut next = packed.as_u16();
+        for slot in &self.buffer {
+            next = slot.swap(next, Ordering::AcqRel);
+        }
+    }
+
+    fn read(&self) -> [Option<Ply<N>>; KILLER_MOVE_COUNT] {
+        let mut plies = [None; KILLER_MOVE_COUNT];
+        for (i, slot) in self.buffer.iter().enumerate() {
+            plies[i] = PackedPly::from_u16(slot.load(Ordering::Acquire))
+                .try_into()
+                .ok();
+        }
+        plies
+    }
+}
 
 pub(super) struct Killers<const N: usize> {
-    pub(super) killer_moves: KillerMoves<N>,
+    killer_moves: Fuse<Flatten<<[Option<Ply<N>>; KILLER_MOVE_COUNT] as IntoIterator>::IntoIter>>,
 }
 
 impl<const N: usize> Killers<N> {
     pub(super) fn new(killer_moves: &KillerMoves<N>) -> Self {
         Self {
-            killer_moves: killer_moves.clone(),
+            killer_moves: killer_moves.read().into_iter().flatten().fuse(),
         }
     }
 }
@@ -128,7 +160,7 @@ impl<const N: usize> Iterator for Killers<N> {
     type Item = GeneratedPly<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.killer_moves.pop().map(|ply| GeneratedPly {
+        self.killer_moves.next().map(|ply| GeneratedPly {
             ply,
             fallibility: Fallible,
             continuation: Continue,

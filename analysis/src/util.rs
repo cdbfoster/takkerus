@@ -78,57 +78,6 @@ impl<const N: usize> TryFrom<PackedPly> for Ply<N> {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct FixedLifoBuffer<const C: usize, T>
-where
-    T: Clone,
-{
-    start: usize,
-    buffer: [Option<T>; C],
-}
-
-impl<const C: usize, T> FixedLifoBuffer<C, T>
-where
-    T: Copy,
-{
-    pub fn push(&mut self, value: T)
-    where
-        T: PartialEq,
-    {
-        if !self.buffer.contains(&Some(value)) {
-            self.start = prev_index::<C>(self.start);
-            self.buffer[self.start] = Some(value);
-        }
-    }
-
-    pub fn pop(&mut self) -> Option<T> {
-        let next = self.buffer[self.start];
-        self.buffer[self.start] = None;
-        self.start = (self.start + 1) % C;
-        next
-    }
-}
-
-fn prev_index<const C: usize>(i: usize) -> usize {
-    if i > 0 {
-        i - 1
-    } else {
-        C - 1
-    }
-}
-
-impl<const C: usize, T> Default for FixedLifoBuffer<C, T>
-where
-    T: Copy,
-{
-    fn default() -> Self {
-        Self {
-            start: 0,
-            buffer: [None; C],
-        }
-    }
-}
-
 /// Returns a map filled with all single locations that would complete a road.
 pub(crate) fn placement_threat_map<const N: usize>(
     road_pieces: Bitmap<N>,
