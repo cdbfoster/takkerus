@@ -1,4 +1,4 @@
-use std::{io, mem};
+use std::{fmt, io, mem};
 
 use tak::{edge_masks, Bitmap, Direction, Drops, Ply, PlyError};
 
@@ -17,7 +17,7 @@ use tak::{edge_masks, Bitmap, Direction, Drops, Ply, PlyError};
 /// These patterns are distinguishable because the "magic" value
 /// cannot be interpreted as a valid spread; it would represent a
 /// spread West from (0, 0), which is impossible.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct PackedPly(u8, u8);
 
 impl PackedPly {
@@ -75,6 +75,13 @@ impl<const N: usize> TryFrom<PackedPly> for Ply<N> {
 
         ply.validate()?;
         Ok(ply)
+    }
+}
+
+impl fmt::Debug for PackedPly {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ply: Ply<8> = (*self).try_into().unwrap();
+        write!(f, "{ply:?}")
     }
 }
 

@@ -7,7 +7,7 @@ use crate::util::Neighbors;
 const WIN: f32 = 1.1;
 const WIN_THRESHOLD: f32 = 1.0;
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Evaluation(f32);
 
 impl Evaluation {
@@ -165,6 +165,12 @@ impl From<f32> for Evaluation {
 impl From<Evaluation> for f32 {
     fn from(value: Evaluation) -> Self {
         value.0
+    }
+}
+
+impl fmt::Debug for Evaluation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 
