@@ -2,6 +2,8 @@ use std::{fmt, io, mem};
 
 use tak::{edge_masks, Bitmap, Direction, Drops, Ply, PlyError};
 
+pub(crate) mod bag;
+
 /// A bit-packed ply. Representation:
 /// ```text
 /// Place:

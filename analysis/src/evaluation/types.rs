@@ -20,6 +20,14 @@ impl Evaluation {
     pub fn is_terminal(self) -> bool {
         self.0.abs() > WIN_THRESHOLD
     }
+
+    pub fn to_bits(self) -> u32 {
+        self.0.to_bits()
+    }
+
+    pub fn from_bits(value: u32) -> Self {
+        Self(f32::from_bits(value))
+    }
 }
 
 mod ops {

@@ -12,8 +12,13 @@ use tak::{Ply, State};
 
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
 use crate::plies::{DepthKillerMoves, Fallibility, PlyGenerator};
+use crate::search::pvs::{ab_search, worker};
+use crate::search::work::WorkNodes;
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 use crate::util::{Neighbors, Sender};
+
+mod pvs;
+mod work;
 
 pub struct AnalysisConfig<'a, const N: usize> {
     pub depth_limit: Option<u32>,
@@ -33,6 +38,24 @@ pub struct AnalysisConfig<'a, const N: usize> {
     pub evaluator: Option<&'a dyn Evaluator<N>>,
     /// A sender that will be used to send interim results during the search.
     pub interim_analysis_sender: Option<Box<dyn Sender<Analysis<N>>>>,
+    /// The number of worker threads to use.
+    pub threads: usize,
+}
+
+impl<'a, const N: usize> Default for AnalysisConfig<'a, N> {
+    fn default() -> Self {
+        Self {
+            depth_limit: Default::default(),
+            time_limit: Default::default(),
+            predict_time: Default::default(),
+            interrupted: Default::default(),
+            persistent_state: Default::default(),
+            exact_eval: Default::default(),
+            evaluator: Default::default(),
+            interim_analysis_sender: Default::default(),
+            threads: 2,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -200,14 +223,46 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         debug!(iteration, "Beginning analysis...");
 
-        let root = minimax(
-            &search,
-            state,
-            iteration,
-            Evaluation::MIN,
-            Evaluation::MAX,
-            true,
-        );
+        let node = Node {
+            parent_index: None,
+            state: state.clone(),
+            remaining_depth: iteration,
+            null_move_allowed: true,
+        };
+
+        let work = WorkNodes::default();
+
+        let root = thread::scope(|scope| {
+            for i in 1..config.threads {
+                thread::Builder::new()
+                    .name(format!("worker_{i}"))
+                    .spawn_scoped(scope, || {
+                        let _worker_thread =
+                            trace_span!("thread", id = %thread::current().name().unwrap())
+                                .entered();
+                        worker(&search, &work);
+                    })
+                    .expect("could not spawn worker");
+            }
+
+            let _main_thread = trace_span!("thread", id = %"main").entered();
+            let root = ab_search(&search, node, &work, Evaluation::MIN, Evaluation::MAX);
+
+            let _work_nodes = work.lock();
+            work.shutdown.store(true, Ordering::Relaxed);
+            debug!("shutting down");
+            work.queue.notify_all();
+
+            root
+        });
+
+        {
+            let work_nodes = work.lock();
+            debug!(
+                remaining_nodes = work_nodes.len(),
+                empty_slots = work_nodes.unused()
+            );
+        }
 
         if config.interrupted.load(Ordering::Relaxed) {
             break;
@@ -449,17 +504,27 @@ impl AtomicStatistics {
     }
 }
 
+#[derive(Clone)]
+struct Node<const N: usize> {
+    parent_index: Option<usize>,
+    state: State<N>,
+    remaining_depth: usize,
+    null_move_allowed: bool,
+}
+
 #[derive(Clone, Copy)]
-struct BranchResult {
+struct BranchResult<const N: usize> {
+    best_ply: Option<Ply<N>>,
     depth: usize,
     evaluation: Evaluation,
 }
 
-impl Neg for BranchResult {
+impl<const N: usize> Neg for BranchResult<N> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
         Self {
+            best_ply: self.best_ply,
             depth: self.depth,
             evaluation: -self.evaluation,
         }
@@ -474,7 +539,7 @@ fn minimax<const N: usize>(
     mut alpha: Evaluation,
     beta: Evaluation,
     null_move_allowed: bool,
-) -> BranchResult {
+) -> BranchResult<N> {
     let search_depth = (state.ply_count - search.start_ply) as usize;
 
     search.stats.visited.fetch_add(1, Ordering::Relaxed);
@@ -492,6 +557,7 @@ fn minimax<const N: usize>(
         search.stats.evaluated.fetch_add(1, Ordering::Relaxed);
 
         return BranchResult {
+            best_ply: None,
             depth: 0,
             evaluation,
         };
@@ -526,6 +592,7 @@ fn minimax<const N: usize>(
             search.stats.tt_saves.fetch_add(1, Ordering::Relaxed);
 
             return BranchResult {
+                best_ply: Some(entry.ply()),
                 depth: entry.depth(),
                 evaluation: match entry.bound() {
                     Bound::Exact => entry.evaluation(),
@@ -547,7 +614,7 @@ fn minimax<const N: usize>(
         // Apply a null move.
         state.ply_count += 1;
 
-        let BranchResult { depth, evaluation } = -minimax(
+        let scout = -minimax(
             search,
             &state,
             remaining_depth - 3,
@@ -556,16 +623,13 @@ fn minimax<const N: usize>(
             false,
         );
 
-        // Undo the null move.
-        state.ply_count -= 1;
-
-        if evaluation >= beta {
+        if scout.evaluation >= beta {
             trace!("Null move cutoff");
             search.stats.null_cutoff.fetch_add(1, Ordering::Relaxed);
 
             return BranchResult {
-                depth,
                 evaluation: beta,
+                ..scout
             };
         }
     }
@@ -575,10 +639,11 @@ fn minimax<const N: usize>(
     let ply_generator = PlyGenerator::new(state, tt_ply, search.killer_moves.depth(search_depth));
 
     let mut best = BranchResult {
+        best_ply: None,
         depth: 0,
         evaluation: Evaluation::MIN,
     };
-    let mut best_ply = None;
+    let mut best_move_order = 0;
 
     let mut raised_alpha = false;
 
@@ -625,9 +690,9 @@ fn minimax<const N: usize>(
 
         if next.evaluation > best.evaluation {
             best = next;
+            best.best_ply = Some(ply);
             best.depth += 1;
-
-            best_ply = Some((i, ply));
+            best_move_order = i;
         }
 
         if next.evaluation > alpha {
@@ -646,13 +711,11 @@ fn minimax<const N: usize>(
 
         if search.interrupted.load(Ordering::Relaxed) {
             return BranchResult {
-                depth: best.depth,
                 evaluation: alpha,
+                ..best
             };
         }
     }
-
-    let (i, best_ply) = best_ply.expect("no plies were searched");
 
     let bound = if alpha == beta {
         Bound::Lower
@@ -663,9 +726,9 @@ fn minimax<const N: usize>(
     };
 
     if bound == Bound::Exact {
-        search.stats.pv_ply_order[i.min(5)].fetch_add(1, Ordering::Relaxed);
+        search.stats.pv_ply_order[best_move_order.min(5)].fetch_add(1, Ordering::Relaxed);
     } else if bound == Bound::Upper {
-        search.stats.all_ply_order[i.min(5)].fetch_add(1, Ordering::Relaxed);
+        search.stats.all_ply_order[best_move_order.min(5)].fetch_add(1, Ordering::Relaxed);
     }
 
     // Store in transposition table =============
@@ -673,7 +736,7 @@ fn minimax<const N: usize>(
     let inserted = search.persistent_state.transposition_table.insert(
         state.metadata.hash,
         TranspositionTableEntry::new(
-            best_ply,
+            best.best_ply.expect("no best ply"),
             alpha,
             bound,
             best.depth.max(remaining_depth),
@@ -688,8 +751,8 @@ fn minimax<const N: usize>(
     }
 
     BranchResult {
-        depth: best.depth,
         evaluation: alpha,
+        ..best
     }
 }
 
