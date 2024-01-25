@@ -17,19 +17,17 @@ pub(super) struct GeneratedPly<const N: usize> {
 
 // Placement wins ===============================
 
-pub(super) struct PlacementWins<const N: usize> {
-    state: State<N>,
+pub(super) struct PlacementWins<'a, const N: usize> {
+    state: &'a State<N>,
 }
 
-impl<const N: usize> PlacementWins<N> {
-    pub(super) fn new(state: &State<N>) -> Self {
-        Self {
-            state: state.clone(),
-        }
+impl<'a, const N: usize> PlacementWins<'a, N> {
+    pub(super) fn new(state: &'a State<N>) -> Self {
+        Self { state }
     }
 }
 
-impl<const N: usize> Iterator for PlacementWins<N> {
+impl<'a, const N: usize> Iterator for PlacementWins<'a, N> {
     type Item = GeneratedPly<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -138,17 +136,14 @@ impl<const N: usize> Iterator for Killers<N> {
 
 // All plies ====================================
 
-pub(super) struct AllPlies<const N: usize> {
-    state: State<N>,
+pub(super) struct AllPlies<'a, const N: usize> {
+    state: &'a State<N>,
     plies: Option<Vec<ScoredPly<N>>>,
 }
 
-impl<const N: usize> AllPlies<N> {
-    pub(super) fn new(state: &State<N>) -> Self {
-        Self {
-            state: state.clone(),
-            plies: None,
-        }
+impl<'a, const N: usize> AllPlies<'a, N> {
+    pub(super) fn new(state: &'a State<N>) -> Self {
+        Self { state, plies: None }
     }
 }
 
@@ -157,7 +152,7 @@ pub(super) struct ScoredPly<const N: usize> {
     ply: Ply<N>,
 }
 
-impl<const N: usize> Iterator for AllPlies<N> {
+impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
     type Item = GeneratedPly<N>;
 
     fn next(&mut self) -> Option<Self::Item> {

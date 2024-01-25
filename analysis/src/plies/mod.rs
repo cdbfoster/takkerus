@@ -23,15 +23,15 @@ enum Continuation {
 }
 use Continuation::*;
 
-pub(crate) struct PlyGenerator<const N: usize> {
+pub(crate) struct PlyGenerator<'a, const N: usize> {
     used_plies: HashSet<Ply<N>, FnvBuildHasher>,
-    plies: PlyIterator<N>,
+    plies: PlyIterator<'a, N>,
     continuation: Continuation,
 }
 
-impl<const N: usize> PlyGenerator<N> {
+impl<'a, const N: usize> PlyGenerator<'a, N> {
     pub(crate) fn new(
-        state: &State<N>,
+        state: &'a State<N>,
         tt_ply: Option<Ply<N>>,
         killer_moves: &KillerMoves<N>,
     ) -> Self {
@@ -46,10 +46,10 @@ impl<const N: usize> PlyGenerator<N> {
     }
 }
 
-type PlyIterator<const N: usize> =
-    Chain<Chain<Chain<PlacementWins<N>, TtPly<N>>, Killers<N>>, AllPlies<N>>;
+type PlyIterator<'a, const N: usize> =
+    Chain<Chain<Chain<PlacementWins<'a, N>, TtPly<N>>, Killers<N>>, AllPlies<'a, N>>;
 
-impl<const N: usize> Iterator for PlyGenerator<N> {
+impl<'a, const N: usize> Iterator for PlyGenerator<'a, N> {
     type Item = (Fallibility, Ply<N>);
 
     fn next(&mut self) -> Option<Self::Item> {
