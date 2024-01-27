@@ -594,6 +594,7 @@ fn minimax<const N: usize>(
     };
     let mut best_ply = None;
 
+    let mut moves_searched = 0;
     let mut raised_alpha = false;
 
     for (i, (fallibility, ply)) in ply_generator.enumerate() {
@@ -610,7 +611,9 @@ fn minimax<const N: usize>(
             Infallible => state.execute_ply_unchecked(ply),
         }
 
-        let next = if i == 0 {
+        moves_searched += 1;
+
+        let next = if moves_searched == 1 {
             let _leftmost_span = trace_span!("leftmost").entered();
             // On the first iteration, perform a full-window search.
             -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
