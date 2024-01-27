@@ -243,7 +243,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         info!(
             depth = analysis.depth,
             time = %format!("{:05.2}s", analysis.time.as_secs_f64()),
-            eval = %format!("{:<4}", analysis.evaluation),
+            eval = %format!("{:<4.4}", analysis.evaluation),
             pv = ?analysis.principal_variation,
             "Analyzed:",
         );
