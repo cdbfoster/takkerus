@@ -14,7 +14,6 @@ use crate::plies::{DepthKillerMoves, Fallibility, PlyGenerator};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 use crate::util::{Neighbors, Sender};
 
-#[derive(Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
     pub depth_limit: Option<u32>,
     pub time_limit: Option<Duration>,
@@ -33,6 +32,24 @@ pub struct AnalysisConfig<'a, const N: usize> {
     pub evaluator: Option<&'a dyn Evaluator<N>>,
     /// A sender that will be used to send interim results during the search.
     pub interim_analysis_sender: Option<Box<dyn Sender<Analysis<N>>>>,
+    /// The number of threads to use during the search.
+    pub threads: usize,
+}
+
+impl<'a, const N: usize> Default for AnalysisConfig<'a, N> {
+    fn default() -> Self {
+        Self {
+            depth_limit: Default::default(),
+            time_limit: Default::default(),
+            predict_time: Default::default(),
+            interrupted: Default::default(),
+            persistent_state: Default::default(),
+            exact_eval: Default::default(),
+            evaluator: Default::default(),
+            interim_analysis_sender: Default::default(),
+            threads: 1,
+        }
+    }
 }
 
 #[derive(Debug)]
