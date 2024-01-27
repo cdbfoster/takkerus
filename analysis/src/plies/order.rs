@@ -93,7 +93,7 @@ impl<const N: usize> Iterator for TtPly<N> {
 
 // Killer moves =================================
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct DepthKillerMoves<const N: usize> {
     depths: Vec<KillerMoves<N>>,
 }

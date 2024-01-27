@@ -195,9 +195,11 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
     for iteration in 1..=max_depth {
         let iteration_start_time = Instant::now();
 
+        let depth_stats = AtomicStatistics::default();
+
         let mut search = SearchState {
             start_ply: state.ply_count,
-            stats: Default::default(),
+            stats: &depth_stats,
             interrupted: &config.interrupted,
             persistent_state,
             killer_moves: Default::default(),
@@ -399,9 +401,10 @@ fn fetch_pv<const N: usize>(
     (pv, state)
 }
 
+#[derive(Clone)]
 struct SearchState<'a, const N: usize> {
     start_ply: u16,
-    stats: AtomicStatistics,
+    stats: &'a AtomicStatistics,
     interrupted: &'a AtomicBool,
     persistent_state: &'a PersistentState<N>,
     killer_moves: DepthKillerMoves<N>,
