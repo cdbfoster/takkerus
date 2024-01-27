@@ -187,7 +187,7 @@ impl fmt::Display for Evaluation {
                 "loss".fmt(f)
             }
         } else {
-            self.0.fmt(f)
+            write!(f, "{:.4}", self.0)
         }
     }
 }

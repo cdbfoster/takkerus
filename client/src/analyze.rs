@@ -93,7 +93,7 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
 
     println!("\nTo Move: {:?}", state.to_move());
 
-    println!("\nEvaluation: {:<.4}", analysis.evaluation);
+    println!("\nEvaluation: {}", analysis.evaluation);
 
     println!("\nPrincipal Variation:");
     for turn in &game.turns {
