@@ -196,11 +196,13 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         let iteration_start_time = Instant::now();
 
         let depth_stats = AtomicStatistics::default();
+        let workers_terminated = AtomicBool::default();
 
-        let mut search = SearchState {
+        let search = SearchState {
             start_ply: state.ply_count,
             stats: &depth_stats,
             interrupted: &config.interrupted,
+            workers_terminated: &workers_terminated,
             persistent_state,
             killer_moves: Default::default(),
             exact_eval: config.exact_eval,
@@ -209,14 +211,45 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
 
         debug!(iteration, "Beginning analysis...");
 
-        let root = minimax(
-            &mut search,
-            state,
-            iteration,
-            Evaluation::MIN,
-            Evaluation::MAX,
-            true,
-        );
+        let root = thread::scope(|scope| {
+            for i in 1..config.threads {
+                let mut search = search.clone();
+                let worker_depth = iteration + i;
+
+                thread::Builder::new()
+                    .name(format!("worker_{i}"))
+                    .spawn_scoped(scope, move || {
+                        let _worker_thread =
+                            trace_span!("thread", id = %thread::current().name().unwrap())
+                                .entered();
+
+                        let _ = minimax(
+                            &mut search,
+                            &state.clone(),
+                            worker_depth,
+                            Evaluation::MIN,
+                            Evaluation::MAX,
+                            true,
+                        );
+                    })
+                    .expect("could not spawn worker thread");
+            }
+
+            let _main_thread = trace_span!("thread", id = %"main").entered();
+
+            let mut search = search.clone();
+            let root = minimax(
+                &mut search,
+                state,
+                iteration,
+                Evaluation::MIN,
+                Evaluation::MAX,
+                true,
+            );
+            search.workers_terminated.store(true, Ordering::Relaxed);
+
+            root
+        });
 
         if config.interrupted.load(Ordering::Relaxed) {
             break;
@@ -406,6 +439,7 @@ struct SearchState<'a, const N: usize> {
     start_ply: u16,
     stats: &'a AtomicStatistics,
     interrupted: &'a AtomicBool,
+    workers_terminated: &'a AtomicBool,
     persistent_state: &'a PersistentState<N>,
     killer_moves: DepthKillerMoves<N>,
     exact_eval: bool,
@@ -661,7 +695,9 @@ fn minimax<const N: usize>(
             }
         }
 
-        if search.interrupted.load(Ordering::Relaxed) {
+        if search.interrupted.load(Ordering::Relaxed)
+            || search.workers_terminated.load(Ordering::Relaxed)
+        {
             return BranchResult {
                 depth: best.depth,
                 evaluation: alpha,

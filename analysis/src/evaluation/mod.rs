@@ -11,6 +11,6 @@ mod features;
 mod model;
 mod types;
 
-pub trait Evaluator<const N: usize> {
+pub trait Evaluator<const N: usize>: Sync {
     fn evaluate(&self, state: &State<N>, resolution: Option<Resolution>) -> Evaluation;
 }
