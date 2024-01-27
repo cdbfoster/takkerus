@@ -31,7 +31,7 @@ impl<const N: usize> ZobristKeys<N> {
             use rand::SeedableRng;
             use std::env;
             use std::sync::Mutex;
-            use tracing::info;
+            use tracing::debug;
 
             static RNG: Lazy<Mutex<StdRng>> = Lazy::new(|| {
                 let seed = if let Ok(seed) = env::var("FIXED_RNG_SEED") {
@@ -40,7 +40,7 @@ impl<const N: usize> ZobristKeys<N> {
                     u64::from_be_bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
                 };
 
-                info!(?seed, "Initializing Zobrist hashing rng.");
+                debug!(?seed, "Initializing Zobrist hashing rng.");
 
                 Mutex::new(StdRng::seed_from_u64(seed))
             });
