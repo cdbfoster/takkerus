@@ -163,11 +163,11 @@ impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
                 continuation: Continue,
             })
         } else {
-            let mut plies = generate_all_plies(&self.state);
+            let mut plies = generate_all_plies(self.state);
 
             // Don't really need a detailed ordering so early in the game.
             if self.state.ply_count >= 6 {
-                score_plies(&self.state, &mut plies);
+                score_plies(self.state, &mut plies);
                 plies.sort_unstable_by_key(|scored_ply| scored_ply.score);
             }
 
