@@ -505,18 +505,17 @@ fn minimax<const N: usize>(
 
     // Fetch from transposition table ===========
 
-    let mut tt_ply = None;
-
-    if let Some(entry) = search
+    let tt_entry = search
         .persistent_state
         .transposition_table
-        .get(state.metadata.hash)
-    {
+        .get(state.metadata.hash);
+
+    if let Some(entry) = tt_entry {
         search.stats.tt_hits.fetch_add(1, Ordering::Relaxed);
 
         let is_save = entry.depth() >= remaining_depth
             && match entry.bound() {
-                Bound::Exact => false, // Search exact nodes to avoid cutting the PV short.
+                Bound::Exact => false, // Search deep exact nodes.
                 Bound::Upper => entry.evaluation() <= alpha,
                 Bound::Lower => entry.evaluation() >= beta,
             };
@@ -535,8 +534,6 @@ fn minimax<const N: usize>(
                 },
             };
         }
-
-        tt_ply = Some(entry.ply());
     }
 
     // Null move search =========================
@@ -573,7 +570,11 @@ fn minimax<const N: usize>(
 
     // Ply search ===============================
 
-    let ply_generator = PlyGenerator::new(state, tt_ply, search.killer_moves.depth(search_depth));
+    let ply_generator = PlyGenerator::new(
+        state,
+        tt_entry.map(|entry| entry.ply()),
+        search.killer_moves.depth(search_depth),
+    );
 
     let mut best = BranchResult {
         depth: 0,

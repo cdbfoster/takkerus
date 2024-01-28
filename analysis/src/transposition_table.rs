@@ -6,7 +6,7 @@ use tak::{Ply, ZobristHash};
 use crate::evaluation::Evaluation;
 use crate::util::PackedPly;
 
-const MAX_PROBE_DEPTH: isize = 5;
+const MAX_PROBE_DEPTH: usize = 5;
 
 pub struct TranspositionTable<const N: usize> {
     len: AtomicUsize,
@@ -41,32 +41,31 @@ impl<const N: usize> TranspositionTable<N> {
 
         let mut current_index = start_index;
         let mut target_index = start_index;
-        let mut target_score = u32::MAX;
-
-        fn score<const N: usize>(entry: TranspositionTableEntry<N>) -> u32 {
-            // Score by total ply depth, bound, and then individual search depth.
-            ((entry.depth() as u32 + entry.ply_count() as u32) << 16)
-                | ((entry.bound() as u32) << 8)
-                | (entry.depth() as u32)
-        }
-
-        let entry_score = score(entry);
+        let mut target_score = (usize::MAX, u16::MAX, Bound::Lower);
 
         for _ in 0..MAX_PROBE_DEPTH {
             if let Some(slot) = self.values[current_index].load() {
-                let slot_score = score(slot.entry);
-
                 if hash != slot.hash {
+                    let slot_score = (
+                        slot.entry.depth(),
+                        slot.entry.ply_count(),
+                        slot.entry.bound(),
+                    );
+
                     // Find the lowest score to replace.
                     if slot_score < target_score {
                         target_index = current_index;
                         target_score = slot_score;
                     }
-                } else if entry_score >= slot_score {
-                    self.values[current_index].store(hash, entry);
-                    return true;
                 } else {
-                    return false;
+                    let replace =
+                        (entry.depth(), entry.bound()) > (slot.entry.depth(), slot.entry.bound());
+
+                    if replace {
+                        self.values[current_index].store(hash, entry);
+                    }
+
+                    return replace;
                 }
             } else {
                 // Always overwrite an empty slot.
@@ -166,7 +165,7 @@ struct LoadedSlot<const N: usize> {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Bound {
     Lower = 0,
     Upper,
