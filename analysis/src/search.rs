@@ -511,7 +511,12 @@ fn minimax<const N: usize>(
 
         let is_terminal = entry.bound() == Bound::Exact && entry.evaluation().is_terminal();
 
-        if is_save || is_terminal && state.validate_ply(entry.ply()).is_ok() {
+        #[cfg(debug_assertions)]
+        if let Err(err) = state.validate_ply(entry.ply()) {
+            error!(?entry, ?state, error = ?err, "Invalid tt ply");
+        }
+
+        if is_save || is_terminal {
             search.stats.tt_saves.fetch_add(1, Ordering::Relaxed);
 
             return BranchResult {
