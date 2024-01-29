@@ -1,5 +1,4 @@
 use std::fmt::Write;
-use std::iter::Sum;
 use std::ops::{Add, AddAssign, Neg};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -114,16 +113,6 @@ impl Add for &Statistics {
 impl AddAssign<&Statistics> for Statistics {
     fn add_assign(&mut self, other: &Self) {
         *self = self.add(other)
-    }
-}
-
-impl<'a> Sum<&'a Self> for Statistics {
-    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
-        let mut total = Self::default();
-        for x in iter {
-            total += x;
-        }
-        total
     }
 }
 
