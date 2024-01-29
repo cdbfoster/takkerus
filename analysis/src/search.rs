@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{debug, error, info, instrument, trace, trace_span, warn};
 
-use tak::{Ply, State};
+use tak::{zobrist_advance_move, Ply, State};
 
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
 use crate::plies::{DepthKillerMoves, Fallibility, PlyGenerator};
@@ -533,6 +533,7 @@ fn minimax<const N: usize>(
 
         // Apply a null move.
         state.ply_count += 1;
+        state.metadata.hash ^= zobrist_advance_move::<N>();
 
         let BranchResult { depth, evaluation } = -minimax(
             search,
@@ -542,9 +543,6 @@ fn minimax<const N: usize>(
             (-beta).next_up(),
             false,
         );
-
-        // Undo the null move.
-        state.ply_count -= 1;
 
         if evaluation >= beta {
             trace!("Null move cutoff");
