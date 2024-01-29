@@ -504,7 +504,7 @@ fn minimax<const N: usize>(
 
         let is_save = entry.depth() >= remaining_depth
             && match entry.bound() {
-                Bound::Exact => false, // Search deep exact nodes.
+                Bound::Exact => true,
                 Bound::Upper => entry.evaluation() <= alpha,
                 Bound::Lower => entry.evaluation() >= beta,
             };
