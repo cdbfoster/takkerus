@@ -227,10 +227,26 @@ pub(crate) fn minimax<const N: usize>(
         } else {
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
+
+            let lmr_allowed = !search.exact_eval && !pv_node && search_depth >= 3;
+
+            let reduction = if lmr_allowed {
+                if moves_searched <= 4 {
+                    1
+                } else if moves_searched <= 10 {
+                    2
+                } else {
+                    2 + search_depth / 3
+                }
+            } else {
+                1
+            }
+            .min(remaining_depth);
+
             let scout = -minimax(
                 search,
                 &state,
-                remaining_depth - 1,
+                remaining_depth - reduction,
                 (-alpha).next_down(),
                 -alpha,
                 true,
@@ -241,7 +257,14 @@ pub(crate) fn minimax<const N: usize>(
                 let _researched_span = trace_span!("researched").entered();
                 search.stats.re_searched.fetch_add(1, Ordering::Relaxed);
                 // If we are inside the PV window instead, we need to re-search using the full PV window.
-                -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
+                -minimax(
+                    search,
+                    &state,
+                    remaining_depth - reduction,
+                    -beta,
+                    -alpha,
+                    true,
+                )
             } else {
                 scout
             }
