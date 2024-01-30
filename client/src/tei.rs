@@ -150,6 +150,7 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
             depth_limit,
             time_limit,
             predict_time,
+            threads,
         } = ai;
 
         let state: State<N> = game.clone().try_into().expect("could not create state");
@@ -178,6 +179,7 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
                 predict_time,
                 persistent_state: Some(&*guard),
                 interim_analysis_sender: Some(Box::new(sender)),
+                threads,
                 ..Default::default()
             };
 

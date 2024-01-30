@@ -143,6 +143,7 @@ fn initialize_player<const N: usize>(player: &PlayerArgs) -> impl PlayerInitiali
                 config.depth_limit,
                 config.time_limit,
                 config.predict_time,
+                config.threads,
                 to_game,
             )
         }) as Box<dyn PlayerInitializer<N>>,

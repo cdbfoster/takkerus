@@ -61,12 +61,14 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
         depth_limit,
         time_limit,
         predict_time,
+        threads,
     } = config.ai;
 
     let analysis_config = AnalysisConfig::<N> {
         depth_limit,
         time_limit,
         predict_time,
+        threads,
         ..Default::default()
     };
 

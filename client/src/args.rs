@@ -38,13 +38,14 @@ pub struct PlayConfig {
     ///   time=int          - The maximum number of seconds to spend considering a response.
     ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
     ///                       than the time limit. Time limit must be set. (false or true)
+    ///   threads=int       - The number of worker threads to spawn for analysis.
     #[arg(long, default_value = "type=human", verbatim_doc_comment)]
     pub p1: Player,
 
     /// Player 2 options. These are the same as the options for Player 1.
     #[arg(
         long,
-        default_value = "type=ai,time=60,predict_time=true",
+        default_value = "type=ai,time=60,predict_time=true,threads=1",
         verbatim_doc_comment
     )]
     pub p2: Player,
@@ -77,9 +78,10 @@ pub struct AnalyzeConfig {
     ///   time=int          - The maximum number of seconds to spend considering a response.
     ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
     ///                       than the time limit. Time limit must be set. (false or true)
+    ///   threads=int       - The number of worker threads to spawn for analysis.
     #[arg(
         long,
-        default_value = "time=60,predict_time=true",
+        default_value = "time=60,predict_time=true,threads=1",
         verbatim_doc_comment
     )]
     pub ai: Ai,
@@ -102,9 +104,10 @@ pub struct TeiConfig {
     ///   time=int          - The maximum number of seconds to spend considering a response.
     ///   predict_time=bool - Stop the search early if the next depth is predicted to take longer
     ///                       than the time limit. Time limit must be set. (false or true)
+    ///   threads=int       - The number of worker threads to spawn for analysis.
     #[arg(
         long,
-        default_value = "time=60,predict_time=true",
+        default_value = "time=60,predict_time=true,threads=1",
         verbatim_doc_comment
     )]
     pub ai: Ai,
@@ -158,6 +161,7 @@ pub struct Ai {
     pub depth_limit: Option<u32>,
     pub time_limit: Option<Duration>,
     pub predict_time: bool,
+    pub threads: usize,
 }
 
 impl FromStr for Ai {
@@ -174,7 +178,7 @@ impl FromStr for Ai {
             })
             .transpose()?;
 
-        let time_limit = fields
+        let mut time_limit = fields
             .get("time")
             .map(|&f| {
                 f.parse::<u64>()
@@ -183,7 +187,7 @@ impl FromStr for Ai {
             })
             .transpose()?;
 
-        let predict_time = fields
+        let mut predict_time = fields
             .get("predict_time")
             .map(|&f| {
                 f.parse::<bool>()
@@ -192,14 +196,33 @@ impl FromStr for Ai {
             .transpose()?
             .unwrap_or_default();
 
+        let threads = fields
+            .get("threads")
+            .map(|&f| {
+                f.parse::<usize>()
+                    .map_err(|_| format!("invalid value for threads: {f}"))
+            })
+            .transpose()?
+            .unwrap_or(1);
+
+        if depth_limit.is_none() && time_limit.is_none() {
+            time_limit = Some(Duration::from_secs(60));
+            predict_time = true;
+        }
+
         if predict_time && time_limit.is_none() {
             return Err("time limit must be set to use predict_time".to_owned());
+        }
+
+        if threads == 0 {
+            return Err("threads must be greater than zero".to_owned());
         }
 
         Ok(Self {
             depth_limit,
             time_limit,
             predict_time,
+            threads,
         })
     }
 }

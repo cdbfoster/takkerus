@@ -16,6 +16,7 @@ pub fn initialize<const N: usize>(
     depth_limit: Option<u32>,
     time_limit: Option<Duration>,
     predict_time: bool,
+    threads: usize,
     to_game: Sender<Message<N>>,
 ) -> Player<N> {
     let name = Some(format!("Takkerus v{}", analysis::version()));
@@ -31,6 +32,7 @@ pub fn initialize<const N: usize>(
             depth_limit,
             time_limit,
             predict_time,
+            threads,
             to_game,
             from_game,
         )),
@@ -42,6 +44,7 @@ async fn message_handler<const N: usize>(
     depth_limit: Option<u32>,
     time_limit: Option<Duration>,
     predict_time: bool,
+    threads: usize,
     mut to_game: Sender<Message<N>>,
     from_game: Receiver<Message<N>>,
 ) {
@@ -95,6 +98,7 @@ async fn message_handler<const N: usize>(
                                     predict_time,
                                     interrupted,
                                     persistent_state: Some(&persistent_state),
+                                    threads,
                                     ..Default::default()
                                 };
 
