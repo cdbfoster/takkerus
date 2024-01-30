@@ -10,11 +10,10 @@ use tracing::{debug, error, info, instrument, trace, trace_span, warn};
 use tak::{zobrist_advance_move, Ply, State};
 
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
-use crate::move_order::DepthKillerMoves;
 use crate::plies::{Fallibility, PlyGenerator};
 use crate::statistics::{AtomicStatistics, Statistics};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
-use crate::util::{Neighbors, Sender};
+use crate::util::{FixedLifoBuffer, Neighbors, Sender};
 
 #[derive(Default)]
 pub struct AnalysisConfig<'a, const N: usize> {
@@ -336,6 +335,23 @@ struct SearchState<'a, const N: usize> {
     exact_eval: bool,
     evaluator: &'a dyn Evaluator<N>,
 }
+
+#[derive(Default)]
+pub(crate) struct DepthKillerMoves<const N: usize> {
+    depths: Vec<KillerMoves<N>>,
+}
+
+impl<const N: usize> DepthKillerMoves<N> {
+    pub fn depth(&mut self, depth: usize) -> &mut KillerMoves<N> {
+        while self.depths.len() <= depth {
+            self.depths.push(KillerMoves::default());
+        }
+
+        &mut self.depths[depth]
+    }
+}
+
+pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
 
 #[derive(Clone, Copy)]
 struct BranchResult {

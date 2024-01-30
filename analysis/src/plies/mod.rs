@@ -5,7 +5,8 @@ use fnv::FnvBuildHasher;
 
 use tak::{Ply, State};
 
-use crate::move_order::{AllPlies, KillerMoves, Killers, PlacementWins, TtPly};
+use crate::move_order::{AllPlies, Killers, PlacementWins, TtPly};
+use crate::search::KillerMoves;
 
 #[derive(PartialEq)]
 pub(crate) enum Fallibility {
@@ -41,6 +42,12 @@ impl<'a, const N: usize> PlyGenerator<'a, N> {
             continuation: Continue,
         }
     }
+}
+
+pub(crate) struct GeneratedPly<const N: usize> {
+    pub ply: Ply<N>,
+    pub fallibility: Fallibility,
+    pub continuation: Continuation,
 }
 
 type PlyIterator<'a, const N: usize> =
