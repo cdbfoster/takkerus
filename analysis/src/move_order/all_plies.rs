@@ -1,155 +1,22 @@
 use tak::{board_mask, edge_masks, generation, Bitmap, Color, Direction, PieceType, Ply, State};
 
-use crate::util::{placement_threat_map, FixedLifoBuffer};
-
-use super::Continuation::{self, *};
-use super::Fallibility::{self, *};
+use crate::ply_generator::Continuation::*;
+use crate::ply_generator::Fallibility::*;
+use crate::ply_generator::GeneratedPly;
 
 use Color::*;
 use Direction::*;
 use PieceType::*;
 
-pub(super) struct GeneratedPly<const N: usize> {
-    pub(super) ply: Ply<N>,
-    pub(super) fallibility: Fallibility,
-    pub(super) continuation: Continuation,
-}
-
-// Placement wins ===============================
-
-pub(super) struct PlacementWins<'a, const N: usize> {
-    state: &'a State<N>,
-}
-
-impl<'a, const N: usize> PlacementWins<'a, N> {
-    pub(super) fn new(state: &'a State<N>) -> Self {
-        Self { state }
-    }
-}
-
-impl<'a, const N: usize> Iterator for PlacementWins<'a, N> {
-    type Item = GeneratedPly<N>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let m = &self.state.metadata;
-
-        let all_pieces = m.p1_pieces | m.p2_pieces;
-        let road_pieces = m.flatstones | m.capstones;
-
-        let player_road_pieces = match self.state.to_move() {
-            White => road_pieces & m.p1_pieces,
-            Black => road_pieces & m.p2_pieces,
-        };
-        let blocking_pieces = all_pieces & !player_road_pieces;
-
-        let threat_map = placement_threat_map(player_road_pieces, blocking_pieces);
-
-        let flatstone_reserves = match self.state.to_move() {
-            White => self.state.p1_flatstones,
-            Black => self.state.p2_flatstones,
-        };
-
-        let piece_type = if flatstone_reserves > 0 {
-            Flatstone
-        } else {
-            Capstone
-        };
-
-        generation::placements(threat_map, piece_type)
-            .map(|ply| GeneratedPly {
-                ply,
-                fallibility: Infallible,
-                continuation: Stop,
-            })
-            .next()
-    }
-}
-
-// Transposition table ply =====================
-
-pub(super) struct TtPly<const N: usize> {
-    ply: <Option<Ply<N>> as IntoIterator>::IntoIter,
-}
-
-impl<const N: usize> TtPly<N> {
-    pub(super) fn new(ply: Option<Ply<N>>) -> Self {
-        Self {
-            ply: ply.into_iter(),
-        }
-    }
-}
-
-impl<const N: usize> Iterator for TtPly<N> {
-    type Item = GeneratedPly<N>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.ply.next().map(|ply| GeneratedPly {
-            ply,
-            fallibility: Fallible,
-            continuation: Continue,
-        })
-    }
-}
-
-// Killer moves =================================
-
-#[derive(Clone, Default)]
-pub(crate) struct DepthKillerMoves<const N: usize> {
-    depths: Vec<KillerMoves<N>>,
-}
-
-impl<const N: usize> DepthKillerMoves<N> {
-    pub(crate) fn depth(&mut self, depth: usize) -> &mut KillerMoves<N> {
-        while self.depths.len() <= depth {
-            self.depths.push(KillerMoves::default());
-        }
-
-        &mut self.depths[depth]
-    }
-}
-
-pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
-
-pub(super) struct Killers<const N: usize> {
-    pub(super) killer_moves: KillerMoves<N>,
-}
-
-impl<const N: usize> Killers<N> {
-    pub(super) fn new(killer_moves: &KillerMoves<N>) -> Self {
-        Self {
-            killer_moves: killer_moves.clone(),
-        }
-    }
-}
-
-impl<const N: usize> Iterator for Killers<N> {
-    type Item = GeneratedPly<N>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.killer_moves.pop().map(|ply| GeneratedPly {
-            ply,
-            fallibility: Fallible,
-            continuation: Continue,
-        })
-    }
-}
-
-// All plies ====================================
-
-pub(super) struct AllPlies<'a, const N: usize> {
+pub(crate) struct AllPlies<'a, const N: usize> {
     state: &'a State<N>,
     plies: Option<Vec<ScoredPly<N>>>,
 }
 
 impl<'a, const N: usize> AllPlies<'a, N> {
-    pub(super) fn new(state: &'a State<N>) -> Self {
+    pub fn new(state: &'a State<N>) -> Self {
         Self { state, plies: None }
     }
-}
-
-pub(super) struct ScoredPly<const N: usize> {
-    score: u32,
-    ply: Ply<N>,
 }
 
 impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
@@ -175,6 +42,11 @@ impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
             self.next()
         }
     }
+}
+
+struct ScoredPly<const N: usize> {
+    score: u32,
+    ply: Ply<N>,
 }
 
 // Generate all available plies in a simple, but probably beneficial order.

@@ -22,17 +22,6 @@ serde_json = "1.0"
 tak = { path = "../tak" }
 tracing = "0.1"
 
-[dev-dependencies]
-criterion = "0.4"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-[lib]
-bench = false
-
-[[bench]]
-name = "evaluation"
-harness = false
-
 [[bin]]
 name = "train"
 required-features = ["tools"]
