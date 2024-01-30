@@ -56,6 +56,8 @@ impl Neg for BranchResult {
     }
 }
 
+/// Computes the minimax function with common enhancements: alpha-beta pruning,
+/// principal variation search, transposition table, null move pruning, killer moves.
 #[instrument(level = "trace", skip_all, fields(rd = remaining_depth, %alpha, %beta, pv_node = alpha.next_up() != beta))]
 pub(crate) fn minimax<const N: usize>(
     search: &mut SearchState<'_, N>,

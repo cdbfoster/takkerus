@@ -59,6 +59,7 @@ pub struct Analysis<const N: usize> {
     pub time: Duration,
 }
 
+/// Analyzes a position given a configuration, and returns an evaluation and principal variation.
 pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> Analysis<N> {
     info!(
         depth_limit = %if let Some(depth_limit) = config.depth_limit {
