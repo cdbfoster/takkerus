@@ -1,6 +1,6 @@
 use std::{fmt, io, mem};
 
-use tak::{edge_masks, Bitmap, Direction, Drops, Ply, PlyError};
+use tak::{Drops, Ply, PlyError};
 
 /// A bit-packed ply. Representation:
 /// ```text
@@ -85,28 +85,6 @@ impl fmt::Debug for PackedPly {
     }
 }
 
-/// Returns a map filled with all single locations that would complete a road.
-pub(crate) fn placement_threat_map<const N: usize>(
-    road_pieces: Bitmap<N>,
-    blocking_pieces: Bitmap<N>,
-) -> Bitmap<N> {
-    use Direction::*;
-
-    let edges = edge_masks();
-
-    let left_pieces = edges[West as usize].flood_fill(road_pieces);
-    let right_pieces = edges[East as usize].flood_fill(road_pieces);
-    let horizontal_threats = (left_pieces.dilate() | edges[West as usize])
-        & (right_pieces.dilate() | edges[East as usize]);
-
-    let top_pieces = edges[North as usize].flood_fill(road_pieces);
-    let bottom_pieces = edges[South as usize].flood_fill(road_pieces);
-    let vertical_threats = (top_pieces.dilate() | edges[North as usize])
-        & (bottom_pieces.dilate() | edges[South as usize]);
-
-    (horizontal_threats | vertical_threats) & !blocking_pieces
-}
-
 /// This provides a polyfill for f32::next_up() and f32::next_down() until those
 /// become stable in the std.
 pub(crate) trait Neighbors {
@@ -177,6 +155,8 @@ impl Neighbors for f32 {
     }
 }
 
+/// This trait allows us not to care about how interim results are actually sent, which
+/// may be async or using some library we don't want to have to pull in here.
 pub trait Sender<T> {
     fn send(&self, value: T) -> Result<(), io::Error>;
 }
@@ -185,7 +165,7 @@ pub trait Sender<T> {
 mod tests {
     use super::*;
 
-    use tak::PieceType;
+    use tak::{Direction, PieceType};
 
     #[test]
     fn packed_ply() {
@@ -230,21 +210,5 @@ mod tests {
         let unpacked: Ply<5> = packed.try_into().unwrap();
         assert_eq!(packed, PackedPly(0b11100010, 0b00011110));
         assert_eq!(unpacked, ply);
-    }
-
-    #[test]
-    fn placement_threat_maps_are_correct() {
-        let b: Bitmap<5> = 0b01000_11110_01000_00000_01000.into();
-
-        let t = placement_threat_map(b, 0.into());
-        assert_eq!(t, 0b00000_00001_00000_01000_00000.into());
-
-        let t = placement_threat_map(b, 0b01000_11111_01000_00000_01000.into());
-        assert_eq!(t, 0b00000_00000_00000_01000_00000.into());
-
-        let b: Bitmap<6> = 0b001000_111110_101010_010101_011111_000100.into();
-
-        let t = placement_threat_map(b, 0.into());
-        assert_eq!(t, 0b000000_000001_010101_101010_100000_000000.into());
     }
 }
