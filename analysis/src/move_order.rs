@@ -2,8 +2,8 @@ use tak::{board_mask, edge_masks, generation, Bitmap, Color, Direction, PieceTyp
 
 use crate::util::{placement_threat_map, FixedLifoBuffer};
 
-use super::Continuation::{self, *};
-use super::Fallibility::{self, *};
+use crate::plies::Continuation::{self, *};
+use crate::plies::Fallibility::{self, *};
 
 use Color::*;
 use Direction::*;

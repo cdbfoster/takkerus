@@ -4,7 +4,8 @@ pub use self::transposition_table::{TranspositionTable, TranspositionTableEntry}
 pub use self::util::Sender;
 
 pub mod evaluation;
-pub mod plies;
+mod move_order;
+mod plies;
 mod search;
 mod statistics;
 mod transposition_table;

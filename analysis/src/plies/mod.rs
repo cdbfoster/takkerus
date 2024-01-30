@@ -5,10 +5,7 @@ use fnv::FnvBuildHasher;
 
 use tak::{Ply, State};
 
-pub(crate) use self::order::DepthKillerMoves;
-use self::order::{AllPlies, KillerMoves, Killers, PlacementWins, TtPly};
-
-mod order;
+use crate::move_order::{AllPlies, KillerMoves, Killers, PlacementWins, TtPly};
 
 #[derive(PartialEq)]
 pub(crate) enum Fallibility {
@@ -17,7 +14,7 @@ pub(crate) enum Fallibility {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Continuation {
+pub(crate) enum Continuation {
     Continue,
     Stop,
 }
