@@ -1,3 +1,4 @@
+use std::mem;
 use std::ops::Neg;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -10,7 +11,7 @@ use crate::evaluation::{Evaluation, Evaluator};
 use crate::ply_generator::{Fallibility, PlyGenerator};
 use crate::statistics::AtomicStatistics;
 use crate::transposition_table::{Bound, TranspositionTableEntry};
-use crate::util::{FixedLifoBuffer, Neighbors};
+use crate::util::Neighbors;
 
 pub(crate) struct SearchState<'a, const N: usize> {
     pub start_ply: u16,
@@ -37,7 +38,29 @@ impl<const N: usize> DepthKillerMoves<N> {
     }
 }
 
-pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
+#[derive(Clone, Default)]
+pub(crate) struct KillerMoves<const N: usize> {
+    start: usize,
+    buffer: [Option<Ply<N>>; 2],
+}
+
+impl<const N: usize> KillerMoves<N> {
+    pub fn push(&mut self, ply: Ply<N>) {
+        if !self.buffer.contains(&Some(ply)) {
+            self.start = (self.start + 1) % self.buffer.len();
+            self.buffer[self.start] = Some(ply);
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<Ply<N>> {
+        let ply = mem::take(&mut self.buffer[self.start]);
+        self.start = match self.start > 0 {
+            true => self.start - 1,
+            false => self.buffer.len() - 1,
+        };
+        ply
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct BranchResult {
