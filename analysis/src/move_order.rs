@@ -9,20 +9,20 @@ use Color::*;
 use Direction::*;
 use PieceType::*;
 
-pub(super) struct GeneratedPly<const N: usize> {
-    pub(super) ply: Ply<N>,
-    pub(super) fallibility: Fallibility,
-    pub(super) continuation: Continuation,
+pub(crate) struct GeneratedPly<const N: usize> {
+    pub ply: Ply<N>,
+    pub fallibility: Fallibility,
+    pub continuation: Continuation,
 }
 
 // Placement wins ===============================
 
-pub(super) struct PlacementWins<'a, const N: usize> {
+pub(crate) struct PlacementWins<'a, const N: usize> {
     state: &'a State<N>,
 }
 
 impl<'a, const N: usize> PlacementWins<'a, N> {
-    pub(super) fn new(state: &'a State<N>) -> Self {
+    pub fn new(state: &'a State<N>) -> Self {
         Self { state }
     }
 }
@@ -67,12 +67,12 @@ impl<'a, const N: usize> Iterator for PlacementWins<'a, N> {
 
 // Transposition table ply =====================
 
-pub(super) struct TtPly<const N: usize> {
+pub(crate) struct TtPly<const N: usize> {
     ply: <Option<Ply<N>> as IntoIterator>::IntoIter,
 }
 
 impl<const N: usize> TtPly<N> {
-    pub(super) fn new(ply: Option<Ply<N>>) -> Self {
+    pub fn new(ply: Option<Ply<N>>) -> Self {
         Self {
             ply: ply.into_iter(),
         }
@@ -99,7 +99,7 @@ pub(crate) struct DepthKillerMoves<const N: usize> {
 }
 
 impl<const N: usize> DepthKillerMoves<N> {
-    pub(crate) fn depth(&mut self, depth: usize) -> &mut KillerMoves<N> {
+    pub fn depth(&mut self, depth: usize) -> &mut KillerMoves<N> {
         while self.depths.len() <= depth {
             self.depths.push(KillerMoves::default());
         }
@@ -110,12 +110,12 @@ impl<const N: usize> DepthKillerMoves<N> {
 
 pub(crate) type KillerMoves<const N: usize> = FixedLifoBuffer<2, Ply<N>>;
 
-pub(super) struct Killers<const N: usize> {
-    pub(super) killer_moves: KillerMoves<N>,
+pub(crate) struct Killers<const N: usize> {
+    killer_moves: KillerMoves<N>,
 }
 
 impl<const N: usize> Killers<N> {
-    pub(super) fn new(killer_moves: &KillerMoves<N>) -> Self {
+    pub fn new(killer_moves: &KillerMoves<N>) -> Self {
         Self {
             killer_moves: killer_moves.clone(),
         }
@@ -136,20 +136,15 @@ impl<const N: usize> Iterator for Killers<N> {
 
 // All plies ====================================
 
-pub(super) struct AllPlies<'a, const N: usize> {
+pub(crate) struct AllPlies<'a, const N: usize> {
     state: &'a State<N>,
     plies: Option<Vec<ScoredPly<N>>>,
 }
 
 impl<'a, const N: usize> AllPlies<'a, N> {
-    pub(super) fn new(state: &'a State<N>) -> Self {
+    pub fn new(state: &'a State<N>) -> Self {
         Self { state, plies: None }
     }
-}
-
-pub(super) struct ScoredPly<const N: usize> {
-    score: u32,
-    ply: Ply<N>,
 }
 
 impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
@@ -175,6 +170,11 @@ impl<'a, const N: usize> Iterator for AllPlies<'a, N> {
             self.next()
         }
     }
+}
+
+struct ScoredPly<const N: usize> {
+    score: u32,
+    ply: Ply<N>,
 }
 
 // Generate all available plies in a simple, but probably beneficial order.
