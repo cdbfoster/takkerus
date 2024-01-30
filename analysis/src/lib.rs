@@ -1,8 +1,9 @@
-pub use self::search::{analyze, Analysis, AnalysisConfig, PersistentState};
+pub use self::analysis::{analyze, Analysis, AnalysisConfig, PersistentState};
 pub use self::statistics::Statistics;
 pub use self::transposition_table::{TranspositionTable, TranspositionTableEntry};
 pub use self::util::Sender;
 
+mod analysis;
 pub mod evaluation;
 mod move_order;
 mod ply_generator;
