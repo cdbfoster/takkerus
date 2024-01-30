@@ -10,7 +10,7 @@ use tracing::{debug, error, info, instrument, trace, trace_span, warn};
 use tak::{zobrist_advance_move, Ply, State};
 
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
-use crate::plies::{Fallibility, PlyGenerator};
+use crate::ply_generator::{Fallibility, PlyGenerator};
 use crate::statistics::{AtomicStatistics, Statistics};
 use crate::transposition_table::{Bound, TranspositionTable, TranspositionTableEntry};
 use crate::util::{FixedLifoBuffer, Neighbors, Sender};

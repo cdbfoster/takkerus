@@ -2,9 +2,9 @@ use tak::{generation, Color, PieceType, State};
 
 use crate::util::placement_threat_map;
 
-use crate::plies::Continuation::*;
-use crate::plies::Fallibility::*;
-use crate::plies::GeneratedPly;
+use crate::ply_generator::Continuation::*;
+use crate::ply_generator::Fallibility::*;
+use crate::ply_generator::GeneratedPly;
 
 use Color::*;
 use PieceType::*;

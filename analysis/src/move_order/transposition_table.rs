@@ -1,8 +1,8 @@
 use tak::Ply;
 
-use crate::plies::Continuation::*;
-use crate::plies::Fallibility::*;
-use crate::plies::GeneratedPly;
+use crate::ply_generator::Continuation::*;
+use crate::ply_generator::Fallibility::*;
+use crate::ply_generator::GeneratedPly;
 
 pub(crate) struct TtPly<const N: usize> {
     ply: <Option<Ply<N>> as IntoIterator>::IntoIter,

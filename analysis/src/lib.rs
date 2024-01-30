@@ -5,7 +5,7 @@ pub use self::util::Sender;
 
 pub mod evaluation;
 mod move_order;
-mod plies;
+mod ply_generator;
 mod search;
 mod statistics;
 mod transposition_table;

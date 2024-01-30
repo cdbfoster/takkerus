@@ -1,6 +1,6 @@
-use crate::plies::Continuation::*;
-use crate::plies::Fallibility::*;
-use crate::plies::GeneratedPly;
+use crate::ply_generator::Continuation::*;
+use crate::ply_generator::Fallibility::*;
+use crate::ply_generator::GeneratedPly;
 use crate::search::KillerMoves;
 
 pub(crate) struct Killers<const N: usize> {
