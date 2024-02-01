@@ -2,7 +2,7 @@ use std::{fmt::Write, time::Duration};
 
 use tracing::error;
 
-use analysis::{analyze, AnalysisConfig};
+use analysis::{analyze, AnalysisConfig, TimeControl};
 use tak::{PtnGame, PtnHeader, State, Tps};
 
 use crate::args::{Ai, AnalyzeConfig};
@@ -65,9 +65,11 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
     } = config.ai;
 
     let analysis_config = AnalysisConfig::<N> {
-        depth_limit,
-        time_limit,
-        predict_time,
+        time_control: TimeControl::Simple {
+            depth_limit,
+            time_limit,
+            early_stop: predict_time,
+        },
         threads,
         ..Default::default()
     };

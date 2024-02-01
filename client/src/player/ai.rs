@@ -8,7 +8,7 @@ use futures::channel::mpsc::{self, UnboundedReceiver as Receiver, UnboundedSende
 use futures::{select, FutureExt, SinkExt};
 use tracing::{error, trace, warn};
 
-use analysis::{self, analyze, AnalysisConfig, PersistentState};
+use analysis::{self, analyze, AnalysisConfig, PersistentState, TimeControl};
 
 use crate::play::{Message, Player};
 
@@ -93,9 +93,11 @@ async fn message_handler<const N: usize>(
 
                             let analysis = {
                                 let analysis_config = AnalysisConfig {
-                                    depth_limit,
-                                    time_limit,
-                                    predict_time,
+                                    time_control: TimeControl::Simple {
+                                        depth_limit,
+                                        time_limit,
+                                        early_stop: predict_time,
+                                    },
                                     interrupted,
                                     persistent_state: Some(&persistent_state),
                                     threads,

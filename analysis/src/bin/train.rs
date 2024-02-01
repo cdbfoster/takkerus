@@ -10,7 +10,7 @@ use rand::{self, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 
 use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator, GatherFeatures};
-use analysis::{analyze, AnalysisConfig, PersistentState};
+use analysis::{analyze, AnalysisConfig, PersistentState, TimeControl};
 use ann::linear_algebra::MatrixRowMajor;
 use ann::loss::{mse, mse_prime};
 use ann::shallow::ShallowAdam;
@@ -163,7 +163,11 @@ where
             state.execute_ply(ply).expect("error executing random ply");
         } else {
             let config = AnalysisConfig::<N> {
-                depth_limit: Some(SCAFFOLD_SEARCH_DEPTH),
+                time_control: TimeControl::Simple {
+                    depth_limit: Some(SCAFFOLD_SEARCH_DEPTH),
+                    time_limit: None,
+                    early_stop: false,
+                },
                 persistent_state: Some(&mut persistent_state),
                 evaluator: Some(&*evaluator),
                 exact_eval: true,
@@ -252,7 +256,11 @@ where
 
                         // Otherwise, perform a search from the state.
                         let config = AnalysisConfig::<N> {
-                            depth_limit: Some(TD_SEARCH_DEPTH),
+                            time_control: TimeControl::Simple {
+                                depth_limit: Some(TD_SEARCH_DEPTH),
+                                time_limit: None,
+                                early_stop: false,
+                            },
                             persistent_state: Some(&mut persistent_state),
                             evaluator: Some(&*evaluator),
                             exact_eval: true,

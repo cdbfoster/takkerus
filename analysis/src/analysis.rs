@@ -11,15 +11,12 @@ use tak::{Ply, State};
 use crate::evaluation::{AnnEvaluator, AnnModel, Evaluation, Evaluator};
 use crate::search::{minimax, SearchState};
 use crate::statistics::{AtomicStatistics, Statistics};
+use crate::time::TimeControl;
 use crate::transposition_table::{Bound, TranspositionTable};
 use crate::util::Sender;
 
 pub struct AnalysisConfig<'a, const N: usize> {
-    pub depth_limit: Option<u32>,
-    pub time_limit: Option<Duration>,
-    /// If this is set and the next search depth is predicted to take
-    /// longer than the time limit, stop the search early.
-    pub predict_time: bool,
+    pub time_control: TimeControl,
     pub interrupted: Arc<AtomicBool>,
     /// A place to put data gathered during the search that could be
     /// useful to future searches. If none, this will be created internally.
@@ -39,9 +36,7 @@ pub struct AnalysisConfig<'a, const N: usize> {
 impl<'a, const N: usize> Default for AnalysisConfig<'a, N> {
     fn default() -> Self {
         Self {
-            depth_limit: Default::default(),
-            time_limit: Default::default(),
-            predict_time: Default::default(),
+            time_control: Default::default(),
             interrupted: Default::default(),
             persistent_state: Default::default(),
             exact_eval: Default::default(),
@@ -78,30 +73,14 @@ pub struct Analysis<const N: usize> {
 
 /// Analyzes a position given a configuration, and returns an evaluation and principal variation.
 pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> Analysis<N> {
-    info!(
-        depth_limit = %if let Some(depth_limit) = config.depth_limit {
-            depth_limit.to_string()
-        } else {
-            "None".to_owned()
-        },
-        time_limit = %if let Some(time_limit) = config.time_limit {
-            format!("{:.2}s", time_limit.as_secs_f64())
-        } else {
-            "None".to_owned()
-        },
-        "Analyzing...",
-    );
+    info!("Analyzing... {}", config.time_control);
 
-    let total_start_time = Instant::now();
+    let interrupt = config.time_control.set_interrupt(&config, state);
 
-    let cancel_timer = if config.time_limit.is_some() {
-        let cancel = spawn_timing_interrupt_thread(&config, total_start_time);
-        Some(cancel)
-    } else {
-        None
-    };
-
-    let max_depth = config.depth_limit.unwrap_or(u32::MAX) as usize;
+    let max_depth = match config.time_control {
+        TimeControl::Simple { depth_limit, .. } => depth_limit.unwrap_or(u32::MAX),
+        TimeControl::Clock { .. } => u32::MAX,
+    } as usize;
 
     // Use the passed-in persistent state or create a local one for this analysis.
     let local_persistent_state;
@@ -317,25 +296,32 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             break;
         }
 
-        if config.predict_time {
-            if let Some(time_limit) = config.time_limit {
-                if analysis.time + Duration::from_secs_f64(next_iteration_prediction) > time_limit {
-                    info!(
-                        time = %format!("{:.2}s", analysis.time.as_secs_f64()),
-                        limit = %format!("{:.2}s", time_limit.as_secs_f64()),
-                        prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
-                        "Next iteration is predicted to take too long. Stopping."
-                    );
-                    break;
+        if let TimeControl::Simple {
+            time_limit,
+            early_stop,
+            ..
+        } = config.time_control
+        {
+            if early_stop {
+                if let Some(time_limit) = time_limit {
+                    if analysis.time + Duration::from_secs_f64(next_iteration_prediction)
+                        > time_limit
+                    {
+                        info!(
+                            time = %format!("{:.2}s", analysis.time.as_secs_f64()),
+                            limit = %format!("{:.2}s", time_limit.as_secs_f64()),
+                            prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
+                            "Next iteration is predicted to take too long. Stopping."
+                        );
+                        break;
+                    }
                 }
             }
         }
     }
 
-    // If we started a timer, stop it.
-    if let Some(cancel_timer) = cancel_timer {
-        cancel_timer.store(true, Ordering::Relaxed);
-    }
+    // If we started an interrupt timer, stop it.
+    interrupt.cancel();
 
     analysis
 }
@@ -376,35 +362,4 @@ fn fetch_pv<const N: usize>(
     }
 
     (pv, state)
-}
-
-fn spawn_timing_interrupt_thread<const N: usize>(
-    config: &AnalysisConfig<N>,
-    start_time: Instant,
-) -> Arc<AtomicBool> {
-    let cancel = Arc::new(AtomicBool::new(false));
-
-    {
-        let cancel = cancel.clone();
-        let time_limit = config.time_limit.unwrap();
-        let interrupted = config.interrupted.clone();
-        thread::spawn(move || loop {
-            if cancel.load(Ordering::Relaxed) {
-                break;
-            }
-
-            let remaining_time = time_limit.saturating_sub(start_time.elapsed());
-            if !remaining_time.is_zero() {
-                // Check for cancels at least every 10th of a second.
-                let sleep_time = remaining_time.div_f64(2.0).min(Duration::from_millis(100));
-                thread::sleep(sleep_time);
-            } else {
-                info!("Time limit reached. Stopping.");
-                interrupted.store(true, Ordering::Relaxed);
-                break;
-            }
-        });
-    }
-
-    cancel
 }
