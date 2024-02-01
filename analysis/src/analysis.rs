@@ -75,7 +75,7 @@ pub struct Analysis<const N: usize> {
 pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> Analysis<N> {
     info!("Analyzing... {}", config.time_control);
 
-    let interrupt = config.time_control.set_interrupt(&config, state);
+    let (time_limit, interrupt) = config.time_control.set_interrupt(&config, state);
 
     let max_depth = match config.time_control {
         TimeControl::Simple { depth_limit, .. } => depth_limit.unwrap_or(u32::MAX),
@@ -296,25 +296,16 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             break;
         }
 
-        if let TimeControl::Simple {
-            time_limit,
-            early_stop,
-            ..
-        } = config.time_control
-        {
-            if early_stop {
-                if let Some(time_limit) = time_limit {
-                    if analysis.time + Duration::from_secs_f64(next_iteration_prediction)
-                        > time_limit
-                    {
-                        info!(
-                            time = %format!("{:.2}s", analysis.time.as_secs_f64()),
-                            limit = %format!("{:.2}s", time_limit.as_secs_f64()),
-                            prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
-                            "Next iteration is predicted to take too long. Stopping."
-                        );
-                        break;
-                    }
+        if let Some(time_limit) = time_limit {
+            if config.time_control.early_stop() {
+                if analysis.time + Duration::from_secs_f64(next_iteration_prediction) > time_limit {
+                    info!(
+                        time = %format!("{:.2}s", analysis.time.as_secs_f64()),
+                        limit = %format!("{:.2}s", time_limit.as_secs_f64()),
+                        prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
+                        "Next iteration is predicted to take too long. Stopping."
+                    );
+                    break;
                 }
             }
         }

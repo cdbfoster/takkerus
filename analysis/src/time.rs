@@ -22,7 +22,8 @@ pub enum TimeControl {
     Clock {
         time: Duration,
         increment: Duration,
-        maximum: Option<Duration>,
+        time_limit: Option<Duration>,
+        early_stop: bool,
     },
 }
 
@@ -31,13 +32,14 @@ impl TimeControl {
         &self,
         config: &AnalysisConfig<N>,
         state: &State<N>,
-    ) -> InterruptHandle {
+    ) -> (Option<Duration>, InterruptHandle) {
         let time_limit = match self {
             TimeControl::Simple { time_limit, .. } => *time_limit,
             TimeControl::Clock {
                 time,
                 increment,
-                maximum,
+                time_limit,
+                ..
             } => {
                 let reserves = match state.to_move() {
                     Color::White => state.p1_flatstones as f32,
@@ -54,7 +56,7 @@ impl TimeControl {
                 // Never use more than half of the remaining time.
                 use_time = use_time.min(*time / 2);
 
-                if let Some(maximum) = maximum {
+                if let Some(maximum) = time_limit {
                     use_time = use_time.min(*maximum);
                 }
 
@@ -62,7 +64,26 @@ impl TimeControl {
             }
         };
 
-        InterruptHandle(time_limit.map(|time_limit| spawn_interrupt_thread(config, time_limit)))
+        (
+            time_limit,
+            InterruptHandle(
+                time_limit.map(|time_limit| spawn_interrupt_thread(config, time_limit)),
+            ),
+        )
+    }
+
+    pub fn maximum_time(&self) -> Option<Duration> {
+        match self {
+            TimeControl::Simple { time_limit, .. } => *time_limit,
+            TimeControl::Clock { time_limit, .. } => *time_limit,
+        }
+    }
+
+    pub fn early_stop(&self) -> bool {
+        match self {
+            TimeControl::Simple { early_stop, .. } => *early_stop,
+            TimeControl::Clock { early_stop, .. } => *early_stop,
+        }
     }
 }
 
@@ -103,7 +124,8 @@ impl fmt::Display for TimeControl {
             TimeControl::Clock {
                 time,
                 increment,
-                maximum,
+                time_limit: maximum,
+                early_stop,
             } => {
                 let minutes = time.as_secs() / 60;
                 let seconds = time.as_secs_f32() - (60 * minutes) as f32;
@@ -117,6 +139,8 @@ impl fmt::Display for TimeControl {
                 if let Some(maximum) = maximum {
                     write!(f, ", maximum: {:.2}s", maximum.as_secs_f32())?;
                 }
+
+                write!(f, ", early_stop: {early_stop:?}")?;
             }
         }
 
