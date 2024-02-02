@@ -60,9 +60,8 @@ pub struct AnalyzeConfig {
     pub ai: Ai,
 }
 
-#[derive(ArgsTrait, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct TeiConfig {
-    #[command(flatten)]
     pub ai: Ai,
 }
 
@@ -197,7 +196,7 @@ AI options:
                 if key == "type" {
                     return match value {
                         "human" => Human::from_arg_matches(field, matches).map(Self::Human),
-                        "ai" => Ai::from_arg_matches(field, matches).map(Self::Ai),
+                        "ai" => Ai::from_arg_matches(field, matches, Ai::default()).map(Self::Ai),
                         _ => Err(clap::Error::raw(
                             ClapErrorKind::InvalidValue,
                             format!("invalid value for type: {value:?}"),
@@ -277,7 +276,11 @@ impl Ai {
             .to_owned()
     }
 
-    fn from_arg_matches(field: &str, matches: &ArgMatches) -> Result<Self, clap::Error> {
+    fn from_arg_matches(
+        field: &str,
+        matches: &ArgMatches,
+        default: Self,
+    ) -> Result<Self, clap::Error> {
         if let Some(options) = matches.get_many::<String>(field) {
             let mut ai = Self {
                 depth_limit: None,
@@ -335,7 +338,7 @@ impl Ai {
 
             Ok(ai)
         } else {
-            Ok(Default::default())
+            Ok(default)
         }
     }
 }
@@ -355,7 +358,10 @@ impl ArgsTrait for Ai {
     fn augment_args(cmd: clap::Command) -> clap::Command {
         cmd.arg(
             Arg::new("ai")
-                .help(format!("Analysis options.\n\nOptions:\n{}", Self::help()))
+                .help(format!(
+                    "Analysis options.\n\nOptions:\n{}\n\n[default: time=60 early_stop=true]",
+                    Self::help()
+                ))
                 .long("ai")
                 .value_name("OPTIONS")
                 .num_args(1..)
@@ -370,7 +376,7 @@ impl ArgsTrait for Ai {
 
 impl FromArgMatches for Ai {
     fn from_arg_matches(matches: &ArgMatches) -> Result<Self, clap::Error> {
-        Self::from_arg_matches("ai", matches)
+        Self::from_arg_matches("ai", matches, Self::default())
     }
 
     fn from_arg_matches_mut(matches: &mut ArgMatches) -> Result<Self, clap::Error> {
@@ -379,6 +385,58 @@ impl FromArgMatches for Ai {
 
     fn update_from_arg_matches(&mut self, _matches: &ArgMatches) -> Result<(), clap::Error> {
         unimplemented!()
+    }
+}
+
+impl ArgsTrait for TeiConfig {
+    fn augment_args(cmd: clap::Command) -> clap::Command {
+        cmd.arg(
+            Arg::new("ai")
+                .help(format!(
+                    "Analysis options.\n\nOptions:\n{}\n\n[default: threads=1]",
+                    Ai::help()
+                ))
+                .long("ai")
+                .value_name("OPTIONS")
+                .num_args(1..)
+                .action(ArgAction::Append),
+        )
+    }
+
+    fn augment_args_for_update(cmd: clap::Command) -> clap::Command {
+        Self::augment_args(cmd)
+    }
+}
+
+impl FromArgMatches for TeiConfig {
+    fn from_arg_matches(matches: &ArgMatches) -> Result<Self, clap::Error> {
+        Ai::from_arg_matches(
+            "ai",
+            matches,
+            Ai {
+                depth_limit: None,
+                time_limit: None,
+                early_stop: false,
+                threads: 1,
+            },
+        )
+        .map(|ai| Self { ai })
+    }
+
+    fn from_arg_matches_mut(matches: &mut ArgMatches) -> Result<Self, clap::Error> {
+        Self::from_arg_matches(matches)
+    }
+
+    fn update_from_arg_matches(&mut self, _matches: &ArgMatches) -> Result<(), clap::Error> {
+        unimplemented!()
+    }
+}
+
+impl Deref for TeiConfig {
+    type Target = Ai;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ai
     }
 }
 
