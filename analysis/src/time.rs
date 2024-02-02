@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tak::{Color, State};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct TimeControl {
     pub time: Duration,
     pub increment: Duration,

@@ -3,6 +3,7 @@
 use std::fmt::Write;
 use std::io;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use async_std::channel::{self, Sender};
 use async_std::io::{prelude::BufReadExt, stdin, BufReader};
@@ -12,9 +13,9 @@ use once_cell::sync::Lazy;
 use tracing::error;
 
 use analysis::{
-    analyze, version, Analysis, AnalysisConfig, PersistentState, Sender as SenderTrait,
+    analyze, version, Analysis, AnalysisConfig, PersistentState, Sender as SenderTrait, TimeControl,
 };
-use tak::{Komi, PtnGame, PtnPly, State, Tps};
+use tak::{Color, Komi, PtnGame, PtnPly, State, Tps};
 
 use crate::args::{Ai, TeiConfig};
 
@@ -106,9 +107,27 @@ async fn listen_spawner(ai: Ai) {
                 }
             }
             "go" => {
-                // We don't care about the timing info right now.
+                let mut time_controls = (TimeControl::default(), TimeControl::default());
 
-                begin_analysis(size, &game, ai.clone()).await;
+                while let Some(part) = parts.next() {
+                    let time = match part {
+                        "wtime" => &mut time_controls.0.time,
+                        "btime" => &mut time_controls.1.time,
+                        "winc" => &mut time_controls.0.increment,
+                        "binc" => &mut time_controls.1.increment,
+                        _ => panic!("unexpected value"),
+                    };
+
+                    *time = Duration::from_millis(
+                        parts
+                            .next()
+                            .expect("no time value")
+                            .parse()
+                            .expect("invalid time value"),
+                    );
+                }
+
+                begin_analysis(size, &game, ai.clone(), time_controls).await;
             }
             "quit" => break,
             x => error!(input = ?x, "Unexpected input."),
@@ -140,10 +159,16 @@ fn clear_persistent_state(size: usize) {
     }
 }
 
-async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
+async fn begin_analysis(
+    size: usize,
+    game: &PtnGame,
+    ai: Ai,
+    time_controls: (TimeControl, TimeControl),
+) {
     async fn sized<const N: usize>(
         game: &PtnGame,
         ai: Ai,
+        time_controls: (TimeControl, TimeControl),
         persistent_state: &'static Mutex<PersistentState<N>>,
     ) {
         let Ai {
@@ -177,6 +202,10 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
                 depth_limit,
                 time_limit,
                 early_stop,
+                time_control: Some(match state.to_move() {
+                    Color::White => time_controls.0,
+                    Color::Black => time_controls.1,
+                }),
                 persistent_state: Some(&*guard),
                 interim_analysis_sender: Some(Box::new(sender)),
                 threads,
@@ -223,12 +252,12 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
     }
 
     match size {
-        3 => sized(game, ai, &PERSISTENT_STATE_3S).await,
-        4 => sized(game, ai, &PERSISTENT_STATE_4S).await,
-        5 => sized(game, ai, &PERSISTENT_STATE_5S).await,
-        6 => sized(game, ai, &PERSISTENT_STATE_6S).await,
-        7 => sized(game, ai, &PERSISTENT_STATE_7S).await,
-        8 => sized(game, ai, &PERSISTENT_STATE_8S).await,
+        3 => sized(game, ai, time_controls, &PERSISTENT_STATE_3S).await,
+        4 => sized(game, ai, time_controls, &PERSISTENT_STATE_4S).await,
+        5 => sized(game, ai, time_controls, &PERSISTENT_STATE_5S).await,
+        6 => sized(game, ai, time_controls, &PERSISTENT_STATE_6S).await,
+        7 => sized(game, ai, time_controls, &PERSISTENT_STATE_7S).await,
+        8 => sized(game, ai, time_controls, &PERSISTENT_STATE_8S).await,
         _ => unreachable!(),
     }
 }
