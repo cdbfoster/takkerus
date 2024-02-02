@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 use tracing::error;
 
 use analysis::{
-    analyze, version, Analysis, AnalysisConfig, PersistentState, Sender as SenderTrait, TimeControl,
+    analyze, version, Analysis, AnalysisConfig, PersistentState, Sender as SenderTrait,
 };
 use tak::{Komi, PtnGame, PtnPly, State, Tps};
 
@@ -149,7 +149,7 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
         let Ai {
             depth_limit,
             time_limit,
-            predict_time,
+            early_stop,
             threads,
         } = ai;
 
@@ -174,11 +174,9 @@ async fn begin_analysis(size: usize, game: &PtnGame, ai: Ai) {
             let guard = persistent_state.lock().unwrap();
 
             let analysis_config = AnalysisConfig {
-                time_control: TimeControl::Simple {
-                    depth_limit,
-                    time_limit,
-                    early_stop: predict_time,
-                },
+                depth_limit,
+                time_limit,
+                early_stop,
                 persistent_state: Some(&*guard),
                 interim_analysis_sender: Some(Box::new(sender)),
                 threads,

@@ -6,9 +6,11 @@ use futures::channel::mpsc::{self, UnboundedReceiver as Receiver, UnboundedSende
 use futures::{select, FutureExt, SinkExt};
 use tracing::{debug, error, instrument, trace, warn};
 
-use tak::{Color, Ply, PlyError, PtnError, PtnGame, PtnHeader, Resolution, State, StateError};
+use tak::{
+    Color, Komi, Ply, PlyError, PtnError, PtnGame, PtnHeader, Resolution, State, StateError,
+};
 
-use crate::args::{Game, PlayConfig, Player as PlayerArgs};
+use crate::args::{PlayConfig, Player as PlayerArgs};
 
 use crate::player::{ai, human};
 
@@ -49,11 +51,9 @@ pub fn run_game(mut config: PlayConfig) {
     let game = if let Some(load) = &config.load {
         match PtnGame::from_file(load) {
             Ok(game) => {
-                if let Some(size_config) =
-                    game.get_header("Size").map(|h| format!("size={}", h.value))
-                {
-                    match size_config.parse::<Game>() {
-                        Ok(new_game) => config.game.size = new_game.size,
+                if let Some(size) = game.get_header("Size").map(|h| &h.value) {
+                    match size.parse::<usize>() {
+                        Ok(size) => config.game.size = size,
                         Err(err) => {
                             error!(error = %err, "Could not read PTN file.");
                             return;
@@ -61,11 +61,9 @@ pub fn run_game(mut config: PlayConfig) {
                     }
                 }
 
-                if let Some(komi_config) =
-                    game.get_header("Komi").map(|h| format!("komi={}", h.value))
-                {
-                    match komi_config.parse::<Game>() {
-                        Ok(new_game) => config.game.komi = new_game.komi,
+                if let Some(komi) = game.get_header("Komi").map(|h| &h.value) {
+                    match komi.parse::<Komi>() {
+                        Ok(komi) => config.game.komi = komi,
                         Err(err) => {
                             error!(error = %err, "Could not read PTN file.");
                             return;
@@ -142,7 +140,7 @@ fn initialize_player<const N: usize>(player: &PlayerArgs) -> impl PlayerInitiali
             ai::initialize(
                 config.depth_limit,
                 config.time_limit,
-                config.predict_time,
+                config.early_stop,
                 config.threads,
                 to_game,
             )

@@ -16,7 +16,10 @@ use crate::transposition_table::{Bound, TranspositionTable};
 use crate::util::Sender;
 
 pub struct AnalysisConfig<'a, const N: usize> {
-    pub time_control: TimeControl,
+    pub depth_limit: Option<u32>,
+    pub time_limit: Option<Duration>,
+    pub early_stop: bool,
+    pub time_control: Option<TimeControl>,
     pub interrupted: Arc<AtomicBool>,
     /// A place to put data gathered during the search that could be
     /// useful to future searches. If none, this will be created internally.
@@ -36,6 +39,9 @@ pub struct AnalysisConfig<'a, const N: usize> {
 impl<'a, const N: usize> Default for AnalysisConfig<'a, N> {
     fn default() -> Self {
         Self {
+            depth_limit: Default::default(),
+            time_limit: Default::default(),
+            early_stop: Default::default(),
             time_control: Default::default(),
             interrupted: Default::default(),
             persistent_state: Default::default(),
@@ -73,14 +79,38 @@ pub struct Analysis<const N: usize> {
 
 /// Analyzes a position given a configuration, and returns an evaluation and principal variation.
 pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> Analysis<N> {
-    info!("Analyzing... {}", config.time_control);
+    info!(
+        "Analyzing... depth_limit: {}, time_limit: {}, early_stop: {:?}",
+        if let Some(depth_limit) = config.depth_limit {
+            depth_limit.to_string()
+        } else {
+            "none".to_owned()
+        },
+        if let Some(time_limit) = config.time_limit {
+            format!("{:.2}s", time_limit.as_secs_f32())
+        } else {
+            "none".to_owned()
+        },
+        config.early_stop,
+    );
 
-    let (time_limit, interrupt) = config.time_control.set_interrupt(&config, state);
+    if let Some(tc) = config.time_control {
+        info!("Using time control: {tc}");
+    }
 
-    let max_depth = match config.time_control {
-        TimeControl::Simple { depth_limit, .. } => depth_limit.unwrap_or(u32::MAX),
-        TimeControl::Clock { .. } => u32::MAX,
-    } as usize;
+    let time_limit = match (
+        config.time_limit,
+        config.time_control.map(|tc| tc.get_use_time(state)),
+    ) {
+        (Some(maximum_time), Some(use_time)) => Some(maximum_time.min(use_time)),
+        (Some(maximum_time), None) => Some(maximum_time),
+        (None, Some(use_time)) => Some(use_time),
+        (None, None) => None,
+    };
+
+    let interrupt = time_limit.map(|time_limit| spawn_interrupt_thread(&config, time_limit));
+
+    let max_depth = config.depth_limit.unwrap_or(u32::MAX) as usize;
 
     // Use the passed-in persistent state or create a local one for this analysis.
     let local_persistent_state;
@@ -296,23 +326,25 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             break;
         }
 
-        if let Some(time_limit) = time_limit {
-            if config.time_control.early_stop() {
-                if analysis.time + Duration::from_secs_f64(next_iteration_prediction) > time_limit {
-                    info!(
-                        time = %format!("{:.2}s", analysis.time.as_secs_f64()),
-                        limit = %format!("{:.2}s", time_limit.as_secs_f64()),
-                        prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
-                        "Next iteration is predicted to take too long. Stopping."
-                    );
-                    break;
-                }
+        if let Some(time_limit) = config.time_limit {
+            if config.early_stop
+                && analysis.time + Duration::from_secs_f64(next_iteration_prediction) > time_limit
+            {
+                info!(
+                    time = %format!("{:.2}s", analysis.time.as_secs_f64()),
+                    limit = %format!("{:.2}s", time_limit.as_secs_f64()),
+                    prediction = %format!("{:.2}s", analysis.time.as_secs_f64() + next_iteration_prediction),
+                    "Next iteration is predicted to take too long. Stopping."
+                );
+                break;
             }
         }
     }
 
     // If we started an interrupt timer, stop it.
-    interrupt.cancel();
+    if let Some(interrupt) = interrupt {
+        interrupt.cancel();
+    }
 
     analysis
 }
@@ -353,4 +385,43 @@ fn fetch_pv<const N: usize>(
     }
 
     (pv, state)
+}
+
+fn spawn_interrupt_thread<const N: usize>(
+    config: &AnalysisConfig<N>,
+    time_limit: Duration,
+) -> InterruptHandle {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let start_time = Instant::now();
+
+    {
+        let cancel = cancel.clone();
+        let interrupted = config.interrupted.clone();
+        thread::spawn(move || loop {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let remaining_time = time_limit.saturating_sub(start_time.elapsed());
+            if !remaining_time.is_zero() {
+                // Check for cancels at least every 10th of a second.
+                let sleep_time = remaining_time.div_f64(2.0).min(Duration::from_millis(100));
+                thread::sleep(sleep_time);
+            } else {
+                info!("Time limit reached. Stopping.");
+                interrupted.store(true, Ordering::Relaxed);
+                break;
+            }
+        });
+    }
+
+    InterruptHandle(cancel)
+}
+
+struct InterruptHandle(Arc<AtomicBool>);
+
+impl InterruptHandle {
+    fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
 }

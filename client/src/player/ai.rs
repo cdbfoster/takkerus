@@ -8,14 +8,14 @@ use futures::channel::mpsc::{self, UnboundedReceiver as Receiver, UnboundedSende
 use futures::{select, FutureExt, SinkExt};
 use tracing::{error, trace, warn};
 
-use analysis::{self, analyze, AnalysisConfig, PersistentState, TimeControl};
+use analysis::{self, analyze, AnalysisConfig, PersistentState};
 
 use crate::play::{Message, Player};
 
 pub fn initialize<const N: usize>(
     depth_limit: Option<u32>,
     time_limit: Option<Duration>,
-    predict_time: bool,
+    early_stop: bool,
     threads: usize,
     to_game: Sender<Message<N>>,
 ) -> Player<N> {
@@ -31,7 +31,7 @@ pub fn initialize<const N: usize>(
         task: task::spawn(message_handler::<N>(
             depth_limit,
             time_limit,
-            predict_time,
+            early_stop,
             threads,
             to_game,
             from_game,
@@ -43,7 +43,7 @@ pub fn initialize<const N: usize>(
 async fn message_handler<const N: usize>(
     depth_limit: Option<u32>,
     time_limit: Option<Duration>,
-    predict_time: bool,
+    early_stop: bool,
     threads: usize,
     mut to_game: Sender<Message<N>>,
     from_game: Receiver<Message<N>>,
@@ -93,11 +93,9 @@ async fn message_handler<const N: usize>(
 
                             let analysis = {
                                 let analysis_config = AnalysisConfig {
-                                    time_control: TimeControl::Simple {
-                                        depth_limit,
-                                        time_limit,
-                                        early_stop: predict_time,
-                                    },
+                                    depth_limit,
+                                    time_limit,
+                                    early_stop,
                                     interrupted,
                                     persistent_state: Some(&persistent_state),
                                     threads,
