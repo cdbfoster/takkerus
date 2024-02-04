@@ -61,6 +61,7 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
         depth_limit,
         time_limit,
         early_stop,
+        exact_eval,
         threads,
     } = config.ai;
 
@@ -68,6 +69,7 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
         depth_limit,
         time_limit,
         early_stop,
+        exact_eval,
         threads,
         ..Default::default()
     };

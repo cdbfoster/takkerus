@@ -175,6 +175,7 @@ async fn begin_analysis(
             depth_limit,
             time_limit,
             early_stop,
+            exact_eval,
             threads,
         } = ai;
 
@@ -207,6 +208,7 @@ async fn begin_analysis(
                     Color::Black => time_controls.1,
                 }),
                 persistent_state: Some(&*guard),
+                exact_eval,
                 interim_analysis_sender: Some(Box::new(sender)),
                 threads,
                 ..Default::default()

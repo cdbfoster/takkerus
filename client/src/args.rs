@@ -263,6 +263,7 @@ pub struct Ai {
     pub depth_limit: Option<u32>,
     pub time_limit: Option<Duration>,
     pub early_stop: bool,
+    pub exact_eval: bool,
     pub threads: usize,
 }
 
@@ -272,6 +273,9 @@ impl Ai {
   time=int          - The maximum number of seconds to spend considering a response.
   early_stop=bool   - Stop the search early if the next depth is predicted to take longer
                       than the time limit. `time` or `tc` must be set. (false or true)
+  exact=bool        - If true, don't use search enhancements that produce inexact results.
+                      This generally makes a search slower and a bot weaker, but can be used
+                      if the accuracy of results is a priority over playing strength.
   threads=int       - The number of worker threads to spawn for analysis."#
             .to_owned()
     }
@@ -286,6 +290,7 @@ impl Ai {
                 depth_limit: None,
                 time_limit: None,
                 early_stop: false,
+                exact_eval: false,
                 threads: 1,
             };
 
@@ -324,6 +329,14 @@ impl Ai {
                             )
                         })?;
                     }
+                    "exact" => {
+                        ai.exact_eval = value.parse::<bool>().map_err(|_| {
+                            clap::Error::raw(
+                                ClapErrorKind::InvalidValue,
+                                format!("invalid value for exact: {value:?}"),
+                            )
+                        })?;
+                    }
                     "threads" => {
                         ai.threads = value.parse::<usize>().map_err(|_| {
                             clap::Error::raw(
@@ -349,6 +362,7 @@ impl Default for Ai {
             depth_limit: None,
             time_limit: Some(Duration::from_secs(60)),
             early_stop: true,
+            exact_eval: false,
             threads: 1,
         }
     }
@@ -417,6 +431,7 @@ impl FromArgMatches for TeiConfig {
                 depth_limit: None,
                 time_limit: None,
                 early_stop: false,
+                exact_eval: false,
                 threads: 1,
             },
         )
