@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tracing::{debug, error, info, trace_span, warn};
+use tracing::{debug, error, info, trace, trace_span, warn};
 
 use tak::{Ply, State};
 
@@ -94,11 +94,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         config.early_stop,
     );
 
-    if let Some(tc) = config.time_control {
-        info!("Using time control: {tc}");
-    }
-
-    let time_limit = match (
+    let mut time_limit = match (
         config.time_limit,
         config.time_control.map(|tc| tc.get_use_time(state)),
     ) {
@@ -108,9 +104,19 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         (None, None) => None,
     };
 
-    let interrupt = time_limit.map(|time_limit| spawn_interrupt_thread(&config, time_limit));
+    let mut max_depth = config.depth_limit.unwrap_or(u32::MAX) as usize;
 
-    let max_depth = config.depth_limit.unwrap_or(u32::MAX) as usize;
+    if let Some(tc) = config.time_control {
+        info!("Using time control: {tc}");
+
+        if tc.time.as_millis() <= 3 {
+            trace!("Extremely low time remaining; limiting search depth to 1.");
+            time_limit = None;
+            max_depth = 1;
+        }
+    }
+
+    let interrupt = time_limit.map(|time_limit| spawn_interrupt_thread(&config, time_limit));
 
     // Use the passed-in persistent state or create a local one for this analysis.
     let local_persistent_state;
