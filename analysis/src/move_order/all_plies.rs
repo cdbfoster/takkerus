@@ -60,7 +60,7 @@ fn generate_all_plies<const N: usize>(state: &State<N>) -> Vec<ScoredPly<N>> {
         Black => state.p2_flatstones,
     };
 
-    if state.ply_count >= 4 {
+    if state.ply_count >= 2 {
         let player_stacks = match state.to_move() {
             White => state.metadata.p1_pieces,
             Black => state.metadata.p2_pieces,

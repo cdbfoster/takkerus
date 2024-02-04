@@ -323,13 +323,7 @@ pub(crate) fn minimax<const N: usize>(
 
     let inserted = search.persistent_state.transposition_table.insert(
         state.metadata.hash,
-        TranspositionTableEntry::new(
-            best_ply,
-            alpha,
-            bound,
-            best.depth.max(remaining_depth),
-            state.ply_count,
-        ),
+        TranspositionTableEntry::new(best_ply, alpha, bound, best.depth, state.ply_count),
     );
 
     if inserted {

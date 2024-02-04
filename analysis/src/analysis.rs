@@ -241,6 +241,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
         let iteration_time = iteration_start_time.elapsed();
 
         info!(
+            iteration,
             depth = analysis.depth,
             time = %format!("{:05.2}s", analysis.time.as_secs_f64()),
             eval = %format!("{:<4}", analysis.evaluation),
@@ -372,7 +373,7 @@ fn fetch_pv<const N: usize>(
             break;
         } else {
             if entry.bound() != Bound::Exact {
-                warn!(?entry, "Adding non-exact ply.");
+                debug!(?entry, "Adding non-exact ply.");
             }
 
             pv.push(entry.ply());
