@@ -2,7 +2,9 @@ use std::mem;
 use std::ops::Neg;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tracing::{error, instrument, trace, trace_span, warn};
+#[cfg(debug_assertions)]
+use tracing::error;
+use tracing::{instrument, trace, trace_span, warn};
 
 use tak::{zobrist_advance_move, Ply, State};
 
