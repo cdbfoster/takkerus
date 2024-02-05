@@ -226,6 +226,7 @@ async fn begin_analysis(
                 let mut state = analysis.state.clone();
 
                 let mut info = String::from("info");
+                write!(info, " depth {}", analysis.depth).unwrap();
                 write!(info, " score cp {centiflats}").unwrap();
                 write!(info, " pv").unwrap();
                 for &ply in &analysis.principal_variation {
