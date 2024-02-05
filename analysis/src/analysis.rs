@@ -254,6 +254,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             evaluated = search_stats.evaluated,
             terminal = search_stats.terminal,
             scouted = search_stats.scouted,
+            re_scouted = search_stats.re_scouted,
             re_searched = search_stats.re_searched,
             beta_cutoff = search_stats.beta_cutoff,
             null_cutoff = search_stats.null_cutoff,

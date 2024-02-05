@@ -230,7 +230,7 @@ pub(crate) fn minimax<const N: usize>(
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
 
-            let lmr_allowed = !search.exact_eval && !pv_node && remaining_depth >= 3;
+            let lmr_allowed = !search.exact_eval && remaining_depth >= 3;
 
             let reduction = if lmr_allowed {
                 if moves_searched <= 4 {
@@ -244,7 +244,7 @@ pub(crate) fn minimax<const N: usize>(
                 1
             };
 
-            let scout = -minimax(
+            let mut scout = -minimax(
                 search,
                 &state,
                 remaining_depth - reduction,
@@ -253,19 +253,26 @@ pub(crate) fn minimax<const N: usize>(
                 true,
             );
 
-            if scout.evaluation > alpha && scout.evaluation < beta {
-                trace!(%alpha, %beta, %scout.evaluation, "Researching");
-                let _researched_span = trace_span!("researched").entered();
-                search.stats.re_searched.fetch_add(1, Ordering::Relaxed);
-                // If we are inside the PV window instead, we need to re-search using the full PV window.
-                -minimax(
+            // If we've reduced the search and we don't fail low, re-scout at the full depth.
+            if reduction > 1 && scout.evaluation > alpha {
+                trace!(%alpha, %beta, %scout.evaluation, "Re-scouting");
+                let _rescouted_span = trace_span!("re-scouted").entered();
+                scout = -minimax(
                     search,
                     &state,
-                    remaining_depth - reduction,
-                    -beta,
+                    remaining_depth - 1,
+                    (-alpha).next_down(),
                     -alpha,
                     true,
-                )
+                );
+            }
+
+            // If we are inside the PV window instead, re-search using the full PV window.
+            if scout.evaluation > alpha && scout.evaluation < beta {
+                trace!(%alpha, %beta, %scout.evaluation, "Re-searching");
+                let _researched_span = trace_span!("re-searched").entered();
+                search.stats.re_searched.fetch_add(1, Ordering::Relaxed);
+                -minimax(search, &state, remaining_depth - 1, -beta, -alpha, true)
             } else {
                 scout
             }
