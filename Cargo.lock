@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "analysis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ann",
  "fnv",
@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "ann"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rand",
  "rand_distr",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "analysis",
  "async-std",
@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "tak"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "once_cell",
  "rand",
