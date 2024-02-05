@@ -230,7 +230,7 @@ pub(crate) fn minimax<const N: usize>(
             // Afterwards, perform a null-window search, expecting to fail low (counting
             // on our move ordering to have already led us to the "best" move).
 
-            let lmr_allowed = !search.exact_eval && remaining_depth >= 3;
+            let lmr_allowed = !search.exact_eval && search_depth > 0 && remaining_depth >= 3;
 
             let reduction = if lmr_allowed {
                 if moves_searched <= 4 {
