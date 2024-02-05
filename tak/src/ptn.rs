@@ -787,7 +787,7 @@ impl From<PlyError> for PtnError {
 }
 
 static HEADER_SECTION: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^(?:\[[^\]\n]+\](?:\n|$))+").unwrap());
+    Lazy::new(|| Regex::new(r"^(?:\[[^\]\n]+\](?:(?:\r?\n)|$))+").unwrap());
 
 static HEADER: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^\[(?P<key>[^\s]+) "(?P<value>.+)"\]$"#).unwrap());
