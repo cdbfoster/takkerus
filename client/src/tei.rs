@@ -220,14 +220,19 @@ async fn begin_analysis(
         task::spawn(async move {
             let mut last_analysis = None;
 
+            let mut iteration = 0;
+
             while let Ok(analysis) = receiver.recv().await {
+                iteration += 1;
                 // Or something.
-                let centiflats = (Into::<f32>::into(analysis.evaluation) * 1000.0) as i32;
+                let centiflats = (f32::from(analysis.evaluation) * 1000.0) as i32;
+                let nps = (analysis.stats.visited as f64 / analysis.time.as_secs_f64()) as u64;
                 let mut state = analysis.state.clone();
 
                 let mut info = String::from("info");
-                write!(info, " depth {}", analysis.depth).unwrap();
+                write!(info, " iter {iteration}").unwrap();
                 write!(info, " score cp {centiflats}").unwrap();
+                write!(info, " nps {nps}",).unwrap();
                 write!(info, " pv").unwrap();
                 for &ply in &analysis.principal_variation {
                     let validation = state.execute_ply(ply).expect("invalid ply in pv");
