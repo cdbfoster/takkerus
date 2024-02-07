@@ -338,8 +338,8 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             let prediction = analysis.time + Duration::from_secs_f64(next_iteration_prediction);
 
             // Stop if the next iteration is predicted to exceed the time limit and we've
-            // already used a fourth of our time.
-            if config.early_stop && analysis.time > time_limit / 4 && prediction > time_limit {
+            // already used half of our time.
+            if config.early_stop && analysis.time > time_limit / 2 && prediction > time_limit {
                 info!(
                     time = %format!("{:.2}s", analysis.time.as_secs_f64()),
                     limit = %format!("{:.2}s", time_limit.as_secs_f64()),
