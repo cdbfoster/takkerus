@@ -2,7 +2,7 @@ use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Instant;
 
@@ -17,25 +17,53 @@ use ann::shallow::ShallowAdam;
 use tak::{board_mask, generation, Color, PieceType, Ply, Resolution, State};
 
 const BATCH_SIZE: usize = 128;
-const BATCHES_PER_UPDATE: usize = 8;
-const CHECKPOINT_BATCHES: usize = 1000;
 
 // Capped at the number of batches per update.
 const GATHER_THREADS: usize = 4;
-/// The search depth to use when building the positions the training samples are derived from.
-const SCAFFOLD_SEARCH_DEPTH: u32 = 3;
-/// The number of consecutive samples to take from one starting position.
-const SAMPLES_PER_POSITION: usize = 10;
-/// The number of plies to play when calculating the temporal difference of the evaulations.
-const TD_PLY_DEPTH: usize = 10;
-/// The search depth to use when calculating the temporal difference of the evaluations.
-const TD_SEARCH_DEPTH: u32 = 4;
-
-const LEARNING_RATE_SCHEDULE: [(usize, f32); 3] = [(0, 0.001), (64, 0.0001), (75_000, 0.00001)];
 
 const TRAINING_DIR: &'static str = "training";
+const CONFIG_DIR: &'static str = "config";
 const MODEL_DIR: &'static str = "models";
 const CHECKPOINT_DIR: &'static str = "checkpoints";
+
+#[derive(Debug, Deserialize)]
+struct Config {
+    /// Maximum batch count.
+    max_batches: usize,
+    /// The number of batches to generate at a time from the same network state.
+    batches_per_update: usize,
+    /// The number of batches between saved checkpoints.
+    checkpoint_batches: usize,
+    /// The search depth to use when building the positions the training samples are derived from.
+    scaffold_search_depth: u32,
+    /// The number of consecutive samples to take from one starting position.
+    samples_per_position: usize,
+    /// The number of plies to play when calculating the temporal difference of the evaulations.
+    td_ply_depth: usize,
+    /// The search depth to use when calculating the temporal difference of the evaluations.
+    td_search_depth: u32,
+    /// Pairs of (batch number, learning rate) to indicate changes in learning rate over time.
+    learning_rate_schedule: Vec<(usize, f32)>,
+    /// The rate at which a random move is made while building scaffolds
+    epsilon: f32,
+    discount: f32,
+    lambda: f32,
+    l2_reg: f32,
+}
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+
+fn load_config<const N: usize>() {
+    let path = format!("{TRAINING_DIR}/{CONFIG_DIR}/config_{N}s.json");
+    let file = File::open(path).expect("could not read config file");
+    let config: Config = serde_json::from_reader(file).expect("could not parse config file");
+
+    CONFIG.set(config).expect("could not load config");
+}
+
+fn config() -> &'static Config {
+    CONFIG.get().expect("config is not loaded")
+}
 
 fn main() {
     fs::create_dir_all(format!("{TRAINING_DIR}/{MODEL_DIR}"))
@@ -86,6 +114,8 @@ fn main_sized<const N: usize>(checkpoint: Option<String>, max_batches: Option<us
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
+    load_config::<N>();
+
     let mut rng = rand::thread_rng();
 
     let mut training_state = if let Some(checkpoint) = checkpoint {
@@ -103,11 +133,13 @@ where
         return;
     }
 
-    let mut iteration = training_state.batch / BATCHES_PER_UPDATE;
-    let mut checkpoint_error =
-        training_state.error * (training_state.batch % CHECKPOINT_BATCHES) as f32;
+    let max_batches = max_batches.unwrap_or_else(|| config().max_batches);
 
-    while max_batches.is_none() || training_state.batch < max_batches.unwrap() {
+    let mut iteration = training_state.batch / config().batches_per_update;
+    let mut checkpoint_error =
+        training_state.error * (training_state.batch % config().checkpoint_batches) as f32;
+
+    while training_state.batch < max_batches {
         iteration += 1;
 
         print!("Iteration {iteration}... ");
@@ -158,12 +190,12 @@ where
 
         // If the game has just started, or if a random number is below epsilon, make a random move.
         // Otherwise, use the principal variation from a search.
-        if state.ply_count < 2 || rng.gen::<f32>() < training_state.epsilon {
+        if state.ply_count < 2 || rng.gen::<f32>() < config().epsilon {
             let ply = *generate_plies(&state).choose(&mut rng).unwrap();
             state.execute_ply(ply).expect("error executing random ply");
         } else {
             let config = AnalysisConfig::<N> {
-                depth_limit: Some(SCAFFOLD_SEARCH_DEPTH),
+                depth_limit: Some(config().scaffold_search_depth),
                 time_limit: None,
                 early_stop: false,
                 persistent_state: Some(&mut persistent_state),
@@ -199,7 +231,7 @@ where
     let training_samples = Mutex::new(Vec::new());
 
     thread::scope(|scope| {
-        for _ in 0..GATHER_THREADS.min(BATCHES_PER_UPDATE) {
+        for _ in 0..GATHER_THREADS.min(config().batches_per_update) {
             scope.spawn(|| {
                 let mut rng = rand::thread_rng();
 
@@ -223,9 +255,9 @@ where
                     // The reward for the player to move at time t.
                     let mut r_t = Vec::new();
 
-                    for _ in 0..SAMPLES_PER_POSITION + TD_PLY_DEPTH {
+                    for _ in 0..config().samples_per_position + config().td_ply_depth {
                         let count = training_samples.lock().unwrap().len();
-                        if count >= BATCH_SIZE * BATCHES_PER_UPDATE {
+                        if count >= BATCH_SIZE * config().batches_per_update {
                             break 'gather;
                         }
 
@@ -254,7 +286,7 @@ where
 
                         // Otherwise, perform a search from the state.
                         let config = AnalysisConfig::<N> {
-                            depth_limit: Some(TD_SEARCH_DEPTH),
+                            depth_limit: Some(config().td_search_depth),
                             time_limit: None,
                             early_stop: false,
                             persistent_state: Some(&mut persistent_state),
@@ -297,8 +329,8 @@ where
                             .expect("error executing principal variation ply");
                     }
 
-                    let g_t = calculate_n_step_returns(&r_t, training_state.discount);
-                    let g_l_t = calculate_lambda_returns(&g_t, training_state.lambda);
+                    let g_t = calculate_n_step_returns(&r_t, config().discount);
+                    let g_l_t = calculate_lambda_returns(&g_t, config().lambda);
 
                     let new_samples = s_t
                         .into_iter()
@@ -360,22 +392,24 @@ fn calculate_lambda_returns(g_t: &[f32], lambda: f32) -> Vec<f32> {
 fn train_batches<const N: usize>(
     training_state: &mut TrainingState<N>,
     mut batch_samples: &[TrainingSample<State<N>>],
-    max_batches: Option<usize>,
+    max_batches: usize,
     checkpoint_error: &mut f32,
 ) -> f32
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
     let mut error_sum = 0.0;
-    let batch_count =
-        BATCHES_PER_UPDATE.min(max_batches.unwrap_or(usize::MAX) - training_state.batch);
+    let batch_count = config()
+        .batches_per_update
+        .min(max_batches - training_state.batch);
 
     assert!(batch_count * BATCH_SIZE <= batch_samples.len());
 
     for _ in 0..batch_count {
         let (batch, remaining) = batch_samples.split_at(BATCH_SIZE);
 
-        let (_, learning_rate) = LEARNING_RATE_SCHEDULE
+        let (_, learning_rate) = config()
+            .learning_rate_schedule
             .iter()
             .rev()
             .find(|(b, _)| *b <= training_state.batch)
@@ -386,8 +420,8 @@ where
         error_sum += error;
         *checkpoint_error += error;
 
-        if training_state.batch % CHECKPOINT_BATCHES == 0 {
-            training_state.error = *checkpoint_error / CHECKPOINT_BATCHES as f32;
+        if training_state.batch % config().checkpoint_batches == 0 {
+            training_state.error = *checkpoint_error / config().checkpoint_batches as f32;
 
             save_training_state(
                 &training_state,
@@ -408,9 +442,9 @@ where
     }
 
     // Save the latest checkpoint/model too.
-    if training_state.batch % CHECKPOINT_BATCHES != 0 {
+    if training_state.batch % config().checkpoint_batches != 0 {
         training_state.error =
-            *checkpoint_error / (training_state.batch % CHECKPOINT_BATCHES) as f32;
+            *checkpoint_error / (training_state.batch % config().checkpoint_batches) as f32;
     }
     save_training_state(
         &training_state,
@@ -445,11 +479,7 @@ where
     batch: usize,
     model: <Self as Train<N>>::Model,
     gradient_descent: <Self as Train<N>>::GradientDescent,
-    epsilon: f32,
-    discount: f32,
-    lambda: f32,
     learning_rate: f32,
-    l2_reg: f32,
     error: f32,
 }
 
@@ -470,11 +500,7 @@ macro_rules! train_impl {
                     batch: 0,
                     model: Self::Model::random(&mut rand::thread_rng()),
                     gradient_descent: Self::GradientDescent::default(),
-                    epsilon: 0.05,
-                    discount: 0.85,
-                    lambda: 0.8,
                     learning_rate: 0.001,
-                    l2_reg: 0.0001,
                     error: 0.0,
                 }
             }
@@ -505,7 +531,7 @@ macro_rules! train_impl {
                     mse_prime,
                     &mut self.gradient_descent,
                     self.learning_rate,
-                    self.l2_reg,
+                    config().l2_reg,
                 );
 
                 error

@@ -1,5 +1,8 @@
 /target
 /training*
+!/training/
+/training/checkpoints
+/training/models
 /data/analysis/env
 /data/analysis/analysis.so
 flamegraph.svg
