@@ -334,7 +334,7 @@ pub fn analyze<const N: usize>(config: AnalysisConfig<N>, state: &State<N>) -> A
             break;
         }
 
-        if let Some(time_limit) = config.time_limit {
+        if let Some(time_limit) = time_limit {
             let prediction = analysis.time + Duration::from_secs_f64(next_iteration_prediction);
 
             // Stop if the next iteration is predicted to exceed the time limit and we've
