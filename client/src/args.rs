@@ -430,7 +430,7 @@ impl FromArgMatches for TeiConfig {
             Ai {
                 depth_limit: None,
                 time_limit: None,
-                early_stop: false,
+                early_stop: true,
                 exact_eval: false,
                 threads: 1,
             },
