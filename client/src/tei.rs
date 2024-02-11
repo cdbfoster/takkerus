@@ -230,8 +230,11 @@ async fn begin_analysis(
                 let mut state = analysis.state.clone();
 
                 let mut info = String::from("info");
-                write!(info, " iter {iteration}").unwrap();
+                write!(info, " depth {iteration}").unwrap();
+                write!(info, " seldepth {}", analysis.depth).unwrap();
                 write!(info, " score cp {centiflats}").unwrap();
+                write!(info, " time {}", analysis.time.as_millis()).unwrap();
+                write!(info, " nodes {}", analysis.stats.visited).unwrap();
                 write!(info, " nps {nps}",).unwrap();
                 write!(info, " pv").unwrap();
                 for &ply in &analysis.principal_variation {
