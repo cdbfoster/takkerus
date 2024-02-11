@@ -1,7 +1,11 @@
-use std::{fmt::Write, time::Duration};
+use std::fmt::Write;
+use std::fs::File;
+use std::mem;
+use std::time::Duration;
 
 use tracing::error;
 
+use analysis::evaluation::{AnnEvaluator, AnnModel, Evaluator};
 use analysis::{analyze, AnalysisConfig};
 use tak::{PtnGame, PtnHeader, State, Tps};
 
@@ -63,13 +67,17 @@ fn run_analysis_sized<const N: usize>(config: AnalyzeConfig, game: PtnGame) {
         early_stop,
         exact_eval,
         threads,
+        model_file,
     } = config.ai;
+
+    let evaluator = model_file.as_deref().map(load_model);
 
     let analysis_config = AnalysisConfig::<N> {
         depth_limit,
         time_limit,
         early_stop,
         exact_eval,
+        evaluator: evaluator.as_deref(),
         threads,
         ..Default::default()
     };
@@ -176,4 +184,34 @@ fn punctuate(value: u64) -> String {
     }
 
     buffer
+}
+
+pub fn load_model<const N: usize>(model_file: &str) -> Box<dyn Evaluator<N>> {
+    macro_rules! sized {
+        ($size:expr) => {{
+            let file = File::open(model_file).expect("could not open model file");
+
+            let evaluator: <AnnModel<$size> as AnnEvaluator<$size>>::Evaluator =
+                serde_json::from_reader(file).expect("could not deserialize model");
+
+            Box::new(evaluator) as Box<dyn Evaluator<$size>>
+        }};
+    }
+
+    match N {
+        3 => cast_size(sized!(3)),
+        4 => cast_size(sized!(4)),
+        5 => cast_size(sized!(5)),
+        6 => cast_size(sized!(6)),
+        7 => cast_size(sized!(7)),
+        8 => cast_size(sized!(8)),
+        _ => unreachable!(),
+    }
+}
+
+fn cast_size<const N: usize, const M: usize>(
+    evaluator: Box<dyn Evaluator<N>>,
+) -> Box<dyn Evaluator<M>> {
+    debug_assert_eq!(N, M);
+    unsafe { mem::transmute(evaluator) }
 }

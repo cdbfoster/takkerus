@@ -17,6 +17,7 @@ use analysis::{
 };
 use tak::{Color, Komi, PtnGame, PtnPly, State, Tps};
 
+use crate::analyze::load_model;
 use crate::args::{Ai, TeiConfig};
 
 pub fn run_tei(config: TeiConfig) {
@@ -177,6 +178,7 @@ async fn begin_analysis(
             early_stop,
             exact_eval,
             threads,
+            model_file,
         } = ai;
 
         let state: State<N> = game.clone().try_into().expect("could not create state");
@@ -199,6 +201,8 @@ async fn begin_analysis(
         task::spawn_blocking(move || {
             let guard = persistent_state.lock().unwrap();
 
+            let evaluator = model_file.as_deref().map(load_model);
+
             let analysis_config = AnalysisConfig {
                 depth_limit,
                 time_limit,
@@ -209,6 +213,7 @@ async fn begin_analysis(
                 }),
                 persistent_state: Some(&*guard),
                 exact_eval,
+                evaluator: evaluator.as_deref(),
                 interim_analysis_sender: Some(Box::new(sender)),
                 threads,
                 ..Default::default()

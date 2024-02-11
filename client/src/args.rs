@@ -265,6 +265,7 @@ pub struct Ai {
     pub early_stop: bool,
     pub exact_eval: bool,
     pub threads: usize,
+    pub model_file: Option<String>,
 }
 
 impl Ai {
@@ -276,7 +277,8 @@ impl Ai {
   exact=bool        - If true, don't use search enhancements that produce inexact results.
                       This generally makes a search slower and a bot weaker, but can be used
                       if the accuracy of results is a priority over playing strength.
-  threads=int       - The number of worker threads to spawn for analysis."#
+  threads=int       - The number of worker threads to spawn for analysis.
+  model=path        - The path of a JSON file to load as the evaluator model."#
             .to_owned()
     }
 
@@ -292,6 +294,7 @@ impl Ai {
                 early_stop: false,
                 exact_eval: false,
                 threads: 1,
+                model_file: None,
             };
 
             for option in options {
@@ -345,6 +348,9 @@ impl Ai {
                             )
                         })?;
                     }
+                    "model" => {
+                        ai.model_file = Some(value.to_owned());
+                    }
                     _ => (),
                 }
             }
@@ -364,6 +370,7 @@ impl Default for Ai {
             early_stop: true,
             exact_eval: false,
             threads: 1,
+            model_file: None,
         }
     }
 }
@@ -433,6 +440,7 @@ impl FromArgMatches for TeiConfig {
                 early_stop: true,
                 exact_eval: false,
                 threads: 1,
+                model_file: None,
             },
         )
         .map(|ai| Self { ai })

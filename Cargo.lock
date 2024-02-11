@@ -329,6 +329,7 @@ dependencies = [
  "clap",
  "futures",
  "once_cell",
+ "serde_json",
  "tak",
  "tracing",
  "tracing-subscriber",
