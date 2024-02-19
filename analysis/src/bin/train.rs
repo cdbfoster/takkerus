@@ -28,6 +28,9 @@ const CHECKPOINT_DIR: &'static str = "checkpoints";
 
 #[derive(Debug, Deserialize)]
 struct Config {
+    /// Optional string to append to checkpoints and saved models.
+    #[serde(default)]
+    suffix: Option<String>,
     /// Maximum batch count.
     max_batches: usize,
     /// The number of batches to generate at a time from the same network state.
@@ -125,10 +128,15 @@ where
     };
 
     if max_batches == Some(0) {
+        let suffix = match &config().suffix {
+            Some(suffix) => format!("-{suffix}"),
+            None => String::new(),
+        };
+
         save_training_state(
             &training_state,
-            format!("{TRAINING_DIR}/{MODEL_DIR}/latest.json"),
-            format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest.json"),
+            format!("{TRAINING_DIR}/{MODEL_DIR}/latest{suffix}.json"),
+            format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest{suffix}.json"),
         );
         return;
     }
@@ -162,7 +170,7 @@ where
 
         let elapsed = start_time.elapsed().as_secs_f32();
         println!(
-            "b: {}, t: {:.2}s, avg b t: {:.2}s/b, lr: {}, avg b err: {:.3}, avg chkpt err: {:.3}",
+            "b: {}, t: {:6.2}s, avg b t: {:5.2}s/b, lr: {}, avg b err: {:.3}, avg chkpt err: {:.3}",
             training_state.batch,
             elapsed,
             elapsed / batch_count as f32,
@@ -423,14 +431,19 @@ where
         if training_state.batch % config().checkpoint_batches == 0 {
             training_state.error = *checkpoint_error / config().checkpoint_batches as f32;
 
+            let suffix = match &config().suffix {
+                Some(suffix) => format!("-{suffix}"),
+                None => String::new(),
+            };
+
             save_training_state(
                 &training_state,
                 format!(
-                    "{TRAINING_DIR}/{MODEL_DIR}/model_{N}s_{:06}.json",
+                    "{TRAINING_DIR}/{MODEL_DIR}/model_{N}s_{:06}{suffix}.json",
                     training_state.batch
                 ),
                 format!(
-                    "{TRAINING_DIR}/{CHECKPOINT_DIR}/checkpoint_{N}s_{:06}.json",
+                    "{TRAINING_DIR}/{CHECKPOINT_DIR}/checkpoint_{N}s_{:06}{suffix}.json",
                     training_state.batch
                 ),
             );
@@ -441,15 +454,21 @@ where
         batch_samples = remaining;
     }
 
-    // Save the latest checkpoint/model too.
     if training_state.batch % config().checkpoint_batches != 0 {
         training_state.error =
             *checkpoint_error / (training_state.batch % config().checkpoint_batches) as f32;
     }
+
+    let suffix = match &config().suffix {
+        Some(suffix) => format!("-{suffix}"),
+        None => String::new(),
+    };
+
+    // Save the latest checkpoint/model too.
     save_training_state(
         &training_state,
-        format!("{TRAINING_DIR}/{MODEL_DIR}/latest.json"),
-        format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest.json"),
+        format!("{TRAINING_DIR}/{MODEL_DIR}/latest{suffix}.json"),
+        format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest{suffix}.json"),
     );
 
     error_sum / batch_count as f32
