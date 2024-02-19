@@ -1,8 +1,7 @@
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Instant;
 
@@ -18,25 +17,29 @@ use tak::{board_mask, generation, Color, PieceType, Ply, Resolution, State};
 
 const BATCH_SIZE: usize = 128;
 
-// Capped at the number of batches per update.
-const GATHER_THREADS: usize = 4;
-
 const TRAINING_DIR: &'static str = "training";
-const CONFIG_DIR: &'static str = "config";
 const MODEL_DIR: &'static str = "models";
 const CHECKPOINT_DIR: &'static str = "checkpoints";
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct Config {
+    /// Size of the board to play on.
+    size: usize,
+    /// If set, don't train candidates and just resume this training checkpoint.
+    #[serde(default)]
+    resume_checkpoint: Option<String>,
     /// Optional string to append to checkpoints and saved models.
     #[serde(default)]
     suffix: Option<String>,
+    /// The maximum number of threads to use. The actual number is capped at `batches_per_update`.
+    #[serde(default)]
+    max_threads: Option<usize>,
     /// Maximum batch count.
     max_batches: usize,
     /// The number of batches to generate at a time from the same network state.
     batches_per_update: usize,
-    /// The number of batches between saved checkpoints.
-    checkpoint_batches: usize,
+    /// The number of updates between saved checkpoints.
+    checkpoint_updates: usize,
     /// The search depth to use when building the positions the training samples are derived from.
     scaffold_search_depth: u32,
     /// The number of consecutive samples to take from one starting position.
@@ -54,20 +57,6 @@ struct Config {
     l2_reg: f32,
 }
 
-static CONFIG: OnceLock<Config> = OnceLock::new();
-
-fn load_config<const N: usize>() {
-    let path = format!("{TRAINING_DIR}/{CONFIG_DIR}/config_{N}s.json");
-    let file = File::open(path).expect("could not read config file");
-    let config: Config = serde_json::from_reader(file).expect("could not parse config file");
-
-    CONFIG.set(config).expect("could not load config");
-}
-
-fn config() -> &'static Config {
-    CONFIG.get().expect("config is not loaded")
-}
-
 fn main() {
     fs::create_dir_all(format!("{TRAINING_DIR}/{MODEL_DIR}"))
         .expect("could not create model directory");
@@ -76,78 +65,46 @@ fn main() {
 
     let mut args = env::args();
 
-    let (size, checkpoint) = if let Some(argument) = args.nth(1) {
-        if argument == "--size" {
-            let size = args
-                .next()
-                .expect("must pass a size value")
-                .parse::<usize>()
-                .expect("invalid size");
-            (size, None)
-        } else {
-            let file = File::open(argument).expect("could not read checkpoint file");
-            let (size, checkpoint): (usize, String) =
-                serde_json::from_reader(file).expect("could not parse checkpoint file");
-
-            (size, Some(checkpoint))
-        }
+    let config: Config = if let Some(path) = args.nth(1) {
+        let file = File::open(path).expect("could not read config file");
+        serde_json::from_reader(file).expect("could not parse config file")
     } else {
-        eprintln!("To train a new model, specify a board size N by passing '--size N'.");
-        eprintln!("To continue from a previous checkpoint, pass the name of a checkpoint file.");
+        eprintln!("Please pass a path to a config file, i.e. \"training/config/config_6s.json\".");
         return;
     };
 
-    let max_batches = args.next().map(|s| {
-        s.parse::<usize>()
-            .expect("could not parse maximum number of batches")
-    });
-
-    match size {
-        3 => main_sized::<3>(checkpoint, max_batches),
-        4 => main_sized::<4>(checkpoint, max_batches),
-        5 => main_sized::<5>(checkpoint, max_batches),
-        6 => main_sized::<6>(checkpoint, max_batches),
-        7 => main_sized::<7>(checkpoint, max_batches),
-        8 => main_sized::<8>(checkpoint, max_batches),
-        _ => panic!("invalid size"),
+    match config.size {
+        3 => main_sized::<3>(config),
+        4 => main_sized::<4>(config),
+        5 => main_sized::<5>(config),
+        6 => main_sized::<6>(config),
+        7 => main_sized::<7>(config),
+        8 => main_sized::<8>(config),
+        _ => panic!("invalid size in config"),
     }
 }
 
-fn main_sized<const N: usize>(checkpoint: Option<String>, max_batches: Option<usize>)
+fn main_sized<const N: usize>(config: Config)
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
-    load_config::<N>();
-
     let mut rng = rand::thread_rng();
 
-    let mut training_state = if let Some(checkpoint) = checkpoint {
-        serde_json::from_str(&checkpoint).expect("could not parse checkpoint")
+    let mut training_state = if let Some(path) = &config.resume_checkpoint {
+        let file = File::open(path).expect("could not read checkpoint file");
+        serde_json::from_reader(file).expect("could not parse checkpoint")
     } else {
         TrainingState::<N>::new()
     };
 
-    if max_batches == Some(0) {
-        let suffix = match &config().suffix {
-            Some(suffix) => format!("-{suffix}"),
-            None => String::new(),
-        };
-
-        save_training_state(
-            &training_state,
-            format!("{TRAINING_DIR}/{MODEL_DIR}/latest{suffix}.json"),
-            format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest{suffix}.json"),
-        );
+    if config.max_batches == 0 {
+        save_training_state(&config, &training_state, "latest", "latest");
         return;
     }
 
-    let max_batches = max_batches.unwrap_or_else(|| config().max_batches);
+    let mut iteration = training_state.batch / config.batches_per_update;
 
-    let mut iteration = training_state.batch / config().batches_per_update;
-    let mut checkpoint_error =
-        training_state.error * (training_state.batch % config().checkpoint_batches) as f32;
-
-    while training_state.batch < max_batches {
+    while training_state.batch < config.max_batches {
         iteration += 1;
 
         print!("Iteration {iteration}... ");
@@ -155,17 +112,12 @@ where
 
         let start_time = Instant::now();
 
-        let scaffolds = build_scaffold_positions(&training_state);
-        let mut batch_samples = generate_batch_samples(&training_state, scaffolds);
+        let scaffolds = build_scaffold_positions(&config, &training_state);
+        let mut batch_samples = generate_batch_samples(&config, &training_state, scaffolds);
         batch_samples.shuffle(&mut rng);
 
         let start_batch = training_state.batch;
-        let average_error = train_batches(
-            &mut training_state,
-            &batch_samples,
-            max_batches,
-            &mut checkpoint_error,
-        );
+        let average_error = train_batches(&config, &mut training_state, &batch_samples);
         let batch_count = training_state.batch - start_batch;
 
         let elapsed = start_time.elapsed().as_secs_f32();
@@ -181,7 +133,10 @@ where
     }
 }
 
-fn build_scaffold_positions<const N: usize>(training_state: &TrainingState<N>) -> Vec<State<N>>
+fn build_scaffold_positions<const N: usize>(
+    config: &Config,
+    training_state: &TrainingState<N>,
+) -> Vec<State<N>>
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
@@ -198,12 +153,12 @@ where
 
         // If the game has just started, or if a random number is below epsilon, make a random move.
         // Otherwise, use the principal variation from a search.
-        if state.ply_count < 2 || rng.gen::<f32>() < config().epsilon {
+        if state.ply_count < 2 || rng.gen::<f32>() < config.epsilon {
             let ply = *generate_plies(&state).choose(&mut rng).unwrap();
             state.execute_ply(ply).expect("error executing random ply");
         } else {
             let config = AnalysisConfig::<N> {
-                depth_limit: Some(config().scaffold_search_depth),
+                depth_limit: Some(config.scaffold_search_depth),
                 time_limit: None,
                 early_stop: false,
                 persistent_state: Some(&mut persistent_state),
@@ -229,6 +184,7 @@ where
 }
 
 fn generate_batch_samples<const N: usize>(
+    config: &Config,
     training_state: &TrainingState<N>,
     scaffolds: Vec<State<N>>,
 ) -> Vec<TrainingSample<State<N>>>
@@ -238,8 +194,10 @@ where
     let scaffolds = Mutex::new(scaffolds);
     let training_samples = Mutex::new(Vec::new());
 
+    let max_threads = config.max_threads.unwrap_or(usize::MAX);
+
     thread::scope(|scope| {
-        for _ in 0..GATHER_THREADS.min(config().batches_per_update) {
+        for _ in 0..max_threads.min(config.batches_per_update) {
             scope.spawn(|| {
                 let mut rng = rand::thread_rng();
 
@@ -263,9 +221,9 @@ where
                     // The reward for the player to move at time t.
                     let mut r_t = Vec::new();
 
-                    for _ in 0..config().samples_per_position + config().td_ply_depth {
+                    for _ in 0..config.samples_per_position + config.td_ply_depth {
                         let count = training_samples.lock().unwrap().len();
-                        if count >= BATCH_SIZE * config().batches_per_update {
+                        if count >= BATCH_SIZE * config.batches_per_update {
                             break 'gather;
                         }
 
@@ -294,7 +252,7 @@ where
 
                         // Otherwise, perform a search from the state.
                         let config = AnalysisConfig::<N> {
-                            depth_limit: Some(config().td_search_depth),
+                            depth_limit: Some(config.td_search_depth),
                             time_limit: None,
                             early_stop: false,
                             persistent_state: Some(&mut persistent_state),
@@ -337,8 +295,8 @@ where
                             .expect("error executing principal variation ply");
                     }
 
-                    let g_t = calculate_n_step_returns(&r_t, config().discount);
-                    let g_l_t = calculate_lambda_returns(&g_t, config().lambda);
+                    let g_t = calculate_n_step_returns(&r_t, config.discount);
+                    let g_l_t = calculate_lambda_returns(&g_t, config.lambda);
 
                     let new_samples = s_t
                         .into_iter()
@@ -398,25 +356,26 @@ fn calculate_lambda_returns(g_t: &[f32], lambda: f32) -> Vec<f32> {
 }
 
 fn train_batches<const N: usize>(
+    config: &Config,
     training_state: &mut TrainingState<N>,
     mut batch_samples: &[TrainingSample<State<N>>],
-    max_batches: usize,
-    checkpoint_error: &mut f32,
 ) -> f32
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
     let mut error_sum = 0.0;
-    let batch_count = config()
+    let batch_count = config
         .batches_per_update
-        .min(max_batches - training_state.batch);
+        .min(config.max_batches - training_state.batch);
 
     assert!(batch_count * BATCH_SIZE <= batch_samples.len());
+
+    let checkpoint_batches = config.batches_per_update * config.checkpoint_updates;
 
     for _ in 0..batch_count {
         let (batch, remaining) = batch_samples.split_at(BATCH_SIZE);
 
-        let (_, learning_rate) = config()
+        let (_, learning_rate) = config
             .learning_rate_schedule
             .iter()
             .rev()
@@ -424,52 +383,33 @@ where
             .unwrap();
         training_state.learning_rate = *learning_rate;
 
-        let error = training_state.train_batch(batch);
+        let error = training_state.train_batch(config, batch);
         error_sum += error;
-        *checkpoint_error += error;
+        training_state.checkpoint_error_acc += error;
 
-        if training_state.batch % config().checkpoint_batches == 0 {
-            training_state.error = *checkpoint_error / config().checkpoint_batches as f32;
-
-            let suffix = match &config().suffix {
-                Some(suffix) => format!("-{suffix}"),
-                None => String::new(),
-            };
+        if training_state.batch % checkpoint_batches == 0 {
+            training_state.error = training_state.checkpoint_error_acc / checkpoint_batches as f32;
 
             save_training_state(
+                config,
                 &training_state,
-                format!(
-                    "{TRAINING_DIR}/{MODEL_DIR}/model_{N}s_{:06}{suffix}.json",
-                    training_state.batch
-                ),
-                format!(
-                    "{TRAINING_DIR}/{CHECKPOINT_DIR}/checkpoint_{N}s_{:06}{suffix}.json",
-                    training_state.batch
-                ),
+                format!("model_{N}s_{:06}", training_state.batch),
+                format!("checkpoint_{N}s_{:06}", training_state.batch),
             );
 
-            *checkpoint_error = 0.0;
+            training_state.checkpoint_error_acc = 0.0;
         }
 
         batch_samples = remaining;
     }
 
-    if training_state.batch % config().checkpoint_batches != 0 {
-        training_state.error =
-            *checkpoint_error / (training_state.batch % config().checkpoint_batches) as f32;
+    if training_state.batch % checkpoint_batches != 0 {
+        training_state.error = training_state.checkpoint_error_acc
+            / (training_state.batch % checkpoint_batches) as f32;
     }
 
-    let suffix = match &config().suffix {
-        Some(suffix) => format!("-{suffix}"),
-        None => String::new(),
-    };
-
     // Save the latest checkpoint/model too.
-    save_training_state(
-        &training_state,
-        format!("{TRAINING_DIR}/{MODEL_DIR}/latest{suffix}.json"),
-        format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/latest{suffix}.json"),
-    );
+    save_training_state(config, &training_state, "latest", "latest");
 
     error_sum / batch_count as f32
 }
@@ -487,7 +427,7 @@ trait Train<const N: usize> {
 
     fn new() -> Self;
     fn model_as_evaluator<const M: usize>(&self) -> Box<dyn Evaluator<M>>;
-    fn train_batch(&mut self, samples: &[TrainingSample<Self::State>]) -> f32;
+    fn train_batch(&mut self, config: &Config, samples: &[TrainingSample<Self::State>]) -> f32;
 }
 
 #[derive(Deserialize, Serialize)]
@@ -500,6 +440,7 @@ where
     gradient_descent: <Self as Train<N>>::GradientDescent,
     learning_rate: f32,
     error: f32,
+    checkpoint_error_acc: f32,
 }
 
 macro_rules! train_impl {
@@ -521,6 +462,7 @@ macro_rules! train_impl {
                     gradient_descent: Self::GradientDescent::default(),
                     learning_rate: 0.001,
                     error: 0.0,
+                    checkpoint_error_acc: 0.0,
                 }
             }
 
@@ -529,7 +471,11 @@ macro_rules! train_impl {
                 unsafe { std::mem::transmute(evaluator as Box<dyn Evaluator<$s>>) }
             }
 
-            fn train_batch(&mut self, samples: &[TrainingSample<Self::State>]) -> f32 {
+            fn train_batch(
+                &mut self,
+                config: &Config,
+                samples: &[TrainingSample<Self::State>],
+            ) -> f32 {
                 self.batch += 1;
 
                 let mut inputs = MatrixRowMajor::zeros();
@@ -550,7 +496,7 @@ macro_rules! train_impl {
                     mse_prime,
                     &mut self.gradient_descent,
                     self.learning_rate,
-                    config().l2_reg,
+                    config.l2_reg,
                 );
 
                 error
@@ -607,16 +553,29 @@ fn generate_plies<const N: usize>(state: &State<N>) -> Vec<Ply<N>> {
 }
 
 fn save_training_state<const N: usize>(
+    config: &Config,
     training_state: &TrainingState<N>,
-    model: impl AsRef<Path>,
-    checkpoint: impl AsRef<Path>,
+    model_name: impl AsRef<str>,
+    checkpoint_name: impl AsRef<str>,
 ) where
     TrainingState<N>: Train<N>,
 {
-    let file = File::create(model).expect("could not create model file");
+    let suffix = match &config.suffix {
+        Some(suffix) => format!("-{suffix}"),
+        None => String::new(),
+    };
+
+    let path = format!(
+        "{TRAINING_DIR}/{MODEL_DIR}/{}{suffix}.json",
+        model_name.as_ref()
+    );
+    let file = File::create(path).expect("could not create model file");
     serde_json::to_writer(file, &training_state.model).expect("could not write to model file");
 
-    let file = File::create(checkpoint).expect("could not create checkpoint file");
-    serde_json::to_writer(file, &(N, serde_json::to_string(&training_state).unwrap()))
-        .expect("could not write to checkpoint file");
+    let path = format!(
+        "{TRAINING_DIR}/{CHECKPOINT_DIR}/{}{suffix}.json",
+        checkpoint_name.as_ref()
+    );
+    let file = File::create(path).expect("could not create checkpoint file");
+    serde_json::to_writer(file, &training_state).expect("could not write to checkpoint file");
 }
