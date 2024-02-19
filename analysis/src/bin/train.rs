@@ -39,7 +39,7 @@ struct Config {
     /// The number of batches to generate at a time from the same network state.
     batches_per_update: usize,
     /// The number of updates between saved checkpoints.
-    checkpoint_updates: usize,
+    updates_per_checkpoint: usize,
     /// The search depth to use when building the positions the training samples are derived from.
     scaffold_search_depth: u32,
     /// The number of consecutive samples to take from one starting position.
@@ -194,7 +194,11 @@ where
     let scaffolds = Mutex::new(scaffolds);
     let training_samples = Mutex::new(Vec::new());
 
-    let max_threads = config.max_threads.unwrap_or(usize::MAX);
+    let max_threads = config.max_threads.unwrap_or(
+        thread::available_parallelism()
+            .expect("could not determine available parallelism")
+            .into(),
+    );
 
     thread::scope(|scope| {
         for _ in 0..max_threads.min(config.batches_per_update) {
@@ -370,7 +374,7 @@ where
 
     assert!(batch_count * BATCH_SIZE <= batch_samples.len());
 
-    let checkpoint_batches = config.batches_per_update * config.checkpoint_updates;
+    let checkpoint_batches = config.batches_per_update * config.updates_per_checkpoint;
 
     for _ in 0..batch_count {
         let (batch, remaining) = batch_samples.split_at(BATCH_SIZE);
