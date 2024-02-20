@@ -12,8 +12,8 @@ pub struct TimeControl {
 impl TimeControl {
     pub(crate) fn get_use_time<const N: usize>(&self, state: &State<N>) -> Duration {
         let reserves = match state.to_move() {
-            Color::White => state.p1_flatstones as f32,
-            Color::Black => state.p2_flatstones as f32,
+            Color::White => (state.p1_flatstones + state.p1_capstones) as f32,
+            Color::Black => (state.p2_flatstones + state.p2_capstones) as f32,
         };
 
         // XXX Come up with a better reserves -> moves estimation function than this.
