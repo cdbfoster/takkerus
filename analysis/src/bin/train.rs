@@ -40,6 +40,9 @@ struct Config {
     batches_per_update: usize,
     /// The number of updates between saved checkpoints.
     updates_per_checkpoint: usize,
+    /// The number of networks to start, selecting the best to continue training.
+    #[serde(default)]
+    starting_candidates: usize,
     /// The search depth to use when building the positions the training samples are derived from.
     scaffold_search_depth: u32,
     /// The number of consecutive samples to take from one starting position.
@@ -94,7 +97,7 @@ where
         let file = File::open(path).expect("could not read checkpoint file");
         serde_json::from_reader(file).expect("could not parse checkpoint")
     } else {
-        TrainingState::<N>::new()
+        TrainingState::<N>::new(&config)
     };
 
     if config.max_batches == 0 {
@@ -102,11 +105,75 @@ where
         return;
     }
 
-    let mut iteration = training_state.batch / config.batches_per_update;
+    let mut best_training_state = load_best(&config).unwrap_or_else(|| {
+        println!("Could not load best training state. Cloning current training state.");
+        training_state.clone()
+    });
+    best_training_state.match_results = None;
 
-    while training_state.batch < config.max_batches {
-        iteration += 1;
+    if best_training_state.batch > training_state.batch {
+        println!("Warning: best is more recent than current!");
+    }
 
+    let checkpoint_batches = config.batches_per_update * config.updates_per_checkpoint;
+
+    while training_state.batch < config.max_batches
+        || (training_state.batch == config.max_batches
+            && training_state.batch % checkpoint_batches == 0)
+    {
+        if training_state.batch % checkpoint_batches == 0
+            && (training_state.batch > best_training_state.batch
+                || training_state.candidate != best_training_state.candidate)
+        {
+            println!("Running test...");
+            let results = match test_match(&config, &best_training_state, &training_state) {
+                TestOutcome::Accepted(results) => {
+                    best_training_state = training_state.clone();
+                    best_training_state.match_results = None;
+
+                    println!("Accepted");
+
+                    // Save the best checkpoint/model.
+                    save_training_state(&config, &best_training_state, "best", "best");
+
+                    results
+                }
+                TestOutcome::Rejected(results) => {
+                    println!("Rejected");
+
+                    results
+                }
+            };
+
+            if training_state.candidate > 1 {
+                let mut next_candidate = TrainingState::new(&config);
+                next_candidate.candidate = training_state.candidate - 1;
+                training_state = next_candidate;
+            } else if training_state.candidate == 1 {
+                training_state = best_training_state.clone();
+                training_state.candidate = 0;
+            } else {
+                training_state.match_results = Some(results);
+                save_checkpoint(
+                    &config,
+                    &training_state,
+                    format!("checkpoint_{N}s_{:06}", training_state.batch),
+                );
+            }
+
+            if training_state.batch == config.max_batches {
+                break;
+            }
+        }
+
+        let iteration = training_state.batch / config.batches_per_update + 1;
+
+        if training_state.candidate > 0 {
+            print!(
+                "Candidate {} ",
+                config.starting_candidates - training_state.candidate + 1
+            );
+        }
         print!("Iteration {iteration}... ");
         std::io::stdout().flush().ok();
 
@@ -426,15 +493,15 @@ struct TrainingSample<T> {
 trait Train<const N: usize> {
     type State;
     type Evaluator: Evaluator<N>;
-    type Model: for<'a> Deserialize<'a> + Serialize + Send + Sync;
-    type GradientDescent: for<'a> Deserialize<'a> + Serialize + Send + Sync;
+    type Model: Clone + for<'a> Deserialize<'a> + Serialize + Send + Sync;
+    type GradientDescent: Clone + for<'a> Deserialize<'a> + Serialize + Send + Sync;
 
-    fn new() -> Self;
+    fn new(config: &Config) -> Self;
     fn model_as_evaluator<const M: usize>(&self) -> Box<dyn Evaluator<M>>;
     fn train_batch(&mut self, config: &Config, samples: &[TrainingSample<Self::State>]) -> f32;
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct TrainingState<const N: usize>
 where
     Self: Train<N>,
@@ -445,6 +512,9 @@ where
     learning_rate: f32,
     error: f32,
     checkpoint_error_acc: f32,
+    candidate: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    match_results: Option<Results>,
 }
 
 macro_rules! train_impl {
@@ -459,7 +529,7 @@ macro_rules! train_impl {
                 { AnnModel::<$s>::OUTPUTS },
             >;
 
-            fn new() -> Self {
+            fn new(config: &Config) -> Self {
                 Self {
                     batch: 0,
                     model: Self::Model::random(&mut rand::thread_rng()),
@@ -467,6 +537,8 @@ macro_rules! train_impl {
                     learning_rate: 0.001,
                     error: 0.0,
                     checkpoint_error_acc: 0.0,
+                    candidate: config.starting_candidates,
+                    match_results: None,
                 }
             }
 
@@ -556,11 +628,30 @@ fn generate_plies<const N: usize>(state: &State<N>) -> Vec<Ply<N>> {
     plies
 }
 
-fn save_training_state<const N: usize>(
+fn save_checkpoint<const N: usize>(
+    config: &Config,
+    training_state: &TrainingState<N>,
+    checkpoint_name: impl AsRef<str>,
+) where
+    TrainingState<N>: Train<N>,
+{
+    let suffix = match &config.suffix {
+        Some(suffix) => format!("-{suffix}"),
+        None => String::new(),
+    };
+
+    let path = format!(
+        "{TRAINING_DIR}/{CHECKPOINT_DIR}/{}{suffix}.json",
+        checkpoint_name.as_ref()
+    );
+    let file = File::create(path).expect("could not create checkpoint file");
+    serde_json::to_writer(file, &training_state).expect("could not write to checkpoint file");
+}
+
+fn save_model<const N: usize>(
     config: &Config,
     training_state: &TrainingState<N>,
     model_name: impl AsRef<str>,
-    checkpoint_name: impl AsRef<str>,
 ) where
     TrainingState<N>: Train<N>,
 {
@@ -575,11 +666,221 @@ fn save_training_state<const N: usize>(
     );
     let file = File::create(path).expect("could not create model file");
     serde_json::to_writer(file, &training_state.model).expect("could not write to model file");
+}
 
-    let path = format!(
-        "{TRAINING_DIR}/{CHECKPOINT_DIR}/{}{suffix}.json",
-        checkpoint_name.as_ref()
+fn save_training_state<const N: usize>(
+    config: &Config,
+    training_state: &TrainingState<N>,
+    model_name: impl AsRef<str>,
+    checkpoint_name: impl AsRef<str>,
+) where
+    TrainingState<N>: Train<N>,
+{
+    save_model(config, training_state, model_name);
+    save_checkpoint(config, training_state, checkpoint_name);
+}
+
+fn load_best<const N: usize>(config: &Config) -> Option<TrainingState<N>>
+where
+    TrainingState<N>: Train<N>,
+{
+    let suffix = match &config.suffix {
+        Some(suffix) => format!("-{suffix}"),
+        None => String::new(),
+    };
+
+    let path = format!("{TRAINING_DIR}/{CHECKPOINT_DIR}/best{suffix}.json");
+
+    let file = File::open(path).ok()?;
+    serde_json::from_reader(file).ok()
+}
+
+enum TestOutcome {
+    Accepted(Results),
+    Rejected(Results),
+}
+
+fn test_match<const N: usize>(
+    config: &Config,
+    best: &TrainingState<N>,
+    candidate: &TrainingState<N>,
+) -> TestOutcome
+where
+    TrainingState<N>: Train<N>,
+{
+    // A 2σ result out of 425 matches is a win rate of roughly 55%.
+    const MATCHES: usize = 425;
+    const SIGNIFICANCE_THRESHOLD: f32 = 2.0;
+
+    let results = Mutex::new(Results {
+        matches_remaining: MATCHES,
+        a_batch: candidate.batch,
+        b_batch: best.batch,
+        a_wins: 0,
+        b_wins: 0,
+        draws: 0,
+    });
+
+    let max_threads = config.max_threads.unwrap_or(
+        thread::available_parallelism()
+            .expect("could not determine available parallelism")
+            .into(),
     );
-    let file = File::create(path).expect("could not create checkpoint file");
-    serde_json::to_writer(file, &training_state).expect("could not write to checkpoint file");
+
+    let start = Instant::now();
+
+    thread::scope(|scope| {
+        for _ in 0..max_threads {
+            scope.spawn(|| {
+                let mut rng = rand::thread_rng();
+
+                let a_evaluator = candidate.model_as_evaluator();
+                let b_evaluator = best.model_as_evaluator();
+
+                'run_matches: loop {
+                    let game_number = {
+                        let mut results = results.lock().unwrap();
+
+                        if results.matches_remaining >= 1 {
+                            results.matches_remaining -= 1;
+                        } else {
+                            break 'run_matches;
+                        }
+
+                        MATCHES - results.matches_remaining + 1
+                    };
+
+                    let (p1, p2) = if game_number % 2 == 0 {
+                        (&a_evaluator, &b_evaluator)
+                    } else {
+                        (&b_evaluator, &a_evaluator)
+                    };
+
+                    let mut p1_persistent_state = PersistentState::default();
+                    let mut p2_persistent_state = PersistentState::default();
+
+                    // Execute two random plies on a new board to start the game.
+                    let mut state = State::default();
+                    let ply = *generate_plies(&state).choose(&mut rng).unwrap();
+                    state.execute_ply(ply).expect("error executing random ply");
+                    let ply = *generate_plies(&state).choose(&mut rng).unwrap();
+                    state.execute_ply(ply).expect("error executing random ply");
+
+                    while state.resolution().is_none() && state.ply_count < 300 {
+                        let (player, mut persistent_state) = if state.ply_count % 2 == 0 {
+                            (&**p1, &mut p1_persistent_state)
+                        } else {
+                            (&**p2, &mut p2_persistent_state)
+                        };
+
+                        let config = AnalysisConfig::<N> {
+                            depth_limit: Some(config.td_search_depth),
+                            time_limit: None,
+                            early_stop: false,
+                            persistent_state: Some(&mut persistent_state),
+                            evaluator: Some(player),
+                            exact_eval: true,
+                            ..Default::default()
+                        };
+
+                        let analysis = analyze(config, &state);
+
+                        state
+                            .execute_ply(
+                                *analysis
+                                    .principal_variation
+                                    .first()
+                                    .expect("no principal variation"),
+                            )
+                            .expect("error executing principal variation ply");
+                    }
+
+                    let mut results = results.lock().unwrap();
+                    match state.resolution() {
+                        Some(Resolution::Road(color)) | Some(Resolution::Flats { color, .. }) => {
+                            match color {
+                                Color::White => {
+                                    if game_number % 2 == 0 {
+                                        results.a_wins += 1;
+                                    } else {
+                                        results.b_wins += 1;
+                                    }
+                                }
+                                Color::Black => {
+                                    if game_number % 2 == 0 {
+                                        results.b_wins += 1;
+                                    } else {
+                                        results.a_wins += 1;
+                                    }
+                                }
+                            }
+                        }
+                        Some(Resolution::Draw) | None => {
+                            results.draws += 1;
+                        }
+                    }
+
+                    println!(
+                        "  {:3}/{}  +{}-{}={}{}",
+                        results.a_wins + results.b_wins + results.draws,
+                        MATCHES,
+                        results.a_wins,
+                        results.b_wins,
+                        results.draws,
+                        if let Some(sigma) = results.z_test() {
+                            format!(" {sigma:.2}σ")
+                        } else {
+                            String::new()
+                        },
+                    );
+                }
+            });
+        }
+    });
+
+    let elapsed = start.elapsed();
+    println!(
+        "  Finished in {:.2}s, {:.2}s/match",
+        elapsed.as_secs_f32(),
+        elapsed.as_secs_f32() / MATCHES as f32
+    );
+
+    let results = results.lock().unwrap();
+
+    if results.a_wins > results.b_wins
+        && results.z_test().expect("no result significance") >= SIGNIFICANCE_THRESHOLD
+    {
+        TestOutcome::Accepted(*results)
+    } else {
+        TestOutcome::Rejected(*results)
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+struct Results {
+    #[serde(skip)]
+    matches_remaining: usize,
+    a_batch: usize,
+    b_batch: usize,
+    a_wins: usize,
+    b_wins: usize,
+    draws: usize,
+}
+
+impl Results {
+    fn z_test(&self) -> Option<f32> {
+        let total = self.a_wins + self.b_wins + 2 * self.draws;
+        if total < 20 {
+            return None;
+        }
+
+        let numerator = (self.a_wins + self.draws) as f32 - total as f32 / 2.0;
+        if numerator == 0.0 {
+            return Some(0.0);
+        }
+
+        let z = ((numerator + numerator.signum() * 0.5) / (total as f32 * 0.5 * 0.5).sqrt()).abs();
+
+        Some(z)
+    }
 }
