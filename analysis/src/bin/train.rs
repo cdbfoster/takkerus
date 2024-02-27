@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
@@ -17,9 +18,9 @@ use tak::{board_mask, generation, Color, PieceType, Ply, Resolution, State};
 
 const BATCH_SIZE: usize = 128;
 
-const TRAINING_DIR: &'static str = "training";
-const MODEL_DIR: &'static str = "models";
-const CHECKPOINT_DIR: &'static str = "checkpoints";
+const TRAINING_DIR: &str = "training";
+const MODEL_DIR: &str = "models";
+const CHECKPOINT_DIR: &str = "checkpoints";
 
 #[derive(Clone, Debug, Deserialize)]
 struct Config {
@@ -145,20 +146,24 @@ where
                 }
             };
 
-            if training_state.candidate > 1 {
-                let mut next_candidate = TrainingState::new(&config);
-                next_candidate.candidate = training_state.candidate - 1;
-                training_state = next_candidate;
-            } else if training_state.candidate == 1 {
-                training_state = best_training_state.clone();
-                training_state.candidate = 0;
-            } else {
-                training_state.match_results = Some(results);
-                save_checkpoint(
-                    &config,
-                    &training_state,
-                    format!("checkpoint_{N}s_{:06}", training_state.batch),
-                );
+            match training_state.candidate.cmp(&1) {
+                Ordering::Greater => {
+                    let mut next_candidate = TrainingState::new(&config);
+                    next_candidate.candidate = training_state.candidate - 1;
+                    training_state = next_candidate;
+                }
+                Ordering::Equal => {
+                    training_state = best_training_state.clone();
+                    training_state.candidate = 0;
+                }
+                _ => {
+                    training_state.match_results = Some(results);
+                    save_checkpoint(
+                        &config,
+                        &training_state,
+                        format!("checkpoint_{N}s_{:06}", training_state.batch),
+                    );
+                }
             }
 
             if training_state.batch == config.max_batches {
@@ -210,7 +215,7 @@ where
     let mut rng = rand::thread_rng();
 
     let mut states = Vec::new();
-    let mut persistent_state = PersistentState::default();
+    let persistent_state = PersistentState::default();
     let evaluator = training_state.model_as_evaluator();
 
     let mut state = State::default();
@@ -228,7 +233,7 @@ where
                 depth_limit: Some(config.scaffold_search_depth),
                 time_limit: None,
                 early_stop: false,
-                persistent_state: Some(&mut persistent_state),
+                persistent_state: Some(&persistent_state),
                 evaluator: Some(&*evaluator),
                 exact_eval: true,
                 ..Default::default()
@@ -272,7 +277,7 @@ where
             scope.spawn(|| {
                 let mut rng = rand::thread_rng();
 
-                let mut persistent_state = PersistentState::default();
+                let persistent_state = PersistentState::default();
                 let evaluator = training_state.model_as_evaluator();
 
                 'gather: loop {
@@ -326,7 +331,7 @@ where
                             depth_limit: Some(config.td_search_depth),
                             time_limit: None,
                             early_stop: false,
-                            persistent_state: Some(&mut persistent_state),
+                            persistent_state: Some(&persistent_state),
                             evaluator: Some(&*evaluator),
                             exact_eval: true,
                             ..Default::default()
@@ -343,12 +348,10 @@ where
                                 Some(Resolution::Draw { .. })
                             ) {
                                 0.0
+                            } else if analysis.evaluation > 0.0.into() {
+                                1.0
                             } else {
-                                if analysis.evaluation > 0.0.into() {
-                                    1.0
-                                } else {
-                                    -1.0
-                                }
+                                -1.0
                             };
 
                             r_t.push(eval);
@@ -463,7 +466,7 @@ where
 
             save_training_state(
                 config,
-                &training_state,
+                training_state,
                 format!("model_{N}s_{:06}", training_state.batch),
                 format!("checkpoint_{N}s_{:06}", training_state.batch),
             );
@@ -480,7 +483,7 @@ where
     }
 
     // Save the latest checkpoint/model too.
-    save_training_state(config, &training_state, "latest", "latest");
+    save_training_state(config, training_state, "latest", "latest");
 
     error_sum / batch_count as f32
 }
@@ -756,8 +759,8 @@ where
                         (&b_evaluator, &a_evaluator)
                     };
 
-                    let mut p1_persistent_state = PersistentState::default();
-                    let mut p2_persistent_state = PersistentState::default();
+                    let p1_persistent_state = PersistentState::default();
+                    let p2_persistent_state = PersistentState::default();
 
                     // Execute two random plies on a new board to start the game.
                     let mut state = State::default();
@@ -767,17 +770,17 @@ where
                     state.execute_ply(ply).expect("error executing random ply");
 
                     while state.resolution().is_none() && state.ply_count < 300 {
-                        let (player, mut persistent_state) = if state.ply_count % 2 == 0 {
-                            (&**p1, &mut p1_persistent_state)
+                        let (player, persistent_state) = if state.ply_count % 2 == 0 {
+                            (&**p1, &p1_persistent_state)
                         } else {
-                            (&**p2, &mut p2_persistent_state)
+                            (&**p2, &p2_persistent_state)
                         };
 
                         let config = AnalysisConfig::<N> {
                             depth_limit: Some(config.td_search_depth),
                             time_limit: None,
                             early_stop: false,
-                            persistent_state: Some(&mut persistent_state),
+                            persistent_state: Some(persistent_state),
                             evaluator: Some(player),
                             exact_eval: true,
                             ..Default::default()

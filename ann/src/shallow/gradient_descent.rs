@@ -20,7 +20,7 @@ pub trait ShallowGradientDescent<const I: usize, const H: usize, const O: usize>
     );
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct ShallowAdam<const I: usize, const H: usize, const O: usize> {
     hidden: Adam<I, H>,
     output: Adam<H, O>,

@@ -16,7 +16,7 @@ pub trait GradientDescent<const I: usize, const O: usize> {
     );
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Adam<const I: usize, const O: usize> {
     beta1: f32,
     beta2: f32,
