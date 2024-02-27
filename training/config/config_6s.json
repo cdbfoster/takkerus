@@ -1,8 +1,9 @@
 {
     "size": 6,
-    "max_batches": 100000,
-    "batches_per_update": 8,
-    "checkpoint_updates": 125,
+    "max_batches": 102400,
+    "batches_per_update": 16,
+    "updates_per_checkpoint": 16,
+    "starting_candidates": 5,
     "scaffold_search_depth": 3,
     "samples_per_position": 10,
     "td_ply_depth": 10,
