@@ -515,9 +515,14 @@ where
     learning_rate: f32,
     error: f32,
     checkpoint_error_acc: f32,
+    #[serde(default, skip_serializing_if = "is_zero")]
     candidate: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     match_results: Option<Results>,
+}
+
+fn is_zero(value: &usize) -> bool {
+    *value == 0
 }
 
 macro_rules! train_impl {
