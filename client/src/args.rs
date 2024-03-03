@@ -150,7 +150,7 @@ impl Player {
 
         let default = match color {
             Color::White => "[default: type=human name=Anonymous]",
-            Color::Black => "[default: type=ai time=60 early_stop=true]",
+            Color::Black => "[default: type=ai time=20 early_stop=true]",
         };
 
         cmd.arg(
@@ -196,7 +196,15 @@ AI options:
                 if key == "type" {
                     return match value {
                         "human" => Human::from_arg_matches(field, matches).map(Self::Human),
-                        "ai" => Ai::from_arg_matches(field, matches, Ai::default()).map(Self::Ai),
+                        "ai" => Ai::from_arg_matches(
+                            field,
+                            matches,
+                            Ai {
+                                time_limit: Some(Duration::from_secs(20)),
+                                ..Ai::default()
+                            },
+                        )
+                        .map(Self::Ai),
                         _ => Err(clap::Error::raw(
                             ClapErrorKind::InvalidValue,
                             format!("invalid value for type: {value:?}"),
