@@ -1,0 +1,16 @@
+{
+    "size": 5,
+    "max_batches": 204800,
+    "batches_per_update": 16,
+    "updates_per_checkpoint": 16,
+    "starting_candidates": 10,
+    "scaffold_search_depth": 3,
+    "samples_per_position": 10,
+    "td_ply_depth": 10,
+    "td_search_depth": 4,
+    "learning_rate_schedule": [[0, 0.001], [64, 0.0001]],
+    "epsilon": 0.05,
+    "discount": 0.85,
+    "lambda": 0.8,
+    "l2_reg": 0.0001
+}
