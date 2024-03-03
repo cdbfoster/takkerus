@@ -14,7 +14,7 @@ use analysis::{analyze, AnalysisConfig, PersistentState};
 use ann::linear_algebra::MatrixRowMajor;
 use ann::loss::{mse, mse_prime};
 use ann::shallow::ShallowAdam;
-use tak::{board_mask, generation, Color, PieceType, Ply, Resolution, State};
+use tak::{board_mask, generation, Color, PieceType, Ply, Resolution, State, Tps};
 
 const BATCH_SIZE: usize = 128;
 
@@ -285,7 +285,9 @@ where
                         let mut guard = scaffolds.lock().unwrap();
 
                         let mut state = guard.choose(&mut rng).cloned().unwrap();
-                        let ply = *generate_plies(&state).choose(&mut rng).unwrap();
+                        let ply = *generate_plies(&state)
+                            .choose(&mut rng)
+                            .expect(&format!("no plies: {}", Tps::from(state.clone())));
                         state.execute_ply(ply).expect("error executing random ply");
 
                         guard.push(state.clone());
