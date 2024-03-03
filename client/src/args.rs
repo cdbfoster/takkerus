@@ -79,7 +79,10 @@ pub struct Player2(Player);
 
 impl Default for Player2 {
     fn default() -> Self {
-        Self(Player::Ai(Ai::default()))
+        Self(Player::Ai(Ai {
+            time_limit: Some(Duration::from_secs(12)),
+            ..Default::default()
+        }))
     }
 }
 
@@ -200,8 +203,8 @@ AI options:
                             field,
                             matches,
                             Ai {
-                                time_limit: Some(Duration::from_secs(20)),
-                                ..Ai::default()
+                                time_limit: Some(Duration::from_secs(12)),
+                                ..Default::default()
                             },
                         )
                         .map(Self::Ai),
