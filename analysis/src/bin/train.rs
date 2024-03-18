@@ -806,8 +806,8 @@ where
 
     let results = Mutex::new(Results {
         matches_remaining: MATCHES,
-        a_batch: candidate.update,
-        b_batch: best.update,
+        a_update: candidate.update,
+        b_update: best.update,
         a_wins: 0,
         b_wins: 0,
         draws: 0,
@@ -952,8 +952,8 @@ where
 struct Results {
     #[serde(skip)]
     matches_remaining: usize,
-    a_batch: usize,
-    b_batch: usize,
+    a_update: usize,
+    b_update: usize,
     a_wins: usize,
     b_wins: usize,
     draws: usize,
