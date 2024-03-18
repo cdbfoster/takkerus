@@ -1,10 +1,8 @@
-use std::cmp::Ordering;
-use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::sync::Mutex;
-use std::thread;
 use std::time::Instant;
+use std::{env, thread};
 
 use rand::{self, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
@@ -35,15 +33,16 @@ struct Config {
     /// The maximum number of threads to use. The actual number is capped at `batches_per_update`.
     #[serde(default)]
     max_threads: Option<usize>,
-    /// Maximum batch count.
-    max_batches: usize,
+    /// Maximum updates count.
+    max_updates: usize,
     /// The number of batches to generate at a time from the same network state.
     batches_per_update: usize,
     /// The number of updates between saved checkpoints.
     updates_per_checkpoint: usize,
     /// The number of networks to start, selecting the best to continue training.
-    #[serde(default)]
     starting_candidates: usize,
+    /// The number of updates to train each candidate.
+    candidate_updates: usize,
     /// The search depth to use when building the positions the training samples are derived from.
     scaffold_search_depth: u32,
     /// The number of consecutive samples to take from one starting position.
@@ -92,116 +91,191 @@ fn main_sized<const N: usize>(config: Config)
 where
     TrainingState<N>: Train<N, State = State<N>>,
 {
-    let mut rng = rand::thread_rng();
-
     let mut training_state = if let Some(path) = &config.resume_checkpoint {
         let file = File::open(path).expect("could not read checkpoint file");
         serde_json::from_reader(file).expect("could not parse checkpoint")
     } else {
-        TrainingState::<N>::new(&config)
+        TrainingState::<N>::new()
     };
 
-    if config.max_batches == 0 {
+    if config.max_updates == 0 {
         save_training_state(&config, &training_state, "latest", "latest");
         return;
     }
 
     let mut best_training_state = load_best(&config).unwrap_or_else(|| {
         println!("Could not load best training state. Cloning current training state.");
-        training_state.clone()
-    });
-    best_training_state.match_results = None;
 
-    if best_training_state.batch > training_state.batch {
+        let mut best = training_state.clone();
+        best.match_results = None;
+
+        save_training_state(&config, &best, "best", "best");
+
+        best
+    });
+
+    if matches!(training_state.stage, Stage::Main { .. })
+        && best_training_state.update > training_state.update
+    {
         println!("Warning: best is more recent than current!");
     }
 
-    let checkpoint_batches = config.batches_per_update * config.updates_per_checkpoint;
-
-    while training_state.batch < config.max_batches
-        || (training_state.batch == config.max_batches
-            && training_state.batch % checkpoint_batches == 0)
+    // Run a test if we load in a checkpoint that hasn't been tested.
+    if matches!(training_state.stage, Stage::Main)
+        && training_state.update % config.updates_per_checkpoint == 0
+        && training_state.match_results.is_none()
     {
-        if training_state.batch % checkpoint_batches == 0
-            && (training_state.batch > best_training_state.batch
-                || training_state.candidate != best_training_state.candidate)
-        {
-            println!("Running test...");
-            let results = match test_match(&config, &best_training_state, &training_state) {
-                TestOutcome::Accepted(results) => {
-                    best_training_state = training_state.clone();
-                    best_training_state.match_results = None;
+        do_test(&config, &mut best_training_state, &mut training_state);
+    }
 
-                    println!("Accepted");
-
-                    // Save the best checkpoint/model.
-                    save_training_state(&config, &best_training_state, "best", "best");
-
-                    results
+    while training_state.update < config.max_updates {
+        if let Stage::Candidate { number } = training_state.stage {
+            if training_state.update == config.candidate_updates {
+                // Test candidates only when they're finished.
+                if training_state.match_results.is_none() {
+                    do_test(&config, &mut best_training_state, &mut training_state);
                 }
-                TestOutcome::Rejected(results) => {
-                    println!("Rejected");
 
-                    results
-                }
-            };
-
-            match training_state.candidate.cmp(&1) {
-                Ordering::Greater => {
-                    let mut next_candidate = TrainingState::new(&config);
-                    next_candidate.candidate = training_state.candidate - 1;
+                if number < config.starting_candidates {
+                    let mut next_candidate = TrainingState::new();
+                    next_candidate.stage = Stage::Candidate { number: number + 1 };
                     training_state = next_candidate;
+                } else {
+                    accept_candidate(&mut training_state, &best_training_state);
                 }
-                Ordering::Equal => {
-                    training_state = best_training_state.clone();
-                    training_state.candidate = 0;
-                }
-                _ => {
-                    training_state.match_results = Some(results);
-                    save_checkpoint(
-                        &config,
-                        &training_state,
-                        format!("checkpoint_{N}s_{:06}", training_state.batch),
-                    );
-                }
-            }
-
-            if training_state.batch == config.max_batches {
-                break;
             }
         }
 
-        let iteration = training_state.batch / config.batches_per_update + 1;
+        do_update(&config, &mut training_state);
 
-        if training_state.candidate > 0 {
-            print!(
-                "Candidate {} ",
-                config.starting_candidates - training_state.candidate + 1
-            );
+        if matches!(training_state.stage, Stage::Main)
+            && training_state.update % config.updates_per_checkpoint == 0
+        {
+            do_test(&config, &mut best_training_state, &mut training_state);
         }
-        print!("Iteration {iteration}... ");
-        std::io::stdout().flush().ok();
+    }
+}
 
-        let start_time = Instant::now();
+fn do_update<const N: usize>(config: &Config, training_state: &mut TrainingState<N>)
+where
+    TrainingState<N>: Train<N, State = State<N>>,
+{
+    let mut rng = rand::thread_rng();
 
-        let scaffolds = build_scaffold_positions(&config, &training_state);
-        let mut batch_samples = generate_batch_samples(&config, &training_state, scaffolds);
-        batch_samples.shuffle(&mut rng);
+    print!(
+        "{}Iteration {}... ",
+        match training_state.stage {
+            Stage::Candidate { number } => format!("Candidate {number} - "),
+            _ => String::new(),
+        },
+        training_state.update + 1,
+    );
+    std::io::stdout().flush().ok();
 
-        let start_batch = training_state.batch;
-        let average_error = train_batches(&config, &mut training_state, &batch_samples);
-        let batch_count = training_state.batch - start_batch;
+    let start_time = Instant::now();
 
-        let elapsed = start_time.elapsed().as_secs_f32();
-        println!(
-            "b: {}, t: {:6.2}s, avg b t: {:5.2}s/b, lr: {}, avg b err: {:.3}, avg chkpt err: {:.3}",
-            training_state.batch,
-            elapsed,
-            elapsed / batch_count as f32,
-            training_state.learning_rate,
-            average_error,
-            training_state.error,
-        );
+    let scaffolds = build_scaffold_positions(config, training_state);
+    let mut batch_samples = generate_batch_samples(config, training_state, scaffolds);
+    batch_samples.shuffle(&mut rng);
+
+    let average_error = train_batches(config, training_state, &batch_samples);
+
+    let elapsed = start_time.elapsed().as_secs_f32();
+    println!(
+        "b: {}, t: {:6.2}s, avg b t: {:5.2}s/b, lr: {}, avg b err: {:.3}, avg chkpt err: {:.3}",
+        config.batches_per_update * training_state.update,
+        elapsed,
+        elapsed / config.batches_per_update as f32,
+        training_state.learning_rate,
+        average_error,
+        training_state.error,
+    );
+
+    if training_state.update % config.updates_per_checkpoint == 0 {
+        println!("  Saving checkpoint.");
+    }
+}
+
+fn do_test<const N: usize>(
+    config: &Config,
+    best_training_state: &mut TrainingState<N>,
+    training_state: &mut TrainingState<N>,
+) where
+    TrainingState<N>: Train<N, State = State<N>>,
+{
+    println!("Running test...");
+    let results = match test_match(config, best_training_state, training_state) {
+        TestOutcome::Accepted(results) => {
+            *best_training_state = training_state.clone();
+            best_training_state.match_results = None;
+
+            println!("Accepted");
+
+            // Save the best checkpoint/model.
+            save_training_state(config, best_training_state, "best", "best");
+
+            results
+        }
+        TestOutcome::Rejected(results) => {
+            println!("Rejected");
+
+            results
+        }
+    };
+
+    training_state.match_results = Some(results);
+
+    let stage = match training_state.stage {
+        Stage::Candidate { number } => format!("cand{number:02}_"),
+        Stage::Main => String::new(),
+    };
+
+    save_checkpoint(
+        config,
+        training_state,
+        format!("checkpoint_{N}s_{stage}{:05}", training_state.update),
+    );
+}
+
+fn accept_candidate<const N: usize>(
+    training_state: &mut TrainingState<N>,
+    best_training_state: &TrainingState<N>,
+) where
+    TrainingState<N>: Train<N, State = State<N>>,
+{
+    let number = match best_training_state.stage {
+        Stage::Candidate { number } => number,
+        _ => panic!("best is not a candidate"),
+    };
+
+    println!("  Accepting candidate {number}.");
+
+    *training_state = best_training_state.clone();
+    training_state.stage = Stage::Main;
+
+    // Copy all models and checkpoints that belonged to this candidate.
+    let candidate_name = format!("cand{number:02}_");
+
+    let models = fs::read_dir(format!("{TRAINING_DIR}/{MODEL_DIR}"))
+        .expect("cannot read model directory")
+        .flat_map(|f| f.ok())
+        .map(|f| f.path().to_string_lossy().into_owned())
+        .filter(|f| f.contains(&candidate_name));
+
+    for model in models {
+        let new_name = model.replace(&candidate_name, "");
+        fs::copy(model, new_name).expect("cannot copy model file");
+    }
+
+    let checkpoints = fs::read_dir(format!("{TRAINING_DIR}/{CHECKPOINT_DIR}"))
+        .expect("cannot read checkpoint directory")
+        .flat_map(|f| f.ok())
+        .map(|f| f.path().to_string_lossy().into_owned())
+        .filter(|f| f.contains(&candidate_name));
+
+    for checkpoint in checkpoints {
+        let new_name = checkpoint.replace(&candidate_name, "");
+        fs::copy(checkpoint, new_name).expect("cannot copy checkpoint file");
     }
 }
 
@@ -287,7 +361,7 @@ where
                         let mut state = guard.choose(&mut rng).cloned().unwrap();
                         let ply = *generate_plies(&state)
                             .choose(&mut rng)
-                            .expect(&format!("no plies: {}", Tps::from(state.clone())));
+                            .unwrap_or_else(|| panic!("no plies: {}", Tps::from(state.clone())));
                         state.execute_ply(ply).expect("error executing random ply");
 
                         guard.push(state.clone());
@@ -440,22 +514,17 @@ where
     TrainingState<N>: Train<N, State = State<N>>,
 {
     let mut error_sum = 0.0;
-    let batch_count = config
-        .batches_per_update
-        .min(config.max_batches - training_state.batch);
 
-    assert!(batch_count * BATCH_SIZE <= batch_samples.len());
+    assert!(config.batches_per_update * BATCH_SIZE <= batch_samples.len());
 
-    let checkpoint_batches = config.batches_per_update * config.updates_per_checkpoint;
-
-    for _ in 0..batch_count {
+    for _ in 0..config.batches_per_update {
         let (batch, remaining) = batch_samples.split_at(BATCH_SIZE);
 
         let (_, learning_rate) = config
             .learning_rate_schedule
             .iter()
             .rev()
-            .find(|(b, _)| *b <= training_state.batch)
+            .find(|(u, _)| *u <= training_state.update)
             .unwrap();
         training_state.learning_rate = *learning_rate;
 
@@ -463,31 +532,40 @@ where
         error_sum += error;
         training_state.checkpoint_error_acc += error;
 
-        if training_state.batch % checkpoint_batches == 0 {
-            training_state.error = training_state.checkpoint_error_acc / checkpoint_batches as f32;
-
-            save_training_state(
-                config,
-                training_state,
-                format!("model_{N}s_{:06}", training_state.batch),
-                format!("checkpoint_{N}s_{:06}", training_state.batch),
-            );
-
-            training_state.checkpoint_error_acc = 0.0;
-        }
-
         batch_samples = remaining;
     }
 
-    if training_state.batch % checkpoint_batches != 0 {
+    training_state.update += 1;
+
+    if training_state.update % config.updates_per_checkpoint == 0 {
         training_state.error = training_state.checkpoint_error_acc
-            / (training_state.batch % checkpoint_batches) as f32;
+            / (config.batches_per_update * config.updates_per_checkpoint) as f32;
+
+        let stage = match training_state.stage {
+            Stage::Candidate { number } => format!("cand{number:02}_"),
+            Stage::Main => String::new(),
+        };
+
+        training_state.match_results = None;
+
+        save_training_state(
+            config,
+            training_state,
+            format!("model_{N}s_{stage}{:05}", training_state.update),
+            format!("checkpoint_{N}s_{stage}{:05}", training_state.update),
+        );
+
+        training_state.checkpoint_error_acc = 0.0;
+    } else {
+        training_state.error = training_state.checkpoint_error_acc
+            / (config.batches_per_update * (training_state.update % config.updates_per_checkpoint))
+                as f32;
     }
 
     // Save the latest checkpoint/model too.
     save_training_state(config, training_state, "latest", "latest");
 
-    error_sum / batch_count as f32
+    error_sum / config.batches_per_update as f32
 }
 
 struct TrainingSample<T> {
@@ -501,9 +579,16 @@ trait Train<const N: usize> {
     type Model: Clone + for<'a> Deserialize<'a> + Serialize + Send + Sync;
     type GradientDescent: Clone + for<'a> Deserialize<'a> + Serialize + Send + Sync;
 
-    fn new(config: &Config) -> Self;
+    fn new() -> Self;
     fn model_as_evaluator<const M: usize>(&self) -> Box<dyn Evaluator<M>>;
     fn train_batch(&mut self, config: &Config, samples: &[TrainingSample<Self::State>]) -> f32;
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(tag = "name", rename_all = "snake_case")]
+enum Stage {
+    Candidate { number: usize },
+    Main,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -512,19 +597,15 @@ where
     Self: Train<N>,
 {
     batch: usize,
+    update: usize,
+    stage: Stage,
     model: <Self as Train<N>>::Model,
     gradient_descent: <Self as Train<N>>::GradientDescent,
     learning_rate: f32,
     error: f32,
     checkpoint_error_acc: f32,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    candidate: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     match_results: Option<Results>,
-}
-
-fn is_zero(value: &usize) -> bool {
-    *value == 0
 }
 
 macro_rules! train_impl {
@@ -539,15 +620,16 @@ macro_rules! train_impl {
                 { AnnModel::<$s>::OUTPUTS },
             >;
 
-            fn new(config: &Config) -> Self {
+            fn new() -> Self {
                 Self {
                     batch: 0,
+                    update: 0,
+                    stage: Stage::Candidate { number: 1 },
                     model: Self::Model::random(&mut rand::thread_rng()),
                     gradient_descent: Self::GradientDescent::default(),
                     learning_rate: 0.001,
                     error: 0.0,
                     checkpoint_error_acc: 0.0,
-                    candidate: config.starting_candidates,
                     match_results: None,
                 }
             }
@@ -712,8 +794,8 @@ enum TestOutcome {
 
 fn test_match<const N: usize>(
     config: &Config,
-    best: &TrainingState<N>,
-    candidate: &TrainingState<N>,
+    best: &mut TrainingState<N>,
+    candidate: &mut TrainingState<N>,
 ) -> TestOutcome
 where
     TrainingState<N>: Train<N>,
@@ -724,8 +806,8 @@ where
 
     let results = Mutex::new(Results {
         matches_remaining: MATCHES,
-        a_batch: candidate.batch,
-        b_batch: best.batch,
+        a_batch: candidate.update,
+        b_batch: best.update,
         a_wins: 0,
         b_wins: 0,
         draws: 0,
