@@ -95,6 +95,7 @@ where
         let file = File::open(path).expect("could not read checkpoint file");
         serde_json::from_reader(file).expect("could not parse checkpoint")
     } else {
+        println!("No resume checkpoint specified. Generating a new training state.");
         TrainingState::<N>::new()
     };
 
@@ -114,41 +115,44 @@ where
         best
     });
 
-    if matches!(training_state.stage, Stage::Main { .. })
-        && best_training_state.update > training_state.update
-    {
+    if training_state.stage == Stage::Main && best_training_state.update > training_state.update {
         println!("Warning: best is more recent than current!");
     }
 
     // Run a test if we load in a checkpoint that hasn't been tested.
-    if matches!(training_state.stage, Stage::Main)
+    if training_state.stage == Stage::Main
         && training_state.update % config.updates_per_checkpoint == 0
         && training_state.match_results.is_none()
     {
         do_test(&config, &mut best_training_state, &mut training_state);
     }
 
+    // Begin the first candidate if we haven't.
+    if training_state.stage == Stage::Beginning {
+        training_state.stage = Stage::Candidate { number: 1 };
+    }
+
     while training_state.update < config.max_updates {
         if let Stage::Candidate { number } = training_state.stage {
+            // If we're done training this candidate,
             if training_state.update == config.candidate_updates {
-                // Test candidates only when they're finished.
-                if training_state.match_results.is_none() {
-                    do_test(&config, &mut best_training_state, &mut training_state);
-                }
+                // Test it.
+                do_test(&config, &mut best_training_state, &mut training_state);
 
+                // Start the next candidate if need be.
                 if number < config.starting_candidates {
                     let mut next_candidate = TrainingState::new();
                     next_candidate.stage = Stage::Candidate { number: number + 1 };
                     training_state = next_candidate;
                 } else {
-                    accept_candidate(&mut training_state, &best_training_state);
+                    accept_candidate(&config, &mut training_state, &mut best_training_state);
                 }
             }
         }
 
         do_update(&config, &mut training_state);
 
-        if matches!(training_state.stage, Stage::Main)
+        if training_state.stage == Stage::Main
             && training_state.update % config.updates_per_checkpoint == 0
         {
             do_test(&config, &mut best_training_state, &mut training_state);
@@ -203,6 +207,8 @@ fn do_test<const N: usize>(
 ) where
     TrainingState<N>: Train<N, State = State<N>>,
 {
+    let best_stage = best_training_state.stage;
+
     println!("Running test...");
     let results = match test_match(config, best_training_state, training_state) {
         TestOutcome::Accepted(results) => {
@@ -223,11 +229,14 @@ fn do_test<const N: usize>(
         }
     };
 
-    training_state.match_results = Some(results);
+    // Only record results if they're from the same stage.
+    if training_state.stage == best_stage {
+        training_state.match_results = Some(results);
+    }
 
     let stage = match training_state.stage {
         Stage::Candidate { number } => format!("cand{number:02}_"),
-        Stage::Main => String::new(),
+        _ => String::new(),
     };
 
     save_checkpoint(
@@ -238,8 +247,9 @@ fn do_test<const N: usize>(
 }
 
 fn accept_candidate<const N: usize>(
+    config: &Config,
     training_state: &mut TrainingState<N>,
-    best_training_state: &TrainingState<N>,
+    best_training_state: &mut TrainingState<N>,
 ) where
     TrainingState<N>: Train<N, State = State<N>>,
 {
@@ -250,8 +260,11 @@ fn accept_candidate<const N: usize>(
 
     println!("  Accepting candidate {number}.");
 
+    // Move to the main stage.
+    best_training_state.stage = Stage::Main;
+    save_training_state(config, best_training_state, "best", "best");
+
     *training_state = best_training_state.clone();
-    training_state.stage = Stage::Main;
 
     // Copy all models and checkpoints that belonged to this candidate.
     let candidate_name = format!("cand{number:02}_");
@@ -543,7 +556,7 @@ where
 
         let stage = match training_state.stage {
             Stage::Candidate { number } => format!("cand{number:02}_"),
-            Stage::Main => String::new(),
+            _ => String::new(),
         };
 
         training_state.match_results = None;
@@ -584,9 +597,10 @@ trait Train<const N: usize> {
     fn train_batch(&mut self, config: &Config, samples: &[TrainingSample<Self::State>]) -> f32;
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "name", rename_all = "snake_case")]
 enum Stage {
+    Beginning,
     Candidate { number: usize },
     Main,
 }
@@ -624,7 +638,7 @@ macro_rules! train_impl {
                 Self {
                     batch: 0,
                     update: 0,
-                    stage: Stage::Candidate { number: 1 },
+                    stage: Stage::Beginning,
                     model: Self::Model::random(&mut rand::thread_rng()),
                     gradient_descent: Self::GradientDescent::default(),
                     learning_rate: 0.001,
